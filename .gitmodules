@@ -1,0 +1,3 @@
+[submodule "pico-hsm-sdk"]
+	path = pico-hsm-sdk
+	url = ../pico-hsm-sdk
