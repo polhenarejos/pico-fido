@@ -18,6 +18,7 @@
 #include "fido.h"
 #include "hsm.h"
 #include "apdu.h"
+#include "u2f.h"
 #include <stdio.h>
 
 void init_fido();
@@ -56,8 +57,11 @@ typedef struct cmd
   int (*cmd_handler)();
 } cmd_t;
 
+extern int cmd_register();
+
 static const cmd_t cmds[] = {
-      { 0x00, 0x0}
+    { U2F_REGISTER, cmd_register },
+    { 0x00, 0x0}
 };
 
 int fido_process_apdu() {

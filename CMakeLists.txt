@@ -30,6 +30,7 @@ add_executable(pico_fido)
 
 target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_register.c
         )
 set(HSM_DRIVER "hid")
 include(pico-hsm-sdk/pico_hsm_sdk_import.cmake)

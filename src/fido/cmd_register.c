@@ -15,11 +15,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _FIDO_H_
-#define _FIDO_H_
+#include "fido.h"
+#include "hsm.h"
+#include "apdu.h"
 
-#define U2F_PUBKEY_LEN 65
-#define KEY_PATH_LEN 32
-#define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
-
-#endif //_FIDO_H
+int cmd_register() {
+    return SW_OK();
+}
