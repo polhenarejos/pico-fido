@@ -19,6 +19,9 @@
 #include "hsm.h"
 #include "apdu.h"
 #include "u2f.h"
+#include "files.h"
+#include "file.h"
+#include "random.h"
 #include <stdio.h>
 
 void init_fido();
@@ -39,9 +42,6 @@ app_t *fido_select(app_t *a) {
     return a;
 }
 
-void init_fido() {
-}
-
 void __attribute__ ((constructor)) fido_ctor() {
     register_app(fido_select);
     fido_select(&apps[0]);
@@ -49,6 +49,33 @@ void __attribute__ ((constructor)) fido_ctor() {
 
 int fido_unload() {
     return CCID_OK;
+}
+
+void scan_files() {
+    ef_mkek = search_by_fid(EF_MKEK, NULL, SPECIFY_EF);
+    if (ef_mkek) {
+        if (!ef_mkek->data) {
+            printf("MKEK is empty. Initializing with default password\r\n");
+             uint8_t tmp_mkek[MKEK_SIZE];
+            const uint8_t *rd = random_bytes_get(MKEK_IV_SIZE+MKEK_KEY_SIZE);
+            memcpy(tmp_mkek, rd, MKEK_IV_SIZE+MKEK_KEY_SIZE);
+            flash_write_data_to_file(ef_mkek, tmp_mkek, MKEK_SIZE);
+        }
+    }
+    else {
+        printf("FATAL ERROR: PIN1 not found in memory!\r\n");
+    }
+
+    low_flash_available();
+}
+
+void scan_all() {
+    scan_flash();
+    scan_files();
+}
+
+void init_fido() {
+    scan_all();
 }
 
 typedef struct cmd

@@ -15,15 +15,17 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _FIDO_H_
-#define _FIDO_H_
+#ifndef _FILES_H_
+#define _FILES_H_
 
-#define U2F_PUBKEY_LEN 65
-#define KEY_PATH_LEN 32
-#define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
+#include "file.h"
 
-#define MKEK_IV_SIZE 16
-#define MKEK_KEY_SIZE 32
-#define MKEK_SIZE (MKEK_IV_SIZE+MKEK_KEY_SIZE)
+#define EF_MKEK         0x100A
 
-#endif //_FIDO_H
+#define EF_KEY_DEV      0xCC00
+#define EF_PRKD_DEV     0xC400
+#define EF_EE_DEV       0xCE00
+
+extern file_t *ef_mkek;
+
+#endif //_FILES_H_
