@@ -193,9 +193,11 @@ typedef struct cmd
 } cmd_t;
 
 extern int cmd_register();
+extern int cmd_authenticate();
 
 static const cmd_t cmds[] = {
     { U2F_REGISTER, cmd_register },
+    { U2F_AUTHENTICATE, cmd_authenticate },
     { 0x00, 0x0}
 };
 
