@@ -23,8 +23,6 @@
 #include "random.h"
 #include "files.h"
 
-extern int scan_files();
-
 int cmd_register() {
     U2F_REGISTER_REQ *req = (U2F_REGISTER_REQ *)apdu.data;
     U2F_REGISTER_RESP *resp = (U2F_REGISTER_RESP *)res_APDU;
@@ -35,8 +33,7 @@ int cmd_register() {
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
     int ret = derive_key(req->appId, true, resp->keyHandleCertSig, &key);
-    if (ret != CCID_OK)
-    {
+    if (ret != CCID_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
@@ -58,8 +55,8 @@ int cmd_register() {
     if (ret != 0)
         return SW_EXEC_ERROR();
     mbedtls_ecdsa_init(&key);
-    ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);if (ret != CCID_OK)
-    {
+    ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);
+    if (ret != CCID_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
@@ -67,7 +64,7 @@ int cmd_register() {
     mbedtls_ecdsa_free(&key);
     if (ret != 0)
         return SW_EXEC_ERROR();
-    res_APDU_size = sizeof(U2F_REGISTER_RESP) - U2F_MAX_ATT_CERT_SIZE - U2F_MAX_KH_SIZE + KEY_HANDLE_LEN + ef_certdev_size;
+    res_APDU_size = sizeof(U2F_REGISTER_RESP) - sizeof(resp->keyHandleCertSig) + KEY_HANDLE_LEN + ef_certdev_size + olen;
     DEBUG_PAYLOAD(res_APDU, res_APDU_size);
     return SW_OK();
 }
