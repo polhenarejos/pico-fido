@@ -140,28 +140,12 @@ int scan_files() {
             uint8_t kdata[32];
             int key_size = mbedtls_mpi_size(&ecdsa.d);
             mbedtls_mpi_write_binary(&ecdsa.d, kdata, key_size);
-
-            //ret = mkek_encrypt(kdata, key_size);
-            if (ret != CCID_OK) {
-                mbedtls_ecdsa_free(&ecdsa);
-                return ret;
-            }
             ret = flash_write_data_to_file(ef_keydev, kdata, key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             if (ret != CCID_OK) {
                 mbedtls_ecdsa_free(&ecdsa);
                 return ret;
             }
-            uint8_t cert[4096];
-            ret = x509_create_cert(&ecdsa, cert, sizeof(cert));
-            mbedtls_ecdsa_free(&ecdsa);
-            if (ret <= 0)
-                return ret;
-            ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
-            if (!ef_certdev)
-                return CCID_ERR_MEMORY_FATAL;
-            flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
-            DEBUG_PAYLOAD(cert + sizeof(cert) - ret, ret);
             printf(" done!\n");
         }
     }
@@ -170,10 +154,25 @@ int scan_files() {
     }
     ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
     if (ef_certdev) {
-
+        if (file_get_size(ef_certdev) == 0 || !ef_certdev->data) {
+            uint8_t cert[4096];
+            mbedtls_ecdsa_context key;
+            mbedtls_ecdsa_init(&key);
+            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);
+            printf("ret %d\n", ret);
+            if (ret != 0)
+                return ret;
+            ret = x509_create_cert(&key, cert, sizeof(cert));
+            mbedtls_ecdsa_free(&key);
+            printf("ret %d\n", ret);
+            if (ret <= 0)
+                return ret;
+            flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
+            DEBUG_PAYLOAD(cert + sizeof(cert) - ret, ret);
+        }
     }
     else {
-        printf("FATAL ERROR: MKEK not found in memory!\r\n");
+        printf("FATAL ERROR: CERT DEV not found in memory!\r\n");
     }
     low_flash_available();
     return CCID_OK;
