@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "common.h"
 #include "fido.h"
 #include "hsm.h"
 #include "apdu.h"
@@ -22,6 +23,11 @@
 #include "files.h"
 #include "file.h"
 #include "random.h"
+#include "mbedtls/ecdsa.h"
+#include "mbedtls/x509_crt.h"
+#include "mbedtls/hkdf.h"
+#include "pk_wrap.h"
+#include "crypto_utils.h"
 #include <stdio.h>
 
 void init_fido();
@@ -44,34 +50,137 @@ app_t *fido_select(app_t *a) {
 
 void __attribute__ ((constructor)) fido_ctor() {
     register_app(fido_select);
-    fido_select(&apps[0]);
+    //fido_select(&apps[0]);
 }
 
 int fido_unload() {
     return CCID_OK;
 }
 
-void scan_files() {
-    ef_mkek = search_by_fid(EF_MKEK, NULL, SPECIFY_EF);
-    if (ef_mkek) {
-        if (!ef_mkek->data) {
-            printf("MKEK is empty. Initializing with default password\r\n");
-             uint8_t tmp_mkek[MKEK_SIZE];
-            const uint8_t *rd = random_bytes_get(MKEK_IV_SIZE+MKEK_KEY_SIZE);
-            memcpy(tmp_mkek, rd, MKEK_IV_SIZE+MKEK_KEY_SIZE);
-            flash_write_data_to_file(ef_mkek, tmp_mkek, MKEK_SIZE);
+int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size) {
+    mbedtls_x509write_cert ctx;
+    mbedtls_x509write_crt_init(&ctx);
+    mbedtls_x509write_crt_set_version(&ctx, MBEDTLS_X509_CRT_VERSION_3);
+    mbedtls_x509write_crt_set_validity(&ctx, "20220901000000", "20320831235959" );
+    mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
+    mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
+    mbedtls_mpi serial;
+    mbedtls_mpi_init(&serial);
+    mbedtls_mpi_fill_random(&serial, 32, random_gen, NULL);
+    mbedtls_x509write_crt_set_serial(&ctx, &serial);
+    mbedtls_pk_context key;
+    mbedtls_pk_init(&key);
+    mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+    key.pk_ctx = ecdsa;
+    mbedtls_x509write_crt_set_subject_key(&ctx, &key);
+    mbedtls_x509write_crt_set_issuer_key(&ctx, &key);
+    mbedtls_x509write_crt_set_md_alg(&ctx, MBEDTLS_MD_SHA256);
+    mbedtls_x509write_crt_set_basic_constraints(&ctx, 0, 0);
+    mbedtls_x509write_crt_set_subject_key_identifier(&ctx);
+    mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
+    mbedtls_x509write_crt_set_key_usage(&ctx, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN);
+    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_gen, NULL);
+    return ret;
+}
+
+int load_keydev(uint8_t *key) {
+    if (!ef_keydev || file_get_size(ef_keydev) == 0)
+        return CCID_ERR_MEMORY_FATAL;
+    memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+    //return mkek_decrypt(key, file_get_size(ef_keydev));
+    return CCID_OK;
+}
+
+int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls_ecdsa_context *key) {
+    const int entries = KEY_PATH_LEN / sizeof(uint32_t);
+    uint8_t outk[64] = {0};
+    int r = 0;
+    memset(outk, 0, sizeof(outk));
+    if ((r = load_keydev(outk)) != CCID_OK)
+        return r;
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    for (int i = 0; i < entries; i++)
+    {
+        if (new_key == true) {
+            uint32_t val = 0x80000000 | *((uint32_t *)random_bytes_get(sizeof(uint32_t)));
+            memcpy(&key_handle[i*sizeof(uint32_t)], &val, sizeof(uint32_t));
+        }
+        if ((r = mbedtls_hkdf(md_info, &key_handle[i], sizeof(uint32_t), outk, 32, outk + 32, 32, outk, sizeof(outk))) != 0)
+        {
+            mbedtls_platform_zeroize(outk, sizeof(outk));
+            return r;
+        }
+    }
+    if ((r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, app_id, 32, key_handle + 32)) != 0)
+    {
+        mbedtls_platform_zeroize(outk, sizeof(outk));
+        return r;
+    }
+    mbedtls_ecp_group_load(&key->grp, MBEDTLS_ECP_DP_SECP256R1);
+    r = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, key, outk, 32);
+    mbedtls_platform_zeroize(outk, sizeof(outk));
+    if (r != 0)
+        return r;
+    return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL );
+}
+
+int scan_files() {
+    ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
+    if (ef_keydev) {
+        if (!ef_keydev->data) {
+            printf("KEY DEVICE is empty. Generating SECP256R1 curve...");
+            mbedtls_ecdsa_context ecdsa;
+            mbedtls_ecdsa_init(&ecdsa);
+            uint8_t index = 0;
+            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, random_gen, &index);
+            if (ret != 0) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return ret;
+            }
+            uint8_t kdata[32];
+            int key_size = mbedtls_mpi_size(&ecdsa.d);
+            mbedtls_mpi_write_binary(&ecdsa.d, kdata, key_size);
+
+            //ret = mkek_encrypt(kdata, key_size);
+            if (ret != CCID_OK) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return ret;
+            }
+            ret = flash_write_data_to_file(ef_keydev, kdata, key_size);
+            mbedtls_platform_zeroize(kdata, sizeof(kdata));
+            if (ret != CCID_OK) {
+                mbedtls_ecdsa_free(&ecdsa);
+                return ret;
+            }
+            uint8_t cert[4096];
+            ret = x509_create_cert(&ecdsa, cert, sizeof(cert));
+            mbedtls_ecdsa_free(&ecdsa);
+            if (ret <= 0)
+                return ret;
+            ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
+            if (!ef_certdev)
+                return CCID_ERR_MEMORY_FATAL;
+            flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
+            DEBUG_PAYLOAD(cert + sizeof(cert) - ret, ret);
+            printf(" done!\n");
         }
     }
     else {
-        printf("FATAL ERROR: PIN1 not found in memory!\r\n");
+        printf("FATAL ERROR: KEY DEV not found in memory!\r\n");
     }
+    ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
+    if (ef_certdev) {
 
+    }
+    else {
+        printf("FATAL ERROR: MKEK not found in memory!\r\n");
+    }
     low_flash_available();
+    return CCID_OK;
 }
 
 void scan_all() {
     scan_flash();
-    scan_files();
 }
 
 void init_fido() {

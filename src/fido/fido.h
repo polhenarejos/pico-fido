@@ -18,12 +18,16 @@
 #ifndef _FIDO_H_
 #define _FIDO_H_
 
-#define U2F_PUBKEY_LEN 65
-#define KEY_PATH_LEN 32
+#include <stdlib.h>
+#include "pico/stdlib.h"
+#include "common.h"
+#include "mbedtls/ecdsa.h"
+
+#define U2F_PUBKEY_LEN (65)
+#define KEY_PATH_LEN (32)
+#define SHA256_DIGEST_LENGTH (32)
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
-#define MKEK_IV_SIZE 16
-#define MKEK_KEY_SIZE 32
-#define MKEK_SIZE (MKEK_IV_SIZE+MKEK_KEY_SIZE)
+extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls_ecdsa_context *key);
 
 #endif //_FIDO_H
