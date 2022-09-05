@@ -194,15 +194,18 @@ typedef struct cmd
 
 extern int cmd_register();
 extern int cmd_authenticate();
+extern int cmd_version();
 
 static const cmd_t cmds[] = {
     { U2F_REGISTER, cmd_register },
     { U2F_AUTHENTICATE, cmd_authenticate },
+    { U2F_VERSION, cmd_version },
     { 0x00, 0x0}
 };
 
 int fido_process_apdu() {
-    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
+    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++)
+    {
         if (cmd->ins == INS(apdu)) {
             int r = cmd->cmd_handler();
             return r;
