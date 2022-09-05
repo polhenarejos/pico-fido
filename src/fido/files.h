@@ -20,12 +20,10 @@
 
 #include "file.h"
 
-#define EF_MKEK         0x100A
-
 #define EF_KEY_DEV      0xCC00
-#define EF_PRKD_DEV     0xC400
 #define EF_EE_DEV       0xCE00
 
-extern file_t *ef_mkek;
+extern file_t *ef_keydev;
+extern file_t *ef_certdev;
 
 #endif //_FILES_H_
