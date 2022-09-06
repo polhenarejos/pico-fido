@@ -22,6 +22,7 @@
 #include "u2f.h"
 #include "files.h"
 #include "file.h"
+#include "usb.h"
 #include "random.h"
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/x509_crt.h"
@@ -184,6 +185,15 @@ void scan_all() {
 
 void init_fido() {
     scan_all();
+}
+
+bool wait_button_pressed() {
+    uint32_t val = EV_PRESS_BUTTON;
+    queue_try_add(&card_to_usb_q, &val);
+    do {
+        queue_remove_blocking(&usb_to_card_q, &val);
+    } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT);
+    return val == EV_BUTTON_TIMEOUT;
 }
 
 typedef struct cmd

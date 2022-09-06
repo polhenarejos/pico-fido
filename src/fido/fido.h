@@ -30,5 +30,6 @@
 
 extern int scan_files();
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls_ecdsa_context *key);
+extern bool wait_button_pressed();
 
 #endif //_FIDO_H
