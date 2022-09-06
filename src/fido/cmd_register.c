@@ -30,6 +30,8 @@ int cmd_register() {
     resp->keyHandleLen = KEY_HANDLE_LEN;
     if (scan_files() != CCID_OK)
         return SW_EXEC_ERROR();
+    if (wait_button_pressed() == true)
+        return SW_CONDITIONS_NOT_SATISFIED();
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
     int ret = derive_key(req->appId, true, resp->keyHandleCertSig, &key);
