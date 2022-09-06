@@ -53,9 +53,12 @@ int cmd_authenticate() {
         mbedtls_ecdsa_free(&key);
         if (ret != 0)
             return SW_WRONG_DATA();
-        ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, req->appId, 32, hmac);
+        uint8_t key_base[U2F_APPID_SIZE + KEY_PATH_LEN];
+        memcpy(key_base, req->appId, U2F_APPID_SIZE);
+        memcpy(key_base + U2F_APPID_SIZE, req->keyHandle, KEY_PATH_LEN);
+        ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
         mbedtls_platform_zeroize(d, sizeof(d));
-        if (memcmp(req->keyHandle + 32, hmac, sizeof(hmac)) != 0)
+        if (memcmp(req->keyHandle + KEY_HANDLE_LEN, hmac, sizeof(hmac)) != 0)
             return SW_WRONG_DATA();
         return SW_CONDITIONS_NOT_SATISFIED();
     }

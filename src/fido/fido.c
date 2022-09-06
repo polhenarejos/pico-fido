@@ -111,10 +111,15 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls
             return r;
         }
     }
-    if (new_key == true && (r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, app_id, 32, key_handle + 32)) != 0)
-    {
-        mbedtls_platform_zeroize(outk, sizeof(outk));
-        return r;
+    if (new_key == true) {
+        uint8_t key_base[U2F_APPID_SIZE + KEY_PATH_LEN];
+        memcpy(key_base, app_id, U2F_APPID_SIZE);
+        memcpy(key_base + U2F_APPID_SIZE, key_handle, KEY_PATH_LEN);
+        if ((r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, key_base, sizeof(key_base), key_handle + 32)) != 0)
+        {
+            mbedtls_platform_zeroize(outk, sizeof(outk));
+            return r;
+        }
     }
     if (key != NULL) {
         mbedtls_ecp_group_load(&key->grp, MBEDTLS_ECP_DP_SECP256R1);
