@@ -28,8 +28,37 @@ int cmd_authenticate() {
     U2F_AUTHENTICATE_RESP *resp = (U2F_AUTHENTICATE_RESP *)res_APDU;
     if (scan_files() != CCID_OK)
         return SW_EXEC_ERROR();
+    if (req->keyHandleLen != KEY_HANDLE_LEN)
+        return SW_WRONG_DATA();
     if (P1(apdu) == 0x03 && wait_button_pressed() == true)
         return SW_CONDITIONS_NOT_SATISFIED();
+
+    mbedtls_ecdsa_context key;
+    mbedtls_ecdsa_init(&key);
+    int ret = derive_key(req->appId, false, req->keyHandle, &key);
+    if (ret != CCID_OK) {
+        mbedtls_ecdsa_free(&key);
+        return SW_EXEC_ERROR();
+    }
+    if (P1(apdu) == 0x07) {
+        for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
+            uint32_t k = *(uint32_t *)&req->keyHandle[i*sizeof(uint32_t)];
+            if (!(k & 0x80000000)) {
+                mbedtls_ecdsa_free(&key);
+                return SW_WRONG_DATA();
+            }
+        }
+        uint8_t hmac[32], d[32];
+        ret = mbedtls_ecp_write_key(&key, d, sizeof(d));
+        mbedtls_ecdsa_free(&key);
+        if (ret != 0)
+            return SW_WRONG_DATA();
+        ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, req->appId, 32, hmac);
+        mbedtls_platform_zeroize(d, sizeof(d));
+        if (memcmp(req->keyHandle + 32, hmac, sizeof(hmac)) != 0)
+            return SW_WRONG_DATA();
+        return SW_CONDITIONS_NOT_SATISFIED();
+    }
     resp->flags = 0x1;
     resp->ctr[0] = 0;
     uint8_t hash[32], sig_base[U2F_APPID_SIZE+1+4+U2F_CHAL_SIZE];
@@ -37,13 +66,8 @@ int cmd_authenticate() {
     memcpy(sig_base+U2F_APPID_SIZE, &resp->flags, sizeof(uint8_t));
     memcpy(sig_base + U2F_APPID_SIZE + 1, resp->ctr, 4);
     memcpy(sig_base + U2F_APPID_SIZE + 1 + 4, req->chal, U2F_CHAL_SIZE);
-    int ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), sig_base, sizeof(sig_base), hash);
-    if (ret != 0)
-        return SW_EXEC_ERROR();
-    mbedtls_ecdsa_context key;
-    mbedtls_ecdsa_init(&key);
-    ret = derive_key(req->appId, false, req->keyHandle, &key);
-    if (ret != CCID_OK) {
+    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), sig_base, sizeof(sig_base), hash);
+    if (ret != 0) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
