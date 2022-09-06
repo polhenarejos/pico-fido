@@ -93,14 +93,13 @@ int load_keydev(uint8_t *key) {
 }
 
 int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls_ecdsa_context *key) {
-    const int entries = KEY_PATH_LEN / sizeof(uint32_t);
     uint8_t outk[64] = {0};
     int r = 0;
     memset(outk, 0, sizeof(outk));
     if ((r = load_keydev(outk)) != CCID_OK)
         return r;
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
-    for (int i = 0; i < entries; i++)
+    for (int i = 0; i < KEY_PATH_ENTRIES; i++)
     {
         if (new_key == true) {
             uint32_t val = 0x80000000 | *((uint32_t *)random_bytes_get(sizeof(uint32_t)));
@@ -112,17 +111,21 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls
             return r;
         }
     }
-    if ((r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, app_id, 32, key_handle + 32)) != 0)
+    if (new_key == true && (r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, app_id, 32, key_handle + 32)) != 0)
     {
         mbedtls_platform_zeroize(outk, sizeof(outk));
         return r;
     }
-    mbedtls_ecp_group_load(&key->grp, MBEDTLS_ECP_DP_SECP256R1);
-    r = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, key, outk, 32);
+    if (key != NULL) {
+        mbedtls_ecp_group_load(&key->grp, MBEDTLS_ECP_DP_SECP256R1);
+        r = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, key, outk, 32);
+        mbedtls_platform_zeroize(outk, sizeof(outk));
+        if (r != 0)
+            return r;
+        return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL );
+    }
     mbedtls_platform_zeroize(outk, sizeof(outk));
-    if (r != 0)
-        return r;
-    return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL );
+    return r;
 }
 
 int scan_files() {
