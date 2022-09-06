@@ -58,7 +58,7 @@ int cmd_authenticate() {
         memcpy(key_base + U2F_APPID_SIZE, req->keyHandle, KEY_PATH_LEN);
         ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
         mbedtls_platform_zeroize(d, sizeof(d));
-        if (memcmp(req->keyHandle + KEY_HANDLE_LEN, hmac, sizeof(hmac)) != 0)
+        if (memcmp(req->keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac)) != 0)
             return SW_WRONG_DATA();
         return SW_CONDITIONS_NOT_SATISFIED();
     }
