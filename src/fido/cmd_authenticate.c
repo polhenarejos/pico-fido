@@ -28,6 +28,8 @@ int cmd_authenticate() {
     U2F_AUTHENTICATE_RESP *resp = (U2F_AUTHENTICATE_RESP *)res_APDU;
     if (scan_files() != CCID_OK)
         return SW_EXEC_ERROR();
+    if (P1(apdu) == 0x03 && wait_button_pressed() == true)
+        return SW_CONDITIONS_NOT_SATISFIED();
     resp->flags = 0x1;
     resp->ctr[0] = 0;
     uint8_t hash[32], sig_base[U2F_APPID_SIZE+1+4+U2F_CHAL_SIZE];
