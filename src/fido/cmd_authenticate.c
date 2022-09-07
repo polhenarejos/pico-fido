@@ -62,9 +62,13 @@ int cmd_authenticate() {
             return SW_WRONG_DATA();
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    resp->flags = 0x1;
-    resp->ctr[0] = 0;
-    uint8_t hash[32], sig_base[U2F_APPID_SIZE+1+4+U2F_CHAL_SIZE];
+    resp->flags = P1(apdu) == 0x03 ? 0x1 : 0x0;
+    uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
+    resp->ctr[0] = ctr >> 24;
+    resp->ctr[1] = ctr >> 16;
+    resp->ctr[2] = ctr >> 8;
+    resp->ctr[3] = ctr & 0xff;
+    uint8_t hash[32], sig_base[U2F_APPID_SIZE + 1 + 4 + U2F_CHAL_SIZE];
     memcpy(sig_base, req->appId, U2F_APPID_SIZE);
     memcpy(sig_base+U2F_APPID_SIZE, &resp->flags, sizeof(uint8_t));
     memcpy(sig_base + U2F_APPID_SIZE + 1, resp->ctr, 4);
@@ -80,5 +84,9 @@ int cmd_authenticate() {
     if (ret != 0)
         return SW_EXEC_ERROR();
     res_APDU_size = 1 + 4 + olen;
+
+    ctr++;
+    flash_write_data_to_file(ef_counter, (uint8_t *)&ctr, sizeof(ctr));
+    low_flash_available();
     return SW_OK();
 }

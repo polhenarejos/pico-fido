@@ -22,8 +22,10 @@
 
 #define EF_KEY_DEV      0xCC00
 #define EF_EE_DEV       0xCE00
+#define EF_COUNTER      0xC000
 
 extern file_t *ef_keydev;
 extern file_t *ef_certdev;
+extern file_t *ef_counter;
 
 #endif //_FILES_H_

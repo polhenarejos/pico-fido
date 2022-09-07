@@ -183,6 +183,16 @@ int scan_files() {
     else {
         printf("FATAL ERROR: CERT DEV not found in memory!\r\n");
     }
+    ef_counter = search_by_fid(EF_COUNTER, NULL, SPECIFY_EF);
+    if (ef_counter) {
+        if (file_get_size(ef_counter) == 0 || !ef_counter->data) {
+            uint32_t v = 0;
+            flash_write_data_to_file(ef_counter, (uint8_t *)&v, sizeof(v));
+        }
+    }
+    else {
+        printf("FATAL ERROR: Global counter not found in memory!\r\n");
+    }
     low_flash_available();
     return CCID_OK;
 }
