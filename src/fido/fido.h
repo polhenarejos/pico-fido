@@ -23,7 +23,7 @@
 #include "common.h"
 #include "mbedtls/ecdsa.h"
 
-#define U2F_PUBKEY_LEN (65)
+#define CTAP_PUBKEY_LEN (65)
 #define KEY_PATH_LEN (32)
 #define KEY_PATH_ENTRIES (KEY_PATH_LEN / sizeof(uint32_t))
 #define SHA256_DIGEST_LENGTH (32)

@@ -18,19 +18,19 @@
 #include "fido.h"
 #include "hsm.h"
 #include "apdu.h"
-#include "u2f.h"
+#include "ctap.h"
 #include "mbedtls/ecdsa.h"
 #include "random.h"
 #include "files.h"
 
 int cmd_register() {
-    U2F_REGISTER_REQ *req = (U2F_REGISTER_REQ *)apdu.data;
-    U2F_REGISTER_RESP *resp = (U2F_REGISTER_RESP *)res_APDU;
-    resp->registerId = U2F_REGISTER_ID;
+    CTAP_REGISTER_REQ *req = (CTAP_REGISTER_REQ *)apdu.data;
+    CTAP_REGISTER_RESP *resp = (CTAP_REGISTER_RESP *)res_APDU;
+    resp->registerId = CTAP_REGISTER_ID;
     resp->keyHandleLen = KEY_HANDLE_LEN;
     if (scan_files() != CCID_OK)
         return SW_EXEC_ERROR();
-    if (apdu.nc != U2F_APPID_SIZE + U2F_CHAL_SIZE)
+    if (apdu.nc != CTAP_APPID_SIZE + CTAP_CHAL_SIZE)
         return SW_WRONG_LENGTH();
     if (wait_button_pressed() == true)
         return SW_CONDITIONS_NOT_SATISFIED();
@@ -42,19 +42,19 @@ int cmd_register() {
         return SW_EXEC_ERROR();
     }
     size_t olen = 0;
-    ret = mbedtls_ecp_point_write_binary(&key.grp, &key.Q, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, (uint8_t *)&resp->pubKey, U2F_EC_POINT_SIZE);
+    ret = mbedtls_ecp_point_write_binary(&key.grp, &key.Q, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, (uint8_t *)&resp->pubKey, CTAP_EC_POINT_SIZE);
     mbedtls_ecdsa_free(&key);
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
     size_t ef_certdev_size = file_get_size(ef_certdev);
     memcpy(resp->keyHandleCertSig + KEY_HANDLE_LEN, file_get_data(ef_certdev), ef_certdev_size);
-    uint8_t hash[32], sign_base[1 + U2F_APPID_SIZE + U2F_CHAL_SIZE + KEY_HANDLE_LEN + U2F_EC_POINT_SIZE];
-    sign_base[0] = U2F_REGISTER_HASH_ID;
-    memcpy(sign_base + 1, req->appId, U2F_APPID_SIZE);
-    memcpy(sign_base + 1 + U2F_APPID_SIZE, req->chal, U2F_CHAL_SIZE);
-    memcpy(sign_base + 1 + U2F_APPID_SIZE + U2F_CHAL_SIZE, resp->keyHandleCertSig, KEY_HANDLE_LEN);
-    memcpy(sign_base + 1 + U2F_APPID_SIZE + U2F_CHAL_SIZE + KEY_HANDLE_LEN, (uint8_t *)&resp->pubKey, U2F_EC_POINT_SIZE);
+    uint8_t hash[32], sign_base[1 + CTAP_APPID_SIZE + CTAP_CHAL_SIZE + KEY_HANDLE_LEN + CTAP_EC_POINT_SIZE];
+    sign_base[0] = CTAP_REGISTER_HASH_ID;
+    memcpy(sign_base + 1, req->appId, CTAP_APPID_SIZE);
+    memcpy(sign_base + 1 + CTAP_APPID_SIZE, req->chal, CTAP_CHAL_SIZE);
+    memcpy(sign_base + 1 + CTAP_APPID_SIZE + CTAP_CHAL_SIZE, resp->keyHandleCertSig, KEY_HANDLE_LEN);
+    memcpy(sign_base + 1 + CTAP_APPID_SIZE + CTAP_CHAL_SIZE + KEY_HANDLE_LEN, (uint8_t *)&resp->pubKey, CTAP_EC_POINT_SIZE);
     ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), sign_base, sizeof(sign_base), hash);
     if (ret != 0)
         return SW_EXEC_ERROR();
@@ -64,11 +64,11 @@ int cmd_register() {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
-    ret = mbedtls_ecdsa_write_signature(&key, MBEDTLS_MD_SHA256, hash, 32, (uint8_t *)resp->keyHandleCertSig + KEY_HANDLE_LEN + ef_certdev_size, U2F_MAX_EC_SIG_SIZE, &olen, random_gen, NULL);
+    ret = mbedtls_ecdsa_write_signature(&key, MBEDTLS_MD_SHA256, hash, 32, (uint8_t *)resp->keyHandleCertSig + KEY_HANDLE_LEN + ef_certdev_size, CTAP_MAX_EC_SIG_SIZE, &olen, random_gen, NULL);
     mbedtls_ecdsa_free(&key);
     if (ret != 0)
         return SW_EXEC_ERROR();
-    res_APDU_size = sizeof(U2F_REGISTER_RESP) - sizeof(resp->keyHandleCertSig) + KEY_HANDLE_LEN + ef_certdev_size + olen;
+    res_APDU_size = sizeof(CTAP_REGISTER_RESP) - sizeof(resp->keyHandleCertSig) + KEY_HANDLE_LEN + ef_certdev_size + olen;
     DEBUG_PAYLOAD(res_APDU, res_APDU_size);
     return SW_OK();
 }

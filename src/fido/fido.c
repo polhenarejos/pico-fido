@@ -19,7 +19,7 @@
 #include "fido.h"
 #include "hsm.h"
 #include "apdu.h"
-#include "u2f.h"
+#include "ctap.h"
 #include "files.h"
 #include "file.h"
 #include "usb.h"
@@ -112,9 +112,9 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls
         }
     }
     if (new_key == true) {
-        uint8_t key_base[U2F_APPID_SIZE + KEY_PATH_LEN];
-        memcpy(key_base, app_id, U2F_APPID_SIZE);
-        memcpy(key_base + U2F_APPID_SIZE, key_handle, KEY_PATH_LEN);
+        uint8_t key_base[CTAP_APPID_SIZE + KEY_PATH_LEN];
+        memcpy(key_base, app_id, CTAP_APPID_SIZE);
+        memcpy(key_base + CTAP_APPID_SIZE, key_handle, KEY_PATH_LEN);
         if ((r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, key_base, sizeof(key_base), key_handle + 32)) != 0)
         {
             mbedtls_platform_zeroize(outk, sizeof(outk));
@@ -225,9 +225,9 @@ extern int cmd_authenticate();
 extern int cmd_version();
 
 static const cmd_t cmds[] = {
-    { U2F_REGISTER, cmd_register },
-    { U2F_AUTHENTICATE, cmd_authenticate },
-    { U2F_VERSION, cmd_version },
+    { CTAP_REGISTER, cmd_register },
+    { CTAP_AUTHENTICATE, cmd_authenticate },
+    { CTAP_VERSION, cmd_version },
     { 0x00, 0x0}
 };
 
