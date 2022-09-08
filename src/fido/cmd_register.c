@@ -30,6 +30,8 @@ int cmd_register() {
     resp->keyHandleLen = KEY_HANDLE_LEN;
     if (scan_files() != CCID_OK)
         return SW_EXEC_ERROR();
+    if (apdu.nc != U2F_APPID_SIZE + U2F_CHAL_SIZE)
+        return SW_WRONG_LENGTH();
     if (wait_button_pressed() == true)
         return SW_CONDITIONS_NOT_SATISFIED();
     mbedtls_ecdsa_context key;
