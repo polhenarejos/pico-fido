@@ -30,7 +30,7 @@ int cmd_authenticate() {
         return SW_EXEC_ERROR();
     if (req->keyHandleLen != KEY_HANDLE_LEN)
         return SW_WRONG_DATA();
-    if (P1(apdu) == 0x03 && wait_button_pressed() == true)
+    if (P1(apdu) == U2F_AUTH_ENFORCE && wait_button_pressed() == true)
         return SW_CONDITIONS_NOT_SATISFIED();
 
     mbedtls_ecdsa_context key;
@@ -40,7 +40,7 @@ int cmd_authenticate() {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
-    if (P1(apdu) == 0x07) {
+    if (P1(apdu) == U2F_AUTH_CHECK_ONLY) {
         for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
             uint32_t k = *(uint32_t *)&req->keyHandle[i*sizeof(uint32_t)];
             if (!(k & 0x80000000)) {
@@ -62,7 +62,8 @@ int cmd_authenticate() {
             return SW_WRONG_DATA();
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    resp->flags = P1(apdu) == 0x03 ? 0x1 : 0x0;
+    resp->flags = 0;
+    resp->flags |= P1(apdu) == U2F_AUTH_ENFORCE ? U2F_AUTH_FLAG_TUP : 0x0;
     uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
     resp->ctr[0] = ctr >> 24;
     resp->ctr[1] = ctr >> 16;

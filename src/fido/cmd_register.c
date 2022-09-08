@@ -50,7 +50,7 @@ int cmd_register() {
     size_t ef_certdev_size = file_get_size(ef_certdev);
     memcpy(resp->keyHandleCertSig + KEY_HANDLE_LEN, file_get_data(ef_certdev), ef_certdev_size);
     uint8_t hash[32], sign_base[1 + U2F_APPID_SIZE + U2F_CHAL_SIZE + KEY_HANDLE_LEN + U2F_EC_POINT_SIZE];
-    sign_base[0] = 0x00;
+    sign_base[0] = U2F_REGISTER_HASH_ID;
     memcpy(sign_base + 1, req->appId, U2F_APPID_SIZE);
     memcpy(sign_base + 1 + U2F_APPID_SIZE, req->chal, U2F_CHAL_SIZE);
     memcpy(sign_base + 1 + U2F_APPID_SIZE + U2F_CHAL_SIZE, resp->keyHandleCertSig, KEY_HANDLE_LEN);
