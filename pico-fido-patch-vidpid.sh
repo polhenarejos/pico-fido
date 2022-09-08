@@ -18,7 +18,7 @@
 #
 
 VERSION_MAJOR="3" #Version of Pico CCID Core
-VERSION_MINOR="0"
+VERSION_MINOR="2"
 
 echo "----------------------------"
 echo "VID/PID patcher for Pico FIDO"
@@ -87,7 +87,7 @@ fi
 LITTLE_VID="\x${VID:2:2}\x${VID:0:2}"
 LITTLE_PID="\x${PID:2:2}\x${PID:0:2}"
 
-perl -pi -e "s/\xfe\xff\xfc\xfd\x$VERSION_MINOR\x$VERSION_MAJOR\x01\x02\x03\x01/$LITTLE_VID$LITTLE_PID\x$VERSION_MINOR\x$VERSION_MAJOR\x01\x02\x03\x01/" $UF2_FILE_OF
+perl -pi -e "s/\xfe\xca\x31\x42\x$VERSION_MINOR\x$VERSION_MAJOR\x01\x02\x03\x01/$LITTLE_VID$LITTLE_PID\x$VERSION_MINOR\x$VERSION_MAJOR\x01\x02\x03\x01/" $UF2_FILE_OF
 
 echo "Done!"
 echo ""
