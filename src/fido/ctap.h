@@ -60,15 +60,6 @@ typedef struct {
 #define CTAP_AUTHENTICATE        0x02    // Authenticate/sign command
 #define CTAP_VERSION             0x03    // Read version string command
 
-// CTAP CBOR commands
-
-#define CTAP_MAKE_CREDENTIAL     0x01
-#define CTAP_GET_ASSERTION       0x02
-#define CTAP_GET_INFO            0x04
-#define CTAP_CLIENT_PIN          0x06
-#define CTAP_RESET               0x07
-#define CTAP_GET_NEXT_ASSERTION  0x08
-
 #define CTAP_VENDOR_FIRST        0x40    // First vendor defined command
 #define CTAP_VENDOR_LAST         0xbf    // Last vendor defined command
 
