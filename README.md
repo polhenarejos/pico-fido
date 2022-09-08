@@ -6,6 +6,7 @@ Pico FIDO has implemented the following features:
 
 - ECDSA authentication.
 - App registration and login.
+- User presence enforcement through physical button.
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
