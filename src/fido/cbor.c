@@ -15,30 +15,25 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _FIDO_H_
-#define _FIDO_H_
-
 #include <stdlib.h>
 #include "pico/stdlib.h"
-#include "common.h"
-#include "mbedtls/ecdsa.h"
+#include "ctap2_cbor.h"
+#include "ctap.h"
 #include "ctap_hid.h"
 
-#define CTAP_PUBKEY_LEN (65)
-#define KEY_PATH_LEN (32)
-#define KEY_PATH_ENTRIES (KEY_PATH_LEN / sizeof(uint32_t))
-#define SHA256_DIGEST_LENGTH (32)
-#define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
+bool _btrue = true, *ptrue = &_btrue, _bfalse = false, *pfalse = &_bfalse;
 
-extern int scan_files();
-extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls_ecdsa_context *key);
-extern bool wait_button_pressed();
-extern CTAPHID_FRAME *ctap_req, *ctap_resp;
+const uint8_t aaguid[16] = {0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45}; // First 16 bytes of SHA256("Pico FIDO2")
 
-#define FIDO2_ALG_ES256     -7 //ECDSA-SHA256 P256
-#define FIDO2_ALG_EDDSA     -8 //EdDSA
-#define FIDO2_ALG_ES384     -35 //ECDSA-SHA384 P384
-#define FIDO2_ALG_ES512     -36 //ECDSA-SHA512 P521
-
-
-#endif //_FIDO_H
+int cbor_process(const uint8_t *data, size_t len) {
+    if (len == 0)
+        return -CTAP1_ERR_INVALID_LEN;
+    driver_prepare_response();
+    if (data[0] == CTAP_MAKE_CREDENTIAL)
+        return cbor_make_credential(data + 1, len - 1);
+    if (data[0] == CTAP_GET_INFO)
+        return cbor_get_info();
+    else if (data[0] == CTAP_RESET)
+        return cbor_reset();
+    return -CTAP2_ERR_INVALID_CBOR;
+}

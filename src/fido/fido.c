@@ -193,6 +193,7 @@ int scan_files() {
     else {
         printf("FATAL ERROR: Global counter not found in memory!\r\n");
     }
+    ef_pin = search_by_fid(EF_PIN, NULL, SPECIFY_EF);
     low_flash_available();
     return CCID_OK;
 }
@@ -211,7 +212,7 @@ bool wait_button_pressed() {
     do {
         queue_remove_blocking(&usb_to_card_q, &val);
     } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT);
-    return val == EV_BUTTON_TIMEOUT;
+    return (val == EV_BUTTON_TIMEOUT);
 }
 
 typedef struct cmd
