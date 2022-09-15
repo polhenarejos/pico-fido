@@ -29,6 +29,7 @@
 #include "mbedtls/hkdf.h"
 #include "pk_wrap.h"
 #include "crypto_utils.h"
+#include <math.h>
 #include <stdio.h>
 
 void init_fido();
@@ -67,7 +68,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_mpi serial;
     mbedtls_mpi_init(&serial);
-    mbedtls_mpi_fill_random(&serial, 32, random_gen, NULL);
+    mbedtls_mpi_fill_random(&serial, 32, random_gen_core0, NULL);
     mbedtls_x509write_crt_set_serial(&ctx, &serial);
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
@@ -92,7 +93,7 @@ int load_keydev(uint8_t *key) {
     return CCID_OK;
 }
 
-int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls_ecdsa_context *key) {
+int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecdsa_context *key) {
     uint8_t outk[64] = {0};
     int r = 0;
     memset(outk, 0, sizeof(outk));
@@ -105,7 +106,8 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls
             uint32_t val = 0x80000000 | *((uint32_t *)random_bytes_get(sizeof(uint32_t)));
             memcpy(&key_handle[i*sizeof(uint32_t)], &val, sizeof(uint32_t));
         }
-        if ((r = mbedtls_hkdf(md_info, &key_handle[i], sizeof(uint32_t), outk, 32, outk + 32, 32, outk, sizeof(outk))) != 0)
+        r = mbedtls_hkdf(md_info, &key_handle[i * sizeof(uint32_t)], sizeof(uint32_t), outk, 32, outk + 32, 32, outk, sizeof(outk));
+        if (r != 0)
         {
             mbedtls_platform_zeroize(outk, sizeof(outk));
             return r;
@@ -122,12 +124,15 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls
         }
     }
     if (key != NULL) {
-        mbedtls_ecp_group_load(&key->grp, MBEDTLS_ECP_DP_SECP256R1);
-        r = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, key, outk, 32);
+        mbedtls_ecp_group_load(&key->grp, curve);
+        const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(curve);
+        if (cinfo == NULL)
+            return 1;
+        r = mbedtls_ecp_read_key(curve, key, outk, ceil((float)cinfo->bit_size/8));
         mbedtls_platform_zeroize(outk, sizeof(outk));
         if (r != 0)
             return r;
-        return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL );
+        return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen_core0, NULL);
     }
     mbedtls_platform_zeroize(outk, sizeof(outk));
     return r;
@@ -141,7 +146,7 @@ int scan_files() {
             mbedtls_ecdsa_context ecdsa;
             mbedtls_ecdsa_init(&ecdsa);
             uint8_t index = 0;
-            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, random_gen, &index);
+            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, random_gen_core0, &index);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ecdsa);
                 return ret;
@@ -168,12 +173,10 @@ int scan_files() {
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
             int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);
-            printf("ret %d\n", ret);
             if (ret != 0)
                 return ret;
             ret = x509_create_cert(&key, cert, sizeof(cert));
             mbedtls_ecdsa_free(&key);
-            printf("ret %d\n", ret);
             if (ret <= 0)
                 return ret;
             flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);

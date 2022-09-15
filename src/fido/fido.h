@@ -31,7 +31,7 @@
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
 extern int scan_files();
-extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, mbedtls_ecdsa_context *key);
+extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecdsa_context *key);
 extern bool wait_button_pressed();
 extern CTAPHID_FRAME *ctap_req, *ctap_resp;
 
@@ -40,5 +40,27 @@ extern CTAPHID_FRAME *ctap_req, *ctap_resp;
 #define FIDO2_ALG_ES384     -35 //ECDSA-SHA384 P384
 #define FIDO2_ALG_ES512     -36 //ECDSA-SHA512 P521
 
+#define FIDO2_CURVE_P256        1
+#define FIDO2_CURVE_P384        2
+#define FIDO2_CURVE_P521        3
+#define FIDO2_CURVE_X25519      4
+#define FIDO2_CURVE_X448        5
+#define FIDO2_CURVE_ED25519     6
+#define FIDO2_CURVE_ED448       7
+#define FIDO2_CURVE_P256K1      8
+
+#define FIDO2_AUT_FLAG_UP       0x1
+#define FIDO2_AUT_FLAG_UV       0x4
+#define FIDO2_AUT_FLAG_AT       0x40
+#define FIDO2_AUT_FLAG_ED       0x80
+
+typedef struct known_app {
+    const uint8_t *rp_id_hash;
+    const char *label;
+    const bool *use_sign_count;
+    const bool *use_self_attestation;
+} known_app_t;
+
+extern const known_app_t *find_app_by_rp_id_hash(const uint8_t *rp_id_hash);
 
 #endif //_FIDO_H

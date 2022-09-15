@@ -36,7 +36,7 @@ int cmd_register() {
         return SW_CONDITIONS_NOT_SATISFIED();
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
-    int ret = derive_key(req->appId, true, resp->keyHandleCertSig, &key);
+    int ret = derive_key(req->appId, true, resp->keyHandleCertSig, MBEDTLS_ECP_DP_SECP256R1, &key);
     if (ret != CCID_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
