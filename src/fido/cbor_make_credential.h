@@ -57,9 +57,9 @@ typedef struct PublicKeyCredentialDescriptor {
 } PublicKeyCredentialDescriptor;
 
 typedef struct CredOptions {
-    bool *rk;
-    bool *up;
-    bool *uv;
+    const bool *rk;
+    const bool *up;
+    const bool *uv;
     bool present;
 } CredOptions;
 

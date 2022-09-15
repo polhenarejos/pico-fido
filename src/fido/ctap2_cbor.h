@@ -31,7 +31,9 @@ extern int cbor_get_info();
 extern int cbor_make_credential(const uint8_t *data, size_t len);
 extern const uint8_t aaguid[16];
 
-extern bool *ptrue, *pfalse;
+extern const bool _btrue, _bfalse;
+#define ptrue (&_btrue)
+#define pfalse (&_bfalse)
 
 #define CBOR_CHECK(f)           \
     do                          \
@@ -164,6 +166,7 @@ typedef struct CborCharString {
         CBOR_ASSERT(cbor_value_is_text_string(&_f##_n) == true); \
         CBOR_CHECK(cbor_value_dup_text_string(&(_f##_n), &(_v).data, &(_v).len, &(_f##_n))); \
         (_v).present = true; \
+        continue; \
     }
 
 #define CBOR_FIELD_KEY_TEXT_VAL_BYTES(_n, _t, _v) \
@@ -171,16 +174,19 @@ typedef struct CborCharString {
         CBOR_ASSERT(cbor_value_is_byte_string(&_f##_n) == true); \
         CBOR_CHECK(cbor_value_dup_byte_string(&(_f##_n), &(_v).data, &(_v).len, &(_f##_n))); \
         (_v).present = true; \
+        continue; \
     }
 
 #define CBOR_FIELD_KEY_TEXT_VAL_INT(_n, _t, _v) \
     if (strcmp(_fd##_n, _t) == 0) { \
         CBOR_FIELD_GET_INT(_v, _n);\
+        continue; \
     }
 
 #define CBOR_FIELD_KEY_TEXT_VAL_BOOL(_n, _t, _v) \
     if (strcmp(_fd##_n, _t) == 0) { \
         CBOR_FIELD_GET_BOOL(_v, _n);\
+        continue; \
     }
 
 #define CBOR_PARSE_MAP_END(_p,_n)  \
@@ -190,12 +196,20 @@ typedef struct CborCharString {
 
 #define CBOR_ADVANCE(_n) CBOR_CHECK(cbor_value_advance(&_f##_n));
 
-#define CBOR_APPEND_KEY_UINT_VAL_TEXT(p, k, v) \
+#define CBOR_APPEND_KEY_UINT_VAL_BYTES(p, k, v) \
+    do { \
+        if ((v).data && (v).len > 0) { \
+            CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
+            CBOR_CHECK(cbor_encode_byte_string(&(p), (v).data, (v).len)); \
+        } } while(0)
+
+#define CBOR_APPEND_KEY_UINT_VAL_STRING(p, k, v) \
     do { \
         if ((v).data && (v).len > 0) { \
             CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
             CBOR_CHECK(cbor_encode_text_stringz(&(p), (v).data)); \
         } } while(0)
+
 
 #define CBOR_APPEND_KEY_UINT_VAL_UINT(p, k, v) \
     do { \
@@ -209,5 +223,11 @@ typedef struct CborCharString {
             CBOR_CHECK(cbor_encode_boolean(&(p), (v))); \
      } while(0)
 
+#define CBOR_APPEND_KEY_UINT_VAL_PBOOL(p, k, v) \
+    do { \
+        if (v != NULL) {\
+            CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
+            CBOR_CHECK(cbor_encode_boolean(&(p), v == ptrue ? true : false)); \
+     } } while(0)
 
 #endif //_CTAP2_CBOR_H_

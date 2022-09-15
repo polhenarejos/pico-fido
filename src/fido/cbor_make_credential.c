@@ -15,11 +15,16 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "common.h"
+#include "mbedtls/chachapoly.h"
 #include "ctap2_cbor.h"
 #include "cbor_make_credential.h"
 #include "fido.h"
 #include "ctap.h"
 #include "files.h"
+#include "random.h"
+#include "hsm.h"
+#include <math.h>
 
 bool credential_verify(CborByteString *cred_id, const uint8_t *rp_id_hash) {
     if (cred_id->len < 4+12+16)
@@ -54,6 +59,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     size_t excludeList_len = 0;
     CredOptions options = {0};
     uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0;
+    const bool *hmac_secret = NULL;
+    uint8_t *cred_id = NULL, *aut_data = NULL;
+    size_t resp_size = 0;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     CBOR_PARSE_MAP_START(map, 1) {
@@ -113,7 +121,12 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_PARSE_ARRAY_END(_f1, 2);
         }
         else if (val_u == 0x06) { // extensions
-            CBOR_ADVANCE(1);
+            CBOR_PARSE_MAP_START(_f1, 2) {
+                CBOR_FIELD_GET_KEY_TEXT(2);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", hmac_secret);
+                CBOR_ADVANCE(2);
+            }
+            CBOR_PARSE_MAP_END(_f1, 2);
         }
         else if (val_u == 0x07) { // options
             options.present = true;
@@ -140,29 +153,41 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rp.id.data, rp.id.len, rp_id_hash, 0);
 
+    int curve = 0, alg = 0;
     for (int i = 0; i < pubKeyCredParams_len; i++) {
         if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0)
             continue;
-        if (pubKeyCredParams[i].alg != FIDO2_ALG_ES256 && pubKeyCredParams[i].alg != FIDO2_ALG_ES384 && pubKeyCredParams[i].alg != FIDO2_ALG_ES512)
-            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
+        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256)
+            curve = FIDO2_CURVE_P256;
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES384)
+            curve = FIDO2_CURVE_P384;
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512)
+            curve = FIDO2_CURVE_P521;
+        if (curve > 0) {
+            alg = pubKeyCredParams[i].alg;
+            break;
+        }
+    }
+    if (curve == 0)
+        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
+
+    if (pinUvAuthParam.present == true) {
+        if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
+            if (wait_button() == true)
+                CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+            if (!file_has_data(ef_pin))
+                CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
+            else
+                CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
+        }
+        else {
+            if (pinUvAuthProtocol == 0)
+                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
     }
 
-    if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
-        if (wait_button_pressed() == true)
-            CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
-        if (!file_has_data(ef_pin))
-            CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
-        else
-            CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
-    }
-    else if (pinUvAuthParam.present == true) {
-        if (pinUvAuthProtocol == 0)
-            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-        if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
-            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-    }
-
-    bool *rup = pfalse;
     if (options.present) {
         if (options.uv == ptrue) { //5.3
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
@@ -170,8 +195,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (options.up == pfalse) { //5.6
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
-        else if (options.up == NULL) //5.7
-            rup = ptrue;
+        //else if (options.up == NULL) //5.7
+            //rup = ptrue;
     }
     if (pinUvAuthParam.present == false && options.uv == pfalse && file_has_data(ef_pin)) { //8.1
         CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
@@ -199,8 +224,149 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (pinUvAuthParam.present && options.up == ptrue) { //14.1
         if (wait_button_pressed() == true)
             CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
-        rup = ptrue;
+        //rup = ptrue;
     }
+
+    CborEncoder encoder, mapEncoder, mapEncoder2;
+    uint8_t cbor_buf[1024];
+    cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  CborIndefiniteLength));
+    CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x01, rp.id);
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, rp_id_hash, 32));
+    CBOR_APPEND_KEY_UINT_VAL_BYTES(mapEncoder, 0x03, user.id);
+    CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x04, user.displayName);
+    CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x05, 1);
+    CBOR_APPEND_KEY_UINT_VAL_PBOOL(mapEncoder, 0x06, hmac_secret);
+    if (alg != FIDO2_ALG_ES256 || curve != FIDO2_CURVE_P256) {
+        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x07, alg);
+        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x08, curve);
+    }
+    CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+    size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
+    size_t cred_id_len = 4 + 12 + rs + 16;
+    cred_id = (uint8_t *)calloc(1, 4 + 12 + rs + 16);
+    uint8_t key[32];
+    memset(key, 0, sizeof(key));
+    uint8_t iv[12];
+    memcpy(iv, random_bytes_get(sizeof(iv)), sizeof(iv));
+    mbedtls_chachapoly_context chatx;
+    mbedtls_chachapoly_init(&chatx);
+    mbedtls_chachapoly_setkey(&chatx, key);
+    int ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, rs, iv, rp_id_hash, 32, cbor_buf, cred_id + 4 + 12, cred_id + 4 + 12 + rs);
+    if (ret != 0) {
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
+    memcpy(cred_id, "\xf1\xd0\x02\x00", 4);
+    memcpy(cred_id + 4, iv, 12);
+
+    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(curve);
+    if (cinfo == NULL) {
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
+    mbedtls_ecdsa_context ekey;
+    mbedtls_ecdsa_init(&ekey);
+    uint8_t key_path[KEY_PATH_LEN];
+    memcpy(key_path, cred_id, KEY_PATH_LEN);
+    *(uint32_t *)key_path = 0x80000000 | 10022;
+    for (int i = 1; i < KEY_PATH_ENTRIES; i++)
+        *(uint32_t *)(key_path+i*sizeof(uint32_t)) |= 0x80000000;
+    ret = derive_key(NULL, false, key_path, curve, &ekey);
+    if (ret != 0) {
+        mbedtls_ecdsa_free(&ekey);
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
+
+    uint8_t flags = FIDO2_AUT_FLAG_UP | FIDO2_AUT_FLAG_AT;
+    size_t ext_len = 0;
+    uint8_t *ext = NULL;
+    if (hmac_secret == ptrue) {
+        ext_len = 14;
+        ext = (uint8_t *)"\xA1\x6B\x68\x6D\x61\x63\x2D\x73\x65\x63\x72\x65\x74\xF5";
+        flags |= FIDO2_AUT_FLAG_ED;
+    }
+    uint8_t pkey[2 * 66 + 1];
+    size_t olen = 0;
+    ret = mbedtls_ecp_point_write_binary(&ekey.grp, &ekey.Q, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, pkey, sizeof(pkey));
+    if (ret != 0) {
+        mbedtls_ecdsa_free(&ekey);
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
+
+    uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
+    cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  5));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 1));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 2));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 3));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, -alg));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 1));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, curve));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 2));
+    mbedtls_mpi_write_binary(&ekey.Q.X, pkey, sizeof(pkey));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, sizeof(pkey)));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 3));
+    mbedtls_mpi_write_binary(&ekey.Q.Y, pkey, sizeof(pkey));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, sizeof(pkey)));
+
+    CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+    rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
+
+    size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + cred_id_len + rs) + ext_len;
+    aut_data = (uint8_t *)calloc(1, aut_data_len);
+    uint8_t *pa = aut_data;
+    memcpy(pa, rp_id_hash, 32); pa += 32;
+    memcpy(pa, &flags, 1); pa++;
+    *pa++ = ctr >> 24;
+    *pa++ = ctr >> 16;
+    *pa++ = ctr >> 8;
+    *pa++ = ctr & 0xff;
+    memcpy(pa, aaguid, 16); pa += 16;
+    *pa++ = cred_id_len >> 16;
+    *pa++ = cred_id_len & 0xff;
+    memcpy(pa, cred_id, cred_id_len); pa += cred_id_len;
+    memcpy(pa, cbor_buf, rs); pa += rs;
+    memcpy(pa, ext, ext_len); pa += ext_len;
+
+    const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
+    uint8_t hash[32], sig[MBEDTLS_ECDSA_MAX_LEN];
+    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), aut_data, aut_data_len, hash);
+
+
+    bool self_attestation = true;
+    if (ka && ka->use_self_attestation == pfalse)
+    {
+        mbedtls_ecdsa_free(&ekey);
+        mbedtls_ecdsa_init(&ekey);
+        ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), 32);
+        self_attestation = false;
+    }
+    ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen, NULL);
+    mbedtls_ecdsa_free(&ekey);
+
+    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 3));
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "packed"));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aut_data, aut_data_len));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
+
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  self_attestation == false ? 3 : 2));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, self_attestation ? -alg : -FIDO2_ALG_ES256));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "sig"));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, sig, olen));
+    if (self_attestation == false) {
+        CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "x5c"));
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, file_get_data(ef_certdev), file_get_size(ef_certdev)));
+    }
+    CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+
+    CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+
     err:
         CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
@@ -220,8 +386,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_FREE_BYTE_STRING(excludeList[m].transports[n]);
         }
     }
+    if (aut_data)
+        free(aut_data);
+    if (cred_id)
+        free(cred_id);
     if (error != CborNoError)
         return -CTAP2_ERR_INVALID_CBOR;
-    driver_exec_finished(1);
+    driver_exec_finished(1+resp_size);
     return 0;
 }
+
