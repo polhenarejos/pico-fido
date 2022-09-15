@@ -20,12 +20,16 @@
 #include "ctap2_cbor.h"
 #include "ctap.h"
 #include "ctap_hid.h"
+#include "fido.h"
+#include "hsm.h"
 
-bool _btrue = true, *ptrue = &_btrue, _bfalse = false, *pfalse = &_bfalse;
+const bool _btrue = true, _bfalse = false;
 
 const uint8_t aaguid[16] = {0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45}; // First 16 bytes of SHA256("Pico FIDO2")
 
 int cbor_process(const uint8_t *data, size_t len) {
+    if (scan_files() != CCID_OK)
+        return -CTAP1_ERR_OTHER;
     if (len == 0)
         return -CTAP1_ERR_INVALID_LEN;
     driver_prepare_response();
