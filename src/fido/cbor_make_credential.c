@@ -59,7 +59,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     PublicKeyCredentialDescriptor excludeList[16] = {0};
     size_t excludeList_len = 0;
     CredOptions options = {0};
-    uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0;
+    uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0, credProtect = 0;
     const bool *hmac_secret = NULL;
     uint8_t *cred_id = NULL, *aut_data = NULL;
     size_t resp_size = 0;
@@ -131,6 +131,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_PARSE_MAP_START(_f1, 2) {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", hmac_secret);
+                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", credProtect);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -142,6 +143,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "rk", options.rk);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "up", options.up);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "uv", options.uv);
+                CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
         }
@@ -244,6 +246,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         //rup = ptrue;
     }
 
+    const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
     CborEncoder encoder, mapEncoder, mapEncoder2;
     uint8_t cbor_buf[1024];
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
@@ -253,11 +256,14 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, rp_id_hash, 32));
     CBOR_APPEND_KEY_UINT_VAL_BYTES(mapEncoder, 0x03, user.id);
     CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x04, user.displayName);
-    CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x05, 1);
-    CBOR_APPEND_KEY_UINT_VAL_PBOOL(mapEncoder, 0x06, hmac_secret);
+    CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x05, user.displayName);
+    CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x06, 1);
+    CBOR_APPEND_KEY_UINT_VAL_PBOOL(mapEncoder, 0x07, hmac_secret);
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
+    CBOR_CHECK(cbor_encode_boolean(&mapEncoder, (!ka || ka->use_sign_count == ptrue)));
     if (alg != FIDO2_ALG_ES256 || curve != FIDO2_CURVE_P256) {
-        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x07, alg);
-        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x08, curve);
+        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x09, alg);
+        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x0A, curve);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
@@ -308,10 +314,27 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     uint8_t flags = FIDO2_AUT_FLAG_UP | FIDO2_AUT_FLAG_AT;
     size_t ext_len = 0;
-    uint8_t *ext = NULL;
-    if (hmac_secret == ptrue) {
-        ext_len = 14;
-        ext = (uint8_t *)"\xA1\x6B\x68\x6D\x61\x63\x2D\x73\x65\x63\x72\x65\x74\xF5";
+    uint8_t ext [512];
+    if (hmac_secret != NULL || credProtect != 0) {
+        cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
+        int l = 0;
+        if (hmac_secret != NULL)
+            l++;
+        if (credProtect != 0)
+            l++;
+        CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
+        if (credProtect != 0) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, credProtect));
+        }
+        if (hmac_secret != NULL) {
+
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *hmac_secret));
+        }
+
+        CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+        ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
         flags |= FIDO2_AUT_FLAG_ED;
     }
     uint8_t pkey[66];
@@ -357,7 +380,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
 
     memcpy(pa, clientDataHash.data, clientDataHash.len);
-    const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
     uint8_t hash[32], sig[MBEDTLS_ECDSA_MAX_LEN];
     ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), aut_data, aut_data_len+clientDataHash.len, hash);
 

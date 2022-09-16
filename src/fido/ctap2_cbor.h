@@ -183,6 +183,12 @@ typedef struct CborCharString {
         continue; \
     }
 
+#define CBOR_FIELD_KEY_TEXT_VAL_UINT(_n, _t, _v) \
+    if (strcmp(_fd##_n, _t) == 0) { \
+        CBOR_FIELD_GET_UINT(_v, _n);\
+        continue; \
+    }
+
 #define CBOR_FIELD_KEY_TEXT_VAL_BOOL(_n, _t, _v) \
     if (strcmp(_fd##_n, _t) == 0) { \
         CBOR_FIELD_GET_BOOL(_v, _n);\
