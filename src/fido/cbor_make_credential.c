@@ -25,6 +25,7 @@
 #include "random.h"
 #include "hsm.h"
 #include <math.h>
+#include "apdu.h"
 
 bool credential_verify(CborByteString *cred_id, const uint8_t *rp_id_hash) {
     if (cred_id->len < 4+12+16)
@@ -260,10 +261,22 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     memcpy(cred_id, "\xf1\xd0\x02\x00", 4);
     memcpy(cred_id + 4, iv, 12);
 
-    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(curve);
-    if (cinfo == NULL) {
-        CBOR_ERROR(CTAP1_ERR_OTHER);
-    }
+    mbedtls_ecp_group_id mbedtls_curve = MBEDTLS_ECP_DP_SECP256R1;
+    if (curve == FIDO2_CURVE_P256)
+        mbedtls_curve = MBEDTLS_ECP_DP_SECP256R1;
+    else if (curve == FIDO2_CURVE_P384)
+        mbedtls_curve = MBEDTLS_ECP_DP_SECP384R1;
+    else if (curve == FIDO2_CURVE_P521)
+        mbedtls_curve = MBEDTLS_ECP_DP_SECP521R1;
+    else if (curve == FIDO2_CURVE_P256K1)
+        mbedtls_curve = MBEDTLS_ECP_DP_SECP256K1;
+    else if (curve == FIDO2_CURVE_X25519)
+        mbedtls_curve = MBEDTLS_ECP_DP_CURVE25519;
+    else if (curve == FIDO2_CURVE_X448)
+        mbedtls_curve = MBEDTLS_ECP_DP_CURVE448;
+    else
+        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
+
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
     uint8_t key_path[KEY_PATH_LEN];
@@ -271,7 +284,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     *(uint32_t *)key_path = 0x80000000 | 10022;
     for (int i = 1; i < KEY_PATH_ENTRIES; i++)
         *(uint32_t *)(key_path+i*sizeof(uint32_t)) |= 0x80000000;
-    ret = derive_key(NULL, false, key_path, curve, &ekey);
+    ret = derive_key(NULL, false, key_path, mbedtls_curve, &ekey);
     if (ret != 0) {
         mbedtls_ecdsa_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -285,14 +298,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         ext = (uint8_t *)"\xA1\x6B\x68\x6D\x61\x63\x2D\x73\x65\x63\x72\x65\x74\xF5";
         flags |= FIDO2_AUT_FLAG_ED;
     }
-    uint8_t pkey[2 * 66 + 1];
-    size_t olen = 0;
-    ret = mbedtls_ecp_point_write_binary(&ekey.grp, &ekey.Q, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, pkey, sizeof(pkey));
-    if (ret != 0) {
-        mbedtls_ecdsa_free(&ekey);
+    uint8_t pkey[66];
+    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(mbedtls_curve);
+    if (cinfo == NULL)
         CBOR_ERROR(CTAP1_ERR_OTHER);
-    }
-
+    size_t olen = 0, pkey_len = ceil((float)cinfo->bit_size/8);
     uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  5));
@@ -303,35 +313,37 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 1));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, curve));
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 2));
-    mbedtls_mpi_write_binary(&ekey.Q.X, pkey, sizeof(pkey));
-    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, sizeof(pkey)));
+    mbedtls_mpi_write_binary(&ekey.Q.X, pkey, pkey_len);
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, pkey_len));
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 3));
-    mbedtls_mpi_write_binary(&ekey.Q.Y, pkey, sizeof(pkey));
-    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, sizeof(pkey)));
+    mbedtls_mpi_write_binary(&ekey.Q.Y, pkey, pkey_len);
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, pkey_len));
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
 
     size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + cred_id_len + rs) + ext_len;
-    aut_data = (uint8_t *)calloc(1, aut_data_len);
+    aut_data = (uint8_t *)calloc(1, aut_data_len + clientDataHash.len);
     uint8_t *pa = aut_data;
     memcpy(pa, rp_id_hash, 32); pa += 32;
-    memcpy(pa, &flags, 1); pa++;
+    *pa++ = flags;
     *pa++ = ctr >> 24;
     *pa++ = ctr >> 16;
     *pa++ = ctr >> 8;
     *pa++ = ctr & 0xff;
     memcpy(pa, aaguid, 16); pa += 16;
-    *pa++ = cred_id_len >> 16;
+    *pa++ = cred_id_len >> 8;
     *pa++ = cred_id_len & 0xff;
     memcpy(pa, cred_id, cred_id_len); pa += cred_id_len;
     memcpy(pa, cbor_buf, rs); pa += rs;
     memcpy(pa, ext, ext_len); pa += ext_len;
+    if (pa-aut_data != aut_data_len)
+        CBOR_ERROR(CTAP1_ERR_OTHER);
 
+    memcpy(pa, clientDataHash.data, clientDataHash.len);
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
     uint8_t hash[32], sig[MBEDTLS_ECDSA_MAX_LEN];
-    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), aut_data, aut_data_len, hash);
-
+    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), aut_data, aut_data_len+clientDataHash.len, hash);
 
     bool self_attestation = true;
     if (ka && ka->use_self_attestation == pfalse)
@@ -341,7 +353,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), 32);
         self_attestation = false;
     }
-    ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen, NULL);
+    ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen_core0, NULL);
     mbedtls_ecdsa_free(&ekey);
 
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
@@ -359,8 +371,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "sig"));
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, sig, olen));
     if (self_attestation == false) {
+        CborEncoder arrEncoder;
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "x5c"));
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, file_get_data(ef_certdev), file_get_size(ef_certdev)));
+        CBOR_CHECK(cbor_encoder_create_array(&mapEncoder2, &arrEncoder, 1));
+        CBOR_CHECK(cbor_encode_byte_string(&arrEncoder, file_get_data(ef_certdev), file_get_size(ef_certdev)));
+        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder2, &arrEncoder));
     }
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
 
