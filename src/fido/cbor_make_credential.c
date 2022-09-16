@@ -65,9 +65,15 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     size_t resp_size = 0;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
+    uint64_t val_c = 1;
     CBOR_PARSE_MAP_START(map, 1) {
         uint64_t val_u = 0;
         CBOR_FIELD_GET_UINT(val_u, 1);
+        if (val_c <= 4 && val_c != val_u)
+            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+        if (val_u < val_c)
+            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+        val_c = val_u + 1;
         if (val_u == 0x01) { // clientDataHash
             CBOR_FIELD_GET_BYTES(clientDataHash, 1);
         }
@@ -155,6 +161,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     mbedtls_sha256((uint8_t *)rp.id.data, rp.id.len, rp_id_hash, 0);
 
     int curve = 0, alg = 0;
+    if (pubKeyCredParams_len == 0)
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+
     for (int i = 0; i < pubKeyCredParams_len; i++) {
         if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0)
             continue;
@@ -405,8 +414,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         free(aut_data);
     if (cred_id)
         free(cred_id);
-    if (error != CborNoError)
-        return -CTAP2_ERR_INVALID_CBOR;
+    if (error != CborNoError) {
+        if (error == CborErrorImproperValue)
+            return -CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        return -error;
+    }
     driver_exec_finished(1+resp_size);
     return 0;
 }
