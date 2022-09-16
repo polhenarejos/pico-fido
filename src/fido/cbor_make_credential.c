@@ -160,7 +160,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rp.id.data, rp.id.len, rp_id_hash, 0);
 
-    int curve = 0, alg = 0;
+    int curve = -1, alg = 0;
     if (pubKeyCredParams_len == 0)
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
 
@@ -173,6 +173,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             curve = FIDO2_CURVE_P384;
         else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512)
             curve = FIDO2_CURVE_P521;
+        else if (pubKeyCredParams[i].alg == 0) // no present
+            curve = -1;
+        else
+            curve = 0;
         if (curve > 0) {
             alg = pubKeyCredParams[i].alg;
             break;
@@ -180,6 +184,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     if (curve == 0)
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
+    else if (curve == -1)
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
 
     if (pinUvAuthParam.present == true) {
         if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
@@ -197,12 +203,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
     }
-
-    if (options.present) {
+    printf("OPTIONS %d up %d %d\n", options.present, (uintptr_t)options.up, options.up ? *options.up : -1);
+    if (options.present)
+    {
         if (options.uv == ptrue) { //5.3
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
-        if (options.up == pfalse) { //5.6
+        if (options.up != NULL) { //5.6
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
         //else if (options.up == NULL) //5.7
