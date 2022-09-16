@@ -50,7 +50,13 @@ target_include_directories(pico_fido PUBLIC
 target_compile_options(pico_fido PUBLIC
     -Wall
     -Werror
-)
+    )
+string(FIND ${CMAKE_C_COMPILER} ":" COMPILER_COLON)
+if (${COMPILER_COLON} GREATER_EQUAL 0)
+        target_compile_options(pico_fido PUBLIC
+        -Wno-error=use-after-free
+        )
+endif()
 
 pico_add_extra_outputs(pico_fido)
 
