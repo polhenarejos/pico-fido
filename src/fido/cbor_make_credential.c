@@ -230,6 +230,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
 
     for (int e = 0; e < excludeList_len; e++) { //12.1
+        if (excludeList[e].type.present == false || excludeList[e].id.present == false)
+            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (strcmp(excludeList[e].type.data, "public-key") != 0)
             continue;
         if (credential_verify(&excludeList[e].id, rp_id_hash) == true)
