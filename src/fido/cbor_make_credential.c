@@ -110,19 +110,19 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         else if (val_u == 0x05) { // excludeList
             CBOR_PARSE_ARRAY_START(_f1, 2) {
                     PublicKeyCredentialDescriptor *pc = &excludeList[excludeList_len];
-                CBOR_PARSE_MAP_START(_f1, 3) {
+                CBOR_PARSE_MAP_START(_f2, 3) {
                     CBOR_FIELD_GET_KEY_TEXT(3);
                     CBOR_FIELD_KEY_TEXT_VAL_BYTES(3, "id", pc->id);
                     CBOR_FIELD_KEY_TEXT_VAL_TEXT(3, "type", pc->type);
                     if (strcmp(_fd3, "transports") == 0) {
-                        CBOR_PARSE_ARRAY_START(_f2, 4) {
+                        CBOR_PARSE_ARRAY_START(_f3, 4) {
                             CBOR_FIELD_GET_TEXT(pc->transports[pc->transports_len], 4);
                             pc->transports_len++;
                         }
-                        CBOR_PARSE_ARRAY_END(_f2, 4);
+                        CBOR_PARSE_ARRAY_END(_f3, 4);
                     }
                 }
-                CBOR_PARSE_MAP_END(_f1, 3);
+                CBOR_PARSE_MAP_END(_f2, 3);
                 excludeList_len++;
             }
             CBOR_PARSE_ARRAY_END(_f1, 2);
@@ -203,9 +203,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
     }
-    printf("OPTIONS %d up %d %d\n", options.present, (uintptr_t)options.up, options.up ? *options.up : -1);
-    if (options.present)
-    {
+    if (options.present) {
         if (options.uv == ptrue) { //5.3
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
