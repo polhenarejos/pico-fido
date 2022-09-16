@@ -44,16 +44,16 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 5));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credMgmt"));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "authnrCfg"));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "clientPin"));
     if (file_has_data(ef_pin))
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     else
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, false));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "pinUvAuthToken"));
-    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
-    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "authnrCfg"));
-    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
-    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credMgmt"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
