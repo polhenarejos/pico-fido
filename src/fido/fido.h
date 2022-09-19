@@ -54,6 +54,15 @@ extern CTAPHID_FRAME *ctap_req, *ctap_resp;
 #define FIDO2_AUT_FLAG_AT       0x40
 #define FIDO2_AUT_FLAG_ED       0x80
 
+#define FIDO2_PERMISSION_MC     0x1
+#define FIDO2_PERMISSION_GA     0x2
+#define FIDO2_PERMISSION_CM     0x4
+#define FIDO2_PERMISSION_BE     0x8
+#define FIDO2_PERMISSION_LBW    0x10
+#define FIDO2_PERMISSION_ACFG   0x20
+
+#define MAX_PIN_RETRIES 3
+
 typedef struct known_app {
     const uint8_t *rp_id_hash;
     const char *label;
@@ -62,5 +71,21 @@ typedef struct known_app {
 } known_app_t;
 
 extern const known_app_t *find_app_by_rp_id_hash(const uint8_t *rp_id_hash);
+
+#define TRANSPORT_TIME_LIMIT (30*1000) //USB
+
+bool check_user_presence();
+
+typedef struct pinUvAuthToken {
+    uint8_t *data;
+    size_t len;
+    bool in_use;
+    uint8_t permissions;
+    uint8_t rp_id_hash[32];
+} pinUvAuthToken_t;
+
+extern uint32_t user_present_time_limit;
+
+extern pinUvAuthToken_t paut;
 
 #endif //_FIDO_H

@@ -43,7 +43,7 @@ bool credential_verify(CborByteString *cred_id, const uint8_t *rp_id_hash) {
     return false;
 }
 
-int verify(CborByteString *clientDataHash, CborByteString *pinUvAuthParam) {
+int verify_user(CborByteString *clientDataHash, CborByteString *pinUvAuthParam) {
     return CborNoError;
 }
 
@@ -225,7 +225,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         //Unfinished. See 6.1.2.9
     }
     if (pinUvAuthParam.present == true) { //11.1
-        int ret = verify(&clientDataHash, &pinUvAuthParam);
+        int ret = verify_user(&clientDataHash, &pinUvAuthParam);
         if (ret != CborNoError)
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         //Check pinUvAuthToken permissions. See 6.1.2.11
@@ -272,7 +272,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t key[32];
     memset(key, 0, sizeof(key));
     uint8_t iv[12];
-    memcpy(iv, random_bytes_get(sizeof(iv)), sizeof(iv));
+    random_gen_core0(NULL, iv, sizeof(12));
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);

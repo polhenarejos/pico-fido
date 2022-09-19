@@ -24,6 +24,7 @@
 #include "file.h"
 #include "usb.h"
 #include "random.h"
+#include "bsp/board.h"
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/hkdf.h"
@@ -35,6 +36,8 @@
 void init_fido();
 int fido_process_apdu();
 int fido_unload();
+
+pinUvAuthToken_t paut = {0};
 
 const uint8_t fido_aid[] = {
     8,
@@ -81,7 +84,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_subject_key_identifier(&ctx);
     mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
     mbedtls_x509write_crt_set_key_usage(&ctx, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN);
-    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_gen, NULL);
+    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_gen_core0, NULL);
     return ret;
 }
 
@@ -103,7 +106,9 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     for (int i = 0; i < KEY_PATH_ENTRIES; i++)
     {
         if (new_key == true) {
-            uint32_t val = 0x80000000 | *((uint32_t *)random_bytes_get(sizeof(uint32_t)));
+            uint32_t val = 0;
+            random_gen_core0(NULL, (uint8_t *) &val, sizeof(val));
+            val |= 0x80000000;
             memcpy(&key_handle[i*sizeof(uint32_t)], &val, sizeof(uint32_t));
         }
         r = mbedtls_hkdf(md_info, &key_handle[i * sizeof(uint32_t)], sizeof(uint32_t), outk, 32, outk + 32, 32, outk, sizeof(outk));
@@ -141,7 +146,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
 int scan_files() {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     if (ef_keydev) {
-        if (!ef_keydev->data) {
+        if (!file_has_data(ef_keydev)) {
             printf("KEY DEVICE is empty. Generating SECP256R1 curve...");
             mbedtls_ecdsa_context ecdsa;
             mbedtls_ecdsa_init(&ecdsa);
@@ -168,7 +173,7 @@ int scan_files() {
     }
     ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
     if (ef_certdev) {
-        if (file_get_size(ef_certdev) == 0 || !ef_certdev->data) {
+        if (!file_has_data(ef_certdev)) {
             uint8_t cert[4096];
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
@@ -188,7 +193,7 @@ int scan_files() {
     }
     ef_counter = search_by_fid(EF_COUNTER, NULL, SPECIFY_EF);
     if (ef_counter) {
-        if (file_get_size(ef_counter) == 0 || !ef_counter->data) {
+        if (!file_has_data(ef_counter)) {
             uint32_t v = 0;
             flash_write_data_to_file(ef_counter, (uint8_t *)&v, sizeof(v));
         }
@@ -197,6 +202,19 @@ int scan_files() {
         printf("FATAL ERROR: Global counter not found in memory!\r\n");
     }
     ef_pin = search_by_fid(EF_PIN, NULL, SPECIFY_EF);
+    ef_authtoken = search_by_fid(EF_AUTHTOKEN, NULL, SPECIFY_EF);
+    if (ef_authtoken) {
+        if (!file_has_data(ef_authtoken)) {
+            uint8_t t[32];
+            random_gen_core0(NULL, t, sizeof(t));
+            flash_write_data_to_file(ef_authtoken, t, sizeof(t));
+        }
+        paut.data = file_get_data(ef_authtoken);
+        paut.len = file_get_size(ef_authtoken);
+    }
+    else {
+        printf("FATAL ERROR: Auth Token not found in memory!\r\n");
+    }
     low_flash_available();
     return CCID_OK;
 }
@@ -216,6 +234,17 @@ bool wait_button_pressed() {
         queue_remove_blocking(&usb_to_card_q, &val);
     } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT);
     return (val == EV_BUTTON_TIMEOUT);
+}
+
+uint32_t user_present_time_limit = 0;
+
+bool check_user_presence() {
+    if (user_present_time_limit == 0 || user_present_time_limit+TRANSPORT_TIME_LIMIT < board_millis()) {
+        if (wait_button() == true) //timeout
+            return false;
+        user_present_time_limit = board_millis();
+    }
+    return true;
 }
 
 typedef struct cmd

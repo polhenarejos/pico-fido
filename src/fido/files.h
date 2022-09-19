@@ -24,10 +24,12 @@
 #define EF_EE_DEV       0xCE00
 #define EF_COUNTER      0xC000
 #define EF_PIN          0x1080
+#define EF_AUTHTOKEN    0x1090
 
 extern file_t *ef_keydev;
 extern file_t *ef_certdev;
 extern file_t *ef_counter;
 extern file_t *ef_pin;
+extern file_t *ef_authtoken;
 
 #endif //_FILES_H_

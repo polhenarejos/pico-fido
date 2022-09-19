@@ -39,5 +39,7 @@ int cbor_process(const uint8_t *data, size_t len) {
         return cbor_get_info();
     else if (data[0] == CTAP_RESET)
         return cbor_reset();
+    else if (data[0] == CTAP_CLIENT_PIN)
+        return cbor_client_pin(data+1, len-1);
     return -CTAP2_ERR_INVALID_CBOR;
 }
