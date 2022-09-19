@@ -17,8 +17,14 @@
  */
 
 #include "ctap2_cbor.h"
+#include "file.h"
+#include "fido.h"
+
+extern void scan_all();
 
 int cbor_reset() {
+    initialize_flash(true);
+    scan_all();
     driver_exec_finished(1);
     return 0;
 }
