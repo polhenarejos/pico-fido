@@ -24,11 +24,12 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 7));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 8));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "U2F_V2"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_0"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_1"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
@@ -58,8 +59,9 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x06));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 1));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 1)); // PIN protocols
+    CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 2)); // PIN protocols
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
@@ -67,6 +69,10 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 1024)); // CRED_ID_MAX_LENGTH
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0D));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 4)); // minPINLength
+
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     err:
