@@ -62,6 +62,7 @@ extern CTAPHID_FRAME *ctap_req, *ctap_resp;
 #define FIDO2_PERMISSION_ACFG   0x20
 
 #define MAX_PIN_RETRIES 3
+extern bool getUserVerifiedFlagValue();
 
 typedef struct known_app {
     const uint8_t *rp_id_hash;

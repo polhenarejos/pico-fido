@@ -313,6 +313,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
 
     uint8_t flags = FIDO2_AUT_FLAG_UP | FIDO2_AUT_FLAG_AT;
+    if (getUserVerifiedFlagValue())
+        flags |= FIDO2_AUT_FLAG_UV;
     size_t ext_len = 0;
     uint8_t ext [512];
     if (hmac_secret != NULL || credProtect != 0) {
