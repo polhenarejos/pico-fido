@@ -23,16 +23,19 @@
 #include "fido.h"
 #include "ctap.h"
 #include "random.h"
+#include "files.h"
+#include "file.h"
+#include "hsm.h"
 
-int credential_verify(CborByteString *cred_id, const uint8_t *rp_id_hash) {
-    if (cred_id->len < 4+12+16)
+int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {
+    if (cred_id_len < 4+12+16)
             return -1;
-    uint8_t key[32], *iv = cred_id->data + 4, *cipher = cred_id->data + 4 + 12, *tag = cred_id->data - 16;
+    uint8_t key[32], *iv = cred_id + 4, *cipher = cred_id + 4 + 12, *tag = cred_id + cred_id_len - 16;
     memset(key, 0, sizeof(key));
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
-    return mbedtls_chachapoly_auth_decrypt(&chatx, cred_id->len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
+    return mbedtls_chachapoly_auth_decrypt(&chatx, cred_id_len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
 }
 
 int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, const bool *hmac_secret, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
@@ -40,7 +43,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     CborError error = CborNoError;
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rpId->data, rpId->len, rp_id_hash, 0);
-    cbor_encoder_init(&encoder, cred_id+4+12, sizeof(cred_id)-(4+12+16), 0);
+    cbor_encoder_init(&encoder, cred_id+4+12, MAX_CRED_ID_LENGTH-(4+12+16), 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  CborIndefiniteLength));
     CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x01, *rpId);
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
@@ -82,16 +85,18 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     return 0;
 }
 
-int credential_load(CborByteString *cred_id, const uint8_t *rp_id_hash, Credential *cred) {
+int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred) {
     int ret = 0;
-    ret = credential_verify(cred_id, rp_id_hash);
+    uint8_t *copy_cred_id = (uint8_t *)calloc(1, cred_id_len);
+    memcpy(copy_cred_id, cred_id, cred_id_len);
+    ret = credential_verify(copy_cred_id, cred_id_len, rp_id_hash);
     if (ret != 0)
         return ret;
     CborParser parser;
     CborValue map;
     CborError error;
     memset(cred, 0, sizeof(Credential));
-    CBOR_CHECK(cbor_parser_init(cred_id->data + 4 + 12, cred_id->len - (4 + 12 + 16), 0, &parser, &map));
+    CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser, &map));
     CBOR_PARSE_MAP_START(map, 1) {
         uint64_t val_u = 0;
         CBOR_FIELD_GET_UINT(val_u, 1);
@@ -123,6 +128,7 @@ int credential_load(CborByteString *cred_id, const uint8_t *rp_id_hash, Credenti
 
     cred->present = true;
     err:
+    free(copy_cred_id);
     if (error != CborNoError) {
         if (error == CborErrorImproperValue)
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
@@ -134,4 +140,46 @@ int credential_load(CborByteString *cred_id, const uint8_t *rp_id_hash, Credenti
 void credential_free(Credential *cred) {
     CBOR_FREE_BYTE_STRING(cred->rpId);
     CBOR_FREE_BYTE_STRING(cred->userId);
+}
+
+int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {
+    file_t *slot = NULL;
+    Credential cred = {0};
+    int ret = 0;
+    ret = credential_load(cred_id, cred_id_len, rp_id_hash, &cred);
+    if (ret != 0) {
+        credential_free(&cred);
+        return ret;
+    }
+    for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+        file_t *ef = search_dynamic_file(EF_CRED + i);
+        Credential rcred = {0};
+        if (!file_has_data(ef)) {
+            if (slot == NULL)
+                slot = ef;
+            continue;
+        }
+        if (memcmp(file_get_data(ef), rp_id_hash, 32) != 0)
+            continue;
+        ret = credential_load(file_get_data(ef) + 32, file_get_size(ef)-32, rp_id_hash, &rcred);
+        if (ret != 0) {
+            credential_free(&rcred);
+            continue;
+        }
+        if (memcmp(rcred.userId.data, cred.userId.data, MIN(rcred.userId.len, cred.userId.len)) == 0) {
+            slot = ef;
+            credential_free(&rcred);
+            break;
+        }
+        credential_free(&rcred);
+    }
+    if (slot == NULL)
+        return -1;
+    credential_free(&cred);
+    uint8_t *data = (uint8_t *)calloc(1, cred_id_len+32);
+    memcpy(data, rp_id_hash, 32);
+    memcpy(data + 32, cred_id, cred_id_len);
+    flash_write_data_to_file(slot, data, cred_id_len + 32);
+    low_flash_available();
+    return 0;
 }

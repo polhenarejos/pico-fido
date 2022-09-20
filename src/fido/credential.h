@@ -38,8 +38,9 @@ typedef struct Credential {
     bool present;
 } Credential;
 
-extern int credential_verify(CborByteString *cred_id, const uint8_t *rp_id_hash);
+extern int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
 extern int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, const bool *hmac_secret, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len);
 extern void credential_free(Credential *cred);
+extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
 
 #endif // _CREDENTIAL_H_

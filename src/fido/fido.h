@@ -67,6 +67,7 @@ extern void init_fido();
 extern bool getUserVerifiedFlagValue();
 #define MAX_CREDENTIAL_COUNT_IN_LIST    16
 #define MAX_CRED_ID_LENGTH        1024
+#define MAX_RESIDENT_CREDENTIALS  256
 
 typedef struct known_app {
     const uint8_t *rp_id_hash;

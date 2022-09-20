@@ -220,7 +220,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (strcmp(excludeList[e].type.data, "public-key") != 0)
             continue;
-        if (credential_verify(&excludeList[e].id, rp_id_hash) == 0)
+        if (credential_verify(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash) == 0)
             CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
     }
 
@@ -235,7 +235,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t cred_id[MAX_CRED_ID_LENGTH];
     size_t cred_id_len = 0;
 
-    CBOR_ERROR(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, hmac_secret, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
+    CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, hmac_secret, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
     mbedtls_ecp_group_id mbedtls_curve = MBEDTLS_ECP_DP_SECP256R1;
     if (curve == FIDO2_CURVE_P256)
@@ -377,6 +377,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 
+    if (options.rk == ptrue) {
+        if (credential_store(cred_id, cred_id_len, rp_id_hash) != 0)
+            CBOR_ERROR(CTAP2_ERR_KEY_STORE_FULL);
+    }
     err:
         CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

@@ -25,6 +25,7 @@
 #define EF_COUNTER      0xC000
 #define EF_PIN          0x1080
 #define EF_AUTHTOKEN    0x1090
+#define EF_CRED         0xCF00 // Creds at 0xCF00 - 0xCFFF
 
 extern file_t *ef_keydev;
 extern file_t *ef_certdev;
