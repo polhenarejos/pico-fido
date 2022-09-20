@@ -27,10 +27,6 @@
 #include "apdu.h"
 #include "credential.h"
 
-int verify_user(CborByteString *clientDataHash, CborByteString *pinUvAuthParam) {
-    return CborNoError;
-}
-
 int cbor_make_credential(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
@@ -43,10 +39,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     PublicKeyCredentialDescriptor excludeList[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
     size_t excludeList_len = 0;
     CredOptions options = {0};
-    uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0, credProtect = 0;
-    const bool *hmac_secret = NULL;
+    uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
+    CredExtensions extensions = {0};
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -114,8 +110,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         else if (val_u == 0x06) { // extensions
             CBOR_PARSE_MAP_START(_f1, 2) {
                 CBOR_FIELD_GET_KEY_TEXT(2);
-                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", hmac_secret);
-                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", credProtect);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
+                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -143,6 +139,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
+    uint8_t flags = FIDO2_AUT_FLAG_AT;
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rp.id.data, rp.id.len, rp_id_hash, 0);
 
@@ -209,10 +206,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         //Unfinished. See 6.1.2.9
     }
     if (pinUvAuthParam.present == true) { //11.1
-        int ret = verify_user(&clientDataHash, &pinUvAuthParam);
+        int ret = verify(pinUvAuthProtocol, paut.data, clientDataHash.data, clientDataHash.len, pinUvAuthParam.data);
         if (ret != CborNoError)
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        //Check pinUvAuthToken permissions. See 6.1.2.11
+        if (getUserVerifiedFlagValue() == false)
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        flags |= FIDO2_AUT_FLAG_UV;
+        // Check pinUvAuthToken permissions. See 6.1.2.11
     }
 
     for (int e = 0; e < excludeList_len; e++) { //12.1
@@ -224,10 +224,17 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
     }
 
-    if (pinUvAuthParam.present && options.up == ptrue) { //14.1
-        if (check_user_presence() == false)
-            CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
-        //rup = ptrue;
+    if (options.up == ptrue) { //14.1
+        if (pinUvAuthParam.present == true) {
+            if (getUserPresentFlagValue() == false) {
+                if (check_user_presence() == false)
+                    CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+            }
+        }
+        flags |= FIDO2_AUT_FLAG_UP;
+        clearUserPresentFlag();
+        clearUserVerifiedFlag();
+        clearPinUvAuthTokenPermissionsExceptLbw();
     }
 
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
@@ -235,7 +242,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t cred_id[MAX_CRED_ID_LENGTH];
     size_t cred_id_len = 0;
 
-    CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, hmac_secret, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
+    CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
     mbedtls_ecp_group_id mbedtls_curve = MBEDTLS_ECP_DP_SECP256R1;
     if (curve == FIDO2_CURVE_P256)
@@ -266,28 +273,27 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
 
-    uint8_t flags = FIDO2_AUT_FLAG_UP | FIDO2_AUT_FLAG_AT;
     if (getUserVerifiedFlagValue())
         flags |= FIDO2_AUT_FLAG_UV;
     size_t ext_len = 0;
     uint8_t ext [512];
     CborEncoder encoder, mapEncoder, mapEncoder2;
-    if (hmac_secret != NULL || credProtect != 0) {
+    if (extensions.present == true) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
         int l = 0;
-        if (hmac_secret != NULL)
+        if (extensions.hmac_secret != NULL)
             l++;
-        if (credProtect != 0)
+        if (extensions.credProtect != 0)
             l++;
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
-        if (credProtect != 0) {
+        if (extensions.credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder, credProtect));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
         }
-        if (hmac_secret != NULL) {
+        if (extensions.hmac_secret != NULL) {
 
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
-            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *hmac_secret));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *extensions.hmac_secret));
         }
 
         CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
