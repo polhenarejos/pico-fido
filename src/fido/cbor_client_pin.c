@@ -472,6 +472,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
         uint8_t retries = *file_get_data(ef_pin) - 1;
+        flash_write_data_to_file(ef_pin, &retries, 1);
         uint8_t paddedNewPin[64];
         ret = decrypt(pinUvAuthProtocol, sharedSecret, pinHashEnc.data, pinHashEnc.len, paddedNewPin);
         if (ret != 0) {
@@ -485,7 +486,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             if (retries == 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
             }
-            if (++new_pin_mismatches == 3)  {
+            if (++new_pin_mismatches >= 3)  {
                 needs_power_cycle = true;
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
             }

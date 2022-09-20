@@ -161,7 +161,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rp.id.data, rp.id.len, rp_id_hash, 0);
-    printf("IEEEEEE 1\n");
+
     int curve = -1, alg = 0;
     if (pubKeyCredParams_len == 0)
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -196,7 +196,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             if (!file_has_data(ef_pin))
                 CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
             else
-                CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
         else {
             if (pinUvAuthProtocol == 0)
@@ -230,7 +230,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         //Check pinUvAuthToken permissions. See 6.1.2.11
     }
-    printf("IEEEEEE 2\n");
+
     for (int e = 0; e < excludeList_len; e++) { //12.1
         if (excludeList[e].type.present == false || excludeList[e].id.present == false)
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -298,7 +298,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         mbedtls_curve = MBEDTLS_ECP_DP_CURVE448;
     else
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
-    printf("IEEEEEE 3\n");
+
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
     uint8_t key_path[KEY_PATH_LEN];
@@ -362,7 +362,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
-    printf("IEEEEEE 4\n");
+
     size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + cred_id_len + rs) + ext_len;
     aut_data = (uint8_t *)calloc(1, aut_data_len + clientDataHash.len);
     uint8_t *pa = aut_data;
@@ -395,7 +395,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen, NULL);
     mbedtls_ecdsa_free(&ekey);
-    printf("IEEEEEE 5\n");
+
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 3));
 
@@ -421,7 +421,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
-    printf("IEEEEEE 6\n");
+
     err:
         CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

@@ -34,7 +34,7 @@ size_t cbor_len = 0;
 
 int cbor_parse(const uint8_t *data, size_t len) {
     if (len == 0)
-        return -CTAP1_ERR_INVALID_LEN;
+        return CTAP1_ERR_INVALID_LEN;
     driver_prepare_response();
     if (data[0] == CTAP_MAKE_CREDENTIAL)
         return cbor_make_credential(data + 1, len - 1);
@@ -44,7 +44,7 @@ int cbor_parse(const uint8_t *data, size_t len) {
         return cbor_reset();
     else if (data[0] == CTAP_CLIENT_PIN)
         return cbor_client_pin(data + 1, len - 1);
-    return -CTAP2_ERR_INVALID_CBOR;
+    return CTAP2_ERR_INVALID_CBOR;
 }
 
 void cbor_thread() {

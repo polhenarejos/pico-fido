@@ -63,7 +63,7 @@ extern void init_fido();
 #define FIDO2_PERMISSION_LBW    0x10
 #define FIDO2_PERMISSION_ACFG   0x20
 
-#define MAX_PIN_RETRIES 3
+#define MAX_PIN_RETRIES 8
 extern bool getUserVerifiedFlagValue();
 
 typedef struct known_app {
