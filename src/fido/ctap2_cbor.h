@@ -104,7 +104,8 @@ typedef struct CborCharString {
             CBOR_FREE((v).data);  \
         else \
             (v).data = NULL; \
-        (v).len = 0;         \
+        (v).len = 0; \
+        (v).present = false; \
     } while(0)
 
 #define CBOR_PARSE_MAP_START(_p,_n)                   \
@@ -222,6 +223,12 @@ typedef struct CborCharString {
     do { \
             CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
             CBOR_CHECK(cbor_encode_uint(&(p), (v))); \
+    } while(0)
+
+#define CBOR_APPEND_KEY_UINT_VAL_INT(p, k, v) \
+    do { \
+            CBOR_CHECK(cbor_encode_int(&(p), (k))); \
+            CBOR_CHECK(cbor_encode_int(&(p), (v))); \
     } while(0)
 
 #define CBOR_APPEND_KEY_UINT_VAL_BOOL(p, k, v) \

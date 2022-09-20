@@ -65,6 +65,8 @@ extern void init_fido();
 
 #define MAX_PIN_RETRIES 8
 extern bool getUserVerifiedFlagValue();
+#define MAX_CREDENTIAL_COUNT_IN_LIST    16
+#define MAX_CRED_ID_LENGTH        1024
 
 typedef struct known_app {
     const uint8_t *rp_id_hash;

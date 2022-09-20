@@ -66,10 +66,10 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 10)); // MAX_CRED_COUNT_IN_LIST
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDENTIAL_COUNT_IN_LIST)); // MAX_CRED_COUNT_IN_LIST
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 1024)); // CRED_ID_MAX_LENGTH
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CRED_ID_LENGTH)); // MAX_CRED_ID_MAX_LENGTH
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0D));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 4)); // minPINLength

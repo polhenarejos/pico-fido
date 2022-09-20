@@ -40,6 +40,7 @@ target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_make_credential.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/known_apps.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_client_pin.c
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/credential.c
         )
 set(HSM_DRIVER "hid")
 include(pico-hsm-sdk/pico_hsm_sdk_import.cmake)

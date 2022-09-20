@@ -16,7 +16,6 @@
  */
 
 #include "common.h"
-#include "mbedtls/chachapoly.h"
 #include "ctap2_cbor.h"
 #include "cbor_make_credential.h"
 #include "fido.h"
@@ -26,22 +25,7 @@
 #include "hsm.h"
 #include <math.h>
 #include "apdu.h"
-
-bool credential_verify(CborByteString *cred_id, const uint8_t *rp_id_hash) {
-    if (cred_id->len < 4+12+16)
-        return false;
-    size_t cipher_len = cred_id->len - (4 + 12 + 16);
-    uint8_t key[32], *iv = cred_id->data + 4, *cipher = cred_id->data + 4 + 12, *tag = cred_id->data - 16, *data = (uint8_t *)calloc(1, cipher_len);
-    memset(key, 0, sizeof(key));
-    mbedtls_chachapoly_context chatx;
-    mbedtls_chachapoly_init(&chatx);
-    mbedtls_chachapoly_setkey(&chatx, key);
-    int ret = mbedtls_chachapoly_auth_decrypt(&chatx, cred_id->len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, data);
-    free(data);
-    if (ret == 0)
-        return true;
-    return false;
-}
+#include "credential.h"
 
 int verify_user(CborByteString *clientDataHash, CborByteString *pinUvAuthParam) {
     return CborNoError;
@@ -54,14 +38,14 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CborByteString clientDataHash = {0}, pinUvAuthParam = {0};
     PublicKeyCredentialRpEntity rp = {0};
     PublicKeyCredentialUserEntity user = {0};
-    PublicKeyCredentialParameters pubKeyCredParams[16] = {0};
+    PublicKeyCredentialParameters pubKeyCredParams[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
     size_t pubKeyCredParams_len = 0;
-    PublicKeyCredentialDescriptor excludeList[16] = {0};
+    PublicKeyCredentialDescriptor excludeList[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
     size_t excludeList_len = 0;
     CredOptions options = {0};
     uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0, credProtect = 0;
     const bool *hmac_secret = NULL;
-    uint8_t *cred_id = NULL, *aut_data = NULL;
+    uint8_t *aut_data = NULL;
     size_t resp_size = 0;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
@@ -236,7 +220,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (strcmp(excludeList[e].type.data, "public-key") != 0)
             continue;
-        if (credential_verify(&excludeList[e].id, rp_id_hash) == true)
+        if (credential_verify(&excludeList[e].id, rp_id_hash) == 0)
             CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
     }
 
@@ -247,41 +231,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
 
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
-    CborEncoder encoder, mapEncoder, mapEncoder2;
-    uint8_t cbor_buf[1024];
-    cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  CborIndefiniteLength));
-    CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x01, rp.id);
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, rp_id_hash, 32));
-    CBOR_APPEND_KEY_UINT_VAL_BYTES(mapEncoder, 0x03, user.id);
-    CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x04, user.displayName);
-    CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x05, user.displayName);
-    CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x06, 1);
-    CBOR_APPEND_KEY_UINT_VAL_PBOOL(mapEncoder, 0x07, hmac_secret);
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
-    CBOR_CHECK(cbor_encode_boolean(&mapEncoder, (!ka || ka->use_sign_count == ptrue)));
-    if (alg != FIDO2_ALG_ES256 || curve != FIDO2_CURVE_P256) {
-        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x09, alg);
-        CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x0A, curve);
-    }
-    CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
-    size_t cred_id_len = 4 + 12 + rs + 16;
-    cred_id = (uint8_t *)calloc(1, 4 + 12 + rs + 16);
-    uint8_t key[32];
-    memset(key, 0, sizeof(key));
-    uint8_t iv[12];
-    random_gen(NULL, iv, sizeof(12));
-    mbedtls_chachapoly_context chatx;
-    mbedtls_chachapoly_init(&chatx);
-    mbedtls_chachapoly_setkey(&chatx, key);
-    int ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, rs, iv, rp_id_hash, 32, cbor_buf, cred_id + 4 + 12, cred_id + 4 + 12 + rs);
-    if (ret != 0) {
-        CBOR_ERROR(CTAP1_ERR_OTHER);
-    }
-    memcpy(cred_id, "\xf1\xd0\x02\x00", 4);
-    memcpy(cred_id + 4, iv, 12);
+
+    uint8_t cred_id[MAX_CRED_ID_LENGTH];
+    size_t cred_id_len = 0;
+
+    CBOR_ERROR(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, hmac_secret, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
     mbedtls_ecp_group_id mbedtls_curve = MBEDTLS_ECP_DP_SECP256R1;
     if (curve == FIDO2_CURVE_P256)
@@ -306,7 +260,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     *(uint32_t *)key_path = 0x80000000 | 10022;
     for (int i = 1; i < KEY_PATH_ENTRIES; i++)
         *(uint32_t *)(key_path+i*sizeof(uint32_t)) |= 0x80000000;
-    ret = derive_key(NULL, false, key_path, mbedtls_curve, &ekey);
+    int ret = derive_key(NULL, false, key_path, mbedtls_curve, &ekey);
     if (ret != 0) {
         mbedtls_ecdsa_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -317,6 +271,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         flags |= FIDO2_AUT_FLAG_UV;
     size_t ext_len = 0;
     uint8_t ext [512];
+    CborEncoder encoder, mapEncoder, mapEncoder2;
     if (hmac_secret != NULL || credProtect != 0) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
         int l = 0;
@@ -345,6 +300,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
     size_t olen = 0, pkey_len = ceil((float)cinfo->bit_size/8);
     uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
+    uint8_t cbor_buf[1024];
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  5));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 1));
@@ -361,7 +317,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, pkey_len));
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
+    size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
 
     size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + cred_id_len + rs) + ext_len;
     aut_data = (uint8_t *)calloc(1, aut_data_len + clientDataHash.len);
@@ -386,8 +342,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), aut_data, aut_data_len+clientDataHash.len, hash);
 
     bool self_attestation = true;
-    if (ka && ka->use_self_attestation == pfalse)
-    {
+    if (ka && ka->use_self_attestation == pfalse) {
         mbedtls_ecdsa_free(&ekey);
         mbedtls_ecdsa_init(&ekey);
         ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), 32);
@@ -443,8 +398,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     if (aut_data)
         free(aut_data);
-    if (cred_id)
-        free(cred_id);
     if (error != CborNoError) {
         if (error == CborErrorImproperValue)
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;

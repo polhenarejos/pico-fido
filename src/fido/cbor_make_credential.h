@@ -56,11 +56,5 @@ typedef struct PublicKeyCredentialDescriptor {
     size_t transports_len;
 } PublicKeyCredentialDescriptor;
 
-typedef struct CredOptions {
-    const bool *rk;
-    const bool *up;
-    const bool *uv;
-    bool present;
-} CredOptions;
 
 #endif //_CBOR_MAKE_CREDENTIAL_H_
