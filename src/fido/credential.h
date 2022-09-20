@@ -27,20 +27,32 @@ typedef struct CredOptions {
     bool present;
 } CredOptions;
 
-typedef struct Credential {
+typedef struct CredExtensions {
+    const bool *hmac_secret;
+    uint64_t credProtect;
+    bool present;
+} CredExtensions;
+
+typedef struct Credential
+{
     CborCharString rpId;
     CborByteString userId;
     uint64_t creation;
-    const bool *hmac_secret;
+    CredExtensions extensions;
     const bool *use_sign_count;
     int64_t alg;
     int64_t curve;
     bool present;
 } Credential;
 
+#define CRED_PROT_UV_OPTIONAL               0x01
+#define CRED_PROT_UV_OPTIONAL_WITH_LIST     0x02
+#define CRED_PROT_UV_REQUIRED               0x03
+
 extern int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
-extern int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, const bool *hmac_secret, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len);
+extern int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len);
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
+extern int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred);
 
 #endif // _CREDENTIAL_H_

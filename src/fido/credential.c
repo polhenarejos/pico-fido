@@ -38,8 +38,8 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
     return mbedtls_chachapoly_auth_decrypt(&chatx, cred_id_len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
 }
 
-int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, const bool *hmac_secret, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
-    CborEncoder encoder, mapEncoder;
+int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
+    CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rpId->data, rpId->len, rp_id_hash, 0);
@@ -52,7 +52,19 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x04, *userName);
     CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x05, *userDisplayName);
     CBOR_APPEND_KEY_UINT_VAL_UINT(mapEncoder, 0x06, board_millis());
-    CBOR_APPEND_KEY_UINT_VAL_PBOOL(mapEncoder, 0x07, hmac_secret);
+    if (extensions->present == true) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
+        CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  CborIndefiniteLength));
+        if (extensions->credProtect != 0) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credProtect"));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, extensions->credProtect));
+        }
+        if (extensions->hmac_secret != NULL) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "hmac-secret"));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *extensions->hmac_secret));
+        }
+        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+    }
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
     CBOR_CHECK(cbor_encode_boolean(&mapEncoder, use_sign_count));
     if (alg != FIDO2_ALG_ES256 || curve != FIDO2_CURVE_P256) {
@@ -110,7 +122,15 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
             CBOR_FIELD_GET_UINT(cred->creation, 1);
         }
         else if (val_u == 0x07) {
-            CBOR_FIELD_GET_BOOL(cred->hmac_secret, 1);
+            cred->extensions.present = true;
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
+                CBOR_FIELD_GET_KEY_TEXT(2);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", cred->extensions.hmac_secret);
+                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
+                CBOR_ADVANCE(2);
+            }
+            CBOR_PARSE_MAP_END(_f1, 2);
         }
         else if (val_u == 0x08) {
             CBOR_FIELD_GET_BOOL(cred->use_sign_count, 1);
@@ -140,6 +160,8 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
 void credential_free(Credential *cred) {
     CBOR_FREE_BYTE_STRING(cred->rpId);
     CBOR_FREE_BYTE_STRING(cred->userId);
+    cred->present = false;
+    cred->extensions.present = false;
 }
 
 int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {
