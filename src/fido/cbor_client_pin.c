@@ -34,13 +34,13 @@
 uint8_t permissions_rp_id = 0, permission_set = 0;
 uint32_t usage_timer = 0, initial_usage_time_limit = 0;
 uint32_t max_usage_time_period  = 600*1000;
-bool user_verified = false, user_present = false, needs_power_cycle = false;
+bool needs_power_cycle = false;
 mbedtls_ecdh_context hkey;
 bool hkey_init = false;
 
 int beginUsingPinUvAuthToken(bool userIsPresent) {
-    user_present = userIsPresent;
-    user_verified = true;
+    paut.user_present = userIsPresent;
+    paut.user_verified = true;
     initial_usage_time_limit = board_millis();
     usage_timer = board_millis();
     paut.in_use = true;
@@ -49,12 +49,12 @@ int beginUsingPinUvAuthToken(bool userIsPresent) {
 
 void clearUserPresentFlag() {
     if (paut.in_use == true)
-        user_present = false;
+        paut.user_present = false;
 }
 
 void clearUserVerifiedFlag() {
     if (paut.in_use == true)
-        user_verified = false;
+        paut.user_verified = false;
 }
 
 void clearPinUvAuthTokenPermissionsExceptLbw() {
@@ -69,20 +69,20 @@ void stopUsingPinUvAuthToken() {
     paut.in_use = false;
     memset(paut.rp_id_hash, 0, sizeof(paut.rp_id_hash));
     initial_usage_time_limit = 0;
-    user_present = user_verified = false;
+    paut.user_present = paut.user_verified = false;
     user_present_time_limit = 0;
 }
 
 bool getUserPresentFlagValue() {
     if (paut.in_use != true)
-        user_present = false;
-    return user_present;
+        paut.user_present = false;
+    return paut.user_present;
 }
 
  bool getUserVerifiedFlagValue() {
     if (paut.in_use != true)
-        user_verified = false;
-    return user_verified;
+        paut.user_verified = false;
+    return paut.user_verified;
  }
 
 int regenerate() {
@@ -184,6 +184,8 @@ int authenticate(uint8_t protocol, const uint8_t *key, const uint8_t *data, size
 
 int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign) {
     uint8_t hmac[32];
+    if (paut.in_use == false)
+        return -2;
     int ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, hmac);
     if (ret != 0)
         return ret;

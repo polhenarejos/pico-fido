@@ -64,8 +64,12 @@ extern void init_fido();
 #define FIDO2_PERMISSION_ACFG   0x20
 
 #define MAX_PIN_RETRIES 8
+extern bool getUserPresentFlagValue();
 extern bool getUserVerifiedFlagValue();
-#define MAX_CREDENTIAL_COUNT_IN_LIST    16
+extern void clearUserPresentFlag();
+extern void clearUserVerifiedFlag();
+extern void clearPinUvAuthTokenPermissionsExceptLbw();
+#define MAX_CREDENTIAL_COUNT_IN_LIST 16
 #define MAX_CRED_ID_LENGTH        1024
 #define MAX_RESIDENT_CREDENTIALS  256
 
@@ -88,10 +92,13 @@ typedef struct pinUvAuthToken {
     bool in_use;
     uint8_t permissions;
     uint8_t rp_id_hash[32];
+    bool user_present;
+    bool user_verified;
 } pinUvAuthToken_t;
 
 extern uint32_t user_present_time_limit;
 
 extern pinUvAuthToken_t paut;
+extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign);
 
 #endif //_FIDO_H
