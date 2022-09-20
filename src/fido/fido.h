@@ -34,11 +34,13 @@ extern int scan_files();
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecdsa_context *key);
 extern bool wait_button_pressed();
 extern CTAPHID_FRAME *ctap_req, *ctap_resp;
+extern void init_fido();
 
 #define FIDO2_ALG_ES256     -7 //ECDSA-SHA256 P256
 #define FIDO2_ALG_EDDSA     -8 //EdDSA
 #define FIDO2_ALG_ES384     -35 //ECDSA-SHA384 P384
 #define FIDO2_ALG_ES512     -36 //ECDSA-SHA512 P521
+#define FIDO2_ALG_ECDH_ES_HKDF_256 -25 //ECDH-ES + HKDF-256
 
 #define FIDO2_CURVE_P256        1
 #define FIDO2_CURVE_P384        2

@@ -221,6 +221,7 @@ int scan_files() {
 
 void scan_all() {
     scan_flash();
+    scan_files();
 }
 
 void init_fido() {
@@ -240,7 +241,7 @@ uint32_t user_present_time_limit = 0;
 
 bool check_user_presence() {
     if (user_present_time_limit == 0 || user_present_time_limit+TRANSPORT_TIME_LIMIT < board_millis()) {
-        if (wait_button() == true) //timeout
+        if (wait_button_pressed() == true) //timeout
             return false;
         user_present_time_limit = board_millis();
     }

@@ -19,6 +19,7 @@
 #include "fido.h"
 #include "ctap.h"
 #include "files.h"
+#include "apdu.h"
 
 int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder;
@@ -78,7 +79,6 @@ int cbor_get_info() {
     err:
     if (error != CborNoError)
         return -CTAP2_ERR_INVALID_CBOR;
-    size_t rs = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
-    driver_exec_finished(rs + 1);
+    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
     return 0;
 }

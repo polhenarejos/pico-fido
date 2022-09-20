@@ -92,7 +92,7 @@ int regenerate() {
     mbedtls_ecdh_init(&hkey);
     hkey_init = true;
     mbedtls_ecdh_setup(&hkey, MBEDTLS_ECP_DP_SECP256R1);
-    int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_gen_core0, NULL);
+    int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_gen, NULL);
     mbedtls_mpi_lset(&hkey.ctx.mbed_ecdh.Qp.Z, 1);
     if (ret != 0)
         return ret;
@@ -121,7 +121,7 @@ int kdf(uint8_t protocol, const mbedtls_mpi *z, uint8_t *sharedSecret) {
 int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret) {
     mbedtls_mpi z;
     mbedtls_mpi_init(&z);
-    int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, Q, &hkey.ctx.mbed_ecdh.d, random_gen_core0, NULL);
+    int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, Q, &hkey.ctx.mbed_ecdh.d, random_gen, NULL);
     ret = kdf(protocol, &z, sharedSecret);
     mbedtls_mpi_free(&z);
     return ret;
@@ -129,7 +129,7 @@ int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret) {
 
 int resetPinUvAuthToken() {
     uint8_t t[32];
-    random_gen_core0(NULL, t, sizeof(t));
+    random_gen(NULL, t, sizeof(t));
     flash_write_data_to_file(ef_authtoken, t, sizeof(t));
     paut.permissions = 0;
     paut.data = file_get_data(ef_authtoken);
@@ -145,7 +145,7 @@ int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, size_t in_l
         return aes_encrypt(key, NULL, 32*8, HSM_AES_MODE_CBC, out, in_len);
     }
     else if (protocol == 2) {
-        random_gen_core0(NULL, out, IV_SIZE);
+        random_gen(NULL, out, IV_SIZE);
         memcpy(out + IV_SIZE, in, in_len);
         return aes_encrypt(key+32, out, 32*8, HSM_AES_MODE_CBC, out+IV_SIZE, in_len);
     }
@@ -315,7 +315,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 2));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 3));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ES256));
+            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ECDH_ES_HKDF_256));
             CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder2, FIDO2_CURVE_P256));
             CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 2));
@@ -338,7 +338,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         if (file_has_data(ef_pin))
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         if (newPinEnc.len != 64)
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.X, kax.data, kax.len) != 0) {
@@ -438,7 +438,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (paddedNewPin[63] != 0)
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         uint8_t pin_len = 0;
-        while (paddedNewPin[pin_len] != 0 && pin_len < sizeof(pin_len))
+        while (paddedNewPin[pin_len] != 0 && pin_len < sizeof(paddedNewPin))
             pin_len++;
         if (pin_len < 4)
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
@@ -520,9 +520,9 @@ err:
     CBOR_FREE_BYTE_STRING(rpId);
     if (error != CborNoError) {
         if (error == CborErrorImproperValue)
-            return -CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
-        return -error;
+            return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        return error;
     }
-    driver_exec_finished(1+resp_size);
+    res_APDU_size = resp_size;
     return 0;
 }

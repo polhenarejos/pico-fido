@@ -161,7 +161,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rp.id.data, rp.id.len, rp_id_hash, 0);
-
+    printf("IEEEEEE 1\n");
     int curve = -1, alg = 0;
     if (pubKeyCredParams_len == 0)
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -191,7 +191,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     if (pinUvAuthParam.present == true) {
         if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
-            if (wait_button() == true)
+            if (check_user_presence() == false)
                 CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
             if (!file_has_data(ef_pin))
                 CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
@@ -230,7 +230,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         //Check pinUvAuthToken permissions. See 6.1.2.11
     }
-
+    printf("IEEEEEE 2\n");
     for (int e = 0; e < excludeList_len; e++) { //12.1
         if (excludeList[e].type.present == false || excludeList[e].id.present == false)
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -241,7 +241,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
 
     if (pinUvAuthParam.present && options.up == ptrue) { //14.1
-        if (wait_button_pressed() == true)
+        if (check_user_presence() == false)
             CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
         //rup = ptrue;
     }
@@ -272,7 +272,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t key[32];
     memset(key, 0, sizeof(key));
     uint8_t iv[12];
-    random_gen_core0(NULL, iv, sizeof(12));
+    random_gen(NULL, iv, sizeof(12));
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
@@ -298,7 +298,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         mbedtls_curve = MBEDTLS_ECP_DP_CURVE448;
     else
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
-
+    printf("IEEEEEE 3\n");
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
     uint8_t key_path[KEY_PATH_LEN];
@@ -362,7 +362,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
-
+    printf("IEEEEEE 4\n");
     size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + cred_id_len + rs) + ext_len;
     aut_data = (uint8_t *)calloc(1, aut_data_len + clientDataHash.len);
     uint8_t *pa = aut_data;
@@ -393,9 +393,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), 32);
         self_attestation = false;
     }
-    ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen_core0, NULL);
+    ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen, NULL);
     mbedtls_ecdsa_free(&ekey);
-
+    printf("IEEEEEE 5\n");
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 3));
 
@@ -421,7 +421,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
-
+    printf("IEEEEEE 6\n");
     err:
         CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
@@ -447,10 +447,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         free(cred_id);
     if (error != CborNoError) {
         if (error == CborErrorImproperValue)
-            return -CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
-        return -error;
+            return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        return error;
     }
-    driver_exec_finished(1+resp_size);
+    res_APDU_size = resp_size;
     return 0;
 }
 
