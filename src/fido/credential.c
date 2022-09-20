@@ -143,7 +143,7 @@ void credential_free(Credential *cred) {
 }
 
 int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {
-    file_t *slot = NULL;
+    int sloti = -1;
     Credential cred = {0};
     int ret = 0;
     ret = credential_load(cred_id, cred_id_len, rp_id_hash, &cred);
@@ -155,8 +155,8 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         file_t *ef = search_dynamic_file(EF_CRED + i);
         Credential rcred = {0};
         if (!file_has_data(ef)) {
-            if (slot == NULL)
-                slot = ef;
+            if (sloti == -1)
+                sloti = i;
             continue;
         }
         if (memcmp(file_get_data(ef), rp_id_hash, 32) != 0)
@@ -167,19 +167,20 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
             continue;
         }
         if (memcmp(rcred.userId.data, cred.userId.data, MIN(rcred.userId.len, cred.userId.len)) == 0) {
-            slot = ef;
+            sloti = i;
             credential_free(&rcred);
             break;
         }
         credential_free(&rcred);
     }
-    if (slot == NULL)
+    if (sloti == -1)
         return -1;
     credential_free(&cred);
     uint8_t *data = (uint8_t *)calloc(1, cred_id_len+32);
     memcpy(data, rp_id_hash, 32);
     memcpy(data + 32, cred_id, cred_id_len);
-    flash_write_data_to_file(slot, data, cred_id_len + 32);
+    file_t *ef = file_new(EF_CRED+sloti);
+    flash_write_data_to_file(ef, data, cred_id_len + 32);
     low_flash_available();
     return 0;
 }
