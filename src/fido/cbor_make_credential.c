@@ -108,6 +108,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_PARSE_ARRAY_END(_f1, 2);
         }
         else if (val_u == 0x06) { // extensions
+            extensions.present = true;
             CBOR_PARSE_MAP_START(_f1, 2) {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
