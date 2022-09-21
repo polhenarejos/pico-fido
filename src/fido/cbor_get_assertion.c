@@ -292,14 +292,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
         }
     }
 
-    uint8_t cred_id[MAX_CRED_ID_LENGTH];
-    size_t cred_id_len = 0;
-    if (credential_create_cred(selcred, cred_id, &cred_id_len) != 0)
-        CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
-
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
-    int ret = fido_load_key(selcred->curve, cred_id, &ekey);
+    int ret = fido_load_key(selcred->curve, selcred->id.data, &ekey);
     if (ret != 0) {
         mbedtls_ecdsa_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -414,7 +409,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 2));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
-    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_id, cred_id_len));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->id.data, selcred->id.len));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));

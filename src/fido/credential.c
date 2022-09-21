@@ -38,10 +38,6 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
     return mbedtls_chachapoly_auth_decrypt(&chatx, cred_id_len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
 }
 
-int credential_create_cred(Credential *cred, uint8_t *cred_id, size_t *cred_id_len) {
-    return credential_create(&cred->rpId, &cred->userId, &cred->userName, &cred->userDisplayName, &cred->extensions, cred->use_sign_count, cred->alg, cred->curve, cred_id, cred_id_len);
-}
-
 int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
@@ -92,6 +88,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     }
     memcpy(cred_id, "\xf1\xd0\x02\x00", 4);
     memcpy(cred_id + 4, iv, 12);
+
     err:
     if (error != CborNoError) {
         if (error == CborErrorImproperValue)
@@ -151,7 +148,10 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
             CBOR_ADVANCE(1);
         }
     }
-
+    cred->id.present = true;
+    cred->id.data = (uint8_t *)calloc(1, cred_id_len);
+    memcpy(cred->id.data, cred_id, cred_id_len);
+    cred->id.len = cred_id_len;
     cred->present = true;
     err:
     free(copy_cred_id);
@@ -168,6 +168,7 @@ void credential_free(Credential *cred) {
     CBOR_FREE_BYTE_STRING(cred->userId);
     CBOR_FREE_BYTE_STRING(cred->userName);
     CBOR_FREE_BYTE_STRING(cred->userDisplayName);
+    CBOR_FREE_BYTE_STRING(cred->id);
     cred->present = false;
     cred->extensions.present = false;
 }
