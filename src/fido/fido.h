@@ -35,6 +35,8 @@ extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, 
 extern bool wait_button_pressed();
 extern CTAPHID_FRAME *ctap_req, *ctap_resp;
 extern void init_fido();
+extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
+extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);
 
 #define FIDO2_ALG_ES256     -7 //ECDSA-SHA256 P256
 #define FIDO2_ALG_EDDSA     -8 //EdDSA

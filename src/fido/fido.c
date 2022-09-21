@@ -62,6 +62,34 @@ int fido_unload() {
     return CCID_OK;
 }
 
+mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
+    if (curve == FIDO2_CURVE_P256)
+        return MBEDTLS_ECP_DP_SECP256R1;
+    else if (curve == FIDO2_CURVE_P384)
+        return MBEDTLS_ECP_DP_SECP384R1;
+    else if (curve == FIDO2_CURVE_P521)
+        return MBEDTLS_ECP_DP_SECP521R1;
+    else if (curve == FIDO2_CURVE_P256K1)
+        return MBEDTLS_ECP_DP_SECP256K1;
+    else if (curve == FIDO2_CURVE_X25519)
+        return MBEDTLS_ECP_DP_CURVE25519;
+    else if (curve == FIDO2_CURVE_X448)
+        return MBEDTLS_ECP_DP_CURVE448;
+    return MBEDTLS_ECP_DP_NONE;
+}
+
+int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key) {
+    mbedtls_ecp_group_id mbedtls_curve = fido_curve_to_mbedtls(curve);
+    if (mbedtls_curve == MBEDTLS_ECP_DP_NONE)
+        return CTAP2_ERR_UNSUPPORTED_ALGORITHM;
+    uint8_t key_path[KEY_PATH_LEN];
+    memcpy(key_path, cred_id, KEY_PATH_LEN);
+    *(uint32_t *)key_path = 0x80000000 | 10022;
+    for (int i = 1; i < KEY_PATH_ENTRIES; i++)
+        *(uint32_t *)(key_path+i*sizeof(uint32_t)) |= 0x80000000;
+    return derive_key(NULL, false, key_path, mbedtls_curve, key);
+}
+
 int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size) {
     mbedtls_x509write_cert ctx;
     mbedtls_x509write_crt_init(&ctx);
@@ -107,7 +135,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     {
         if (new_key == true) {
             uint32_t val = 0;
-            random_gen_core0(NULL, (uint8_t *) &val, sizeof(val));
+            random_gen(NULL, (uint8_t *) &val, sizeof(val));
             val |= 0x80000000;
             memcpy(&key_handle[i*sizeof(uint32_t)], &val, sizeof(uint32_t));
         }
@@ -137,7 +165,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         mbedtls_platform_zeroize(outk, sizeof(outk));
         if (r != 0)
             return r;
-        return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen_core0, NULL);
+        return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL);
     }
     mbedtls_platform_zeroize(outk, sizeof(outk));
     return r;

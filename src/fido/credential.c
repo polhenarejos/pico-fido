@@ -38,6 +38,10 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
     return mbedtls_chachapoly_auth_decrypt(&chatx, cred_id_len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
 }
 
+int credential_create_cred(Credential *cred, uint8_t *cred_id, size_t *cred_id_len) {
+    return credential_create(&cred->rpId, &cred->userId, &cred->userName, &cred->userDisplayName, &cred->extensions, cred->use_sign_count, cred->alg, cred->curve, cred_id, cred_id_len);
+}
+
 int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
@@ -108,6 +112,8 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
     CborValue map;
     CborError error;
     memset(cred, 0, sizeof(Credential));
+    cred->curve = FIDO2_CURVE_P256;
+    cred->alg = FIDO2_ALG_ES256;
     CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser, &map));
     CBOR_PARSE_MAP_START(map, 1) {
         uint64_t val_u = 0;
@@ -160,6 +166,8 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
 void credential_free(Credential *cred) {
     CBOR_FREE_BYTE_STRING(cred->rpId);
     CBOR_FREE_BYTE_STRING(cred->userId);
+    CBOR_FREE_BYTE_STRING(cred->userName);
+    CBOR_FREE_BYTE_STRING(cred->userDisplayName);
     cred->present = false;
     cred->extensions.present = false;
 }

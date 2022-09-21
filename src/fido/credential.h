@@ -37,6 +37,8 @@ typedef struct Credential
 {
     CborCharString rpId;
     CborByteString userId;
+    CborCharString userName;
+    CborCharString userDisplayName;
     uint64_t creation;
     CredExtensions extensions;
     const bool *use_sign_count;
@@ -54,5 +56,6 @@ extern int credential_create(CborCharString *rpId, CborByteString *userId, CborC
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
 extern int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred);
+extern int credential_create_cred(Credential *cred, uint8_t *cred_id, size_t *cred_id_len);
 
 #endif // _CREDENTIAL_H_

@@ -27,14 +27,26 @@
 #include "apdu.h"
 #include "cbor_make_credential.h"
 #include "credential.h"
+#include <math.h>
 
-int cbor_client_pin(const uint8_t *data, size_t len) {
+CborCharString rpIdx = {0};
+CborByteString pinUvAuthParamx = {0}, clientDataHashx = {0};
+bool residentx = false;
+Credential credsx[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
+uint64_t pinUvAuthProtocolx = 0;
+CredExtensions extensionx = {0};
+CredOptions optionsx = {0};
+uint8_t flagsx = 0;
+uint8_t credentialCounter = 1;
+uint8_t numberOfCredentialsx = 0;
+
+int cbor_get_assertion(const uint8_t *data, size_t len) {
     size_t resp_size = 0;
     uint64_t pinUvAuthProtocol = 0;
     CredOptions options = {0};
     CredExtensions extensions = {0};
     CborParser parser;
-    CborEncoder encoder, mapEncoder;
+    CborEncoder encoder, mapEncoder, mapEncoder2;
     CborValue map;
     CborError error = CborNoError;
     CborByteString pinUvAuthParam = {0}, clientDataHash = {0};
@@ -42,6 +54,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
     PublicKeyCredentialDescriptor allowList[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
     Credential creds[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
     size_t allowList_len = 0, creds_len = 0;
+    uint8_t *aut_data = NULL;
+    bool asserted = false;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -173,7 +187,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             int ret = credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, &creds[creds_len]);
             if (ret != 0)
                 credential_free(&creds[creds_len]);
-            creds_len++;
+            else
+                creds_len++;
         }
         resident = true;
     }
@@ -207,17 +222,157 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         clearUserVerifiedFlag();
         clearPinUvAuthTokenPermissionsExceptLbw();
     }
-    if (resident) {
-
+    if (numberOfCredentials == 0)
+        CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+    Credential *selcred = NULL;
+    if (resident == false) {
+        selcred = &creds[0];
     }
     else {
-
+        if (numberOfCredentials == 1)
+            selcred = &creds[0];
+        else {
+            asserted = true;
+            rpIdx = rpId;
+            pinUvAuthParamx = pinUvAuthParamx;
+            clientDataHashx = clientDataHash;
+            residentx = resident;
+            for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++)
+                credsx[i] = creds[i];
+            numberOfCredentialsx = numberOfCredentials;
+            pinUvAuthProtocolx = pinUvAuthProtocol;
+            extensionx = extensions;
+            optionsx = options;
+            flagsx = flags;
+        }
     }
 
+    uint8_t cred_id[MAX_CRED_ID_LENGTH];
+    size_t cred_id_len = 0;
+    if (credential_create_cred(selcred, cred_id, &cred_id_len) != 0)
+        CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
+
+    mbedtls_ecdsa_context ekey;
+    mbedtls_ecdsa_init(&ekey);
+    int ret = fido_load_key(selcred->curve, cred_id, &ekey);
+    if (ret != 0) {
+        mbedtls_ecdsa_free(&ekey);
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
+
+    size_t ext_len = 0;
+    uint8_t ext [512];
+    if (extensions.present == true) {
+        cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
+        int l = 0;
+        if (extensions.hmac_secret != NULL)
+            l++;
+        if (extensions.credProtect != 0)
+            l++;
+        CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
+        if (extensions.credProtect != 0) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
+        }
+        if (extensions.hmac_secret != NULL) {
+
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *extensions.hmac_secret));
+        }
+
+        CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+        ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
+        flags |= FIDO2_AUT_FLAG_ED;
+    }
+    uint8_t pkey[66];
+    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(ekey.grp.id);
+    if (cinfo == NULL)
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+    size_t olen = 0, pkey_len = ceil((float)cinfo->bit_size/8);
+    uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
+    uint8_t cbor_buf[1024];
+    cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  5));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 1));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 2));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 3));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, -selcred->alg));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 1));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, selcred->curve));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 2));
+    mbedtls_mpi_write_binary(&ekey.Q.X, pkey, pkey_len);
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, pkey_len));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 3));
+    mbedtls_mpi_write_binary(&ekey.Q.Y, pkey, pkey_len);
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, pkey_len));
+
+    CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+    size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
+
+    size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + cred_id_len + rs) + ext_len;
+    aut_data = (uint8_t *)calloc(1, aut_data_len + clientDataHash.len);
+    uint8_t *pa = aut_data;
+    memcpy(pa, rp_id_hash, 32); pa += 32;
+    *pa++ = flags;
+    *pa++ = ctr >> 24;
+    *pa++ = ctr >> 16;
+    *pa++ = ctr >> 8;
+    *pa++ = ctr & 0xff;
+    memcpy(pa, aaguid, 16); pa += 16;
+    *pa++ = cred_id_len >> 8;
+    *pa++ = cred_id_len & 0xff;
+    memcpy(pa, cred_id, cred_id_len); pa += cred_id_len;
+    memcpy(pa, cbor_buf, rs); pa += rs;
+    memcpy(pa, ext, ext_len); pa += ext_len;
+    if (pa-aut_data != aut_data_len)
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+
+    memcpy(pa, clientDataHash.data, clientDataHash.len);
+    uint8_t hash[32], sig[MBEDTLS_ECDSA_MAX_LEN];
+    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), aut_data, aut_data_len+clientDataHash.len, hash);
+    ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen, NULL);
+    mbedtls_ecdsa_free(&ekey);
+
+    uint8_t lfields = 3;
+    if (resident)
+        lfields++;
+    if (numberOfCredentials > 1)
+        lfields++;
+    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 2));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_id, cred_id_len));
+    CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aut_data, aut_data_len));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, sig, olen));
+
+    if (resident) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
+        CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 1));
+        CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->userId.data, selcred->userId.len));
+        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+    }
+    if (numberOfCredentials > 1) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
+    }
+    CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     err:
+    if (asserted == false) {
         CBOR_FREE_BYTE_STRING(clientDataHash);
-    CBOR_FREE_BYTE_STRING(pinUvAuthParam);
-    CBOR_FREE_BYTE_STRING(rpId);
+        CBOR_FREE_BYTE_STRING(pinUvAuthParam);
+        CBOR_FREE_BYTE_STRING(rpId);
+    }
 
     for (int m = 0; m < allowList_len; m++) {
         CBOR_FREE_BYTE_STRING(allowList[m].type);
@@ -226,6 +381,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_FREE_BYTE_STRING(allowList[m].transports[n]);
         }
     }
+    if (aut_data)
+        free(aut_data);
     if (error != CborNoError) {
         if (error == CborErrorImproperValue)
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;

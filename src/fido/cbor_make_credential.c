@@ -244,30 +244,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
-    mbedtls_ecp_group_id mbedtls_curve = MBEDTLS_ECP_DP_SECP256R1;
-    if (curve == FIDO2_CURVE_P256)
-        mbedtls_curve = MBEDTLS_ECP_DP_SECP256R1;
-    else if (curve == FIDO2_CURVE_P384)
-        mbedtls_curve = MBEDTLS_ECP_DP_SECP384R1;
-    else if (curve == FIDO2_CURVE_P521)
-        mbedtls_curve = MBEDTLS_ECP_DP_SECP521R1;
-    else if (curve == FIDO2_CURVE_P256K1)
-        mbedtls_curve = MBEDTLS_ECP_DP_SECP256K1;
-    else if (curve == FIDO2_CURVE_X25519)
-        mbedtls_curve = MBEDTLS_ECP_DP_CURVE25519;
-    else if (curve == FIDO2_CURVE_X448)
-        mbedtls_curve = MBEDTLS_ECP_DP_CURVE448;
-    else
-        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
-
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
-    uint8_t key_path[KEY_PATH_LEN];
-    memcpy(key_path, cred_id, KEY_PATH_LEN);
-    *(uint32_t *)key_path = 0x80000000 | 10022;
-    for (int i = 1; i < KEY_PATH_ENTRIES; i++)
-        *(uint32_t *)(key_path+i*sizeof(uint32_t)) |= 0x80000000;
-    int ret = derive_key(NULL, false, key_path, mbedtls_curve, &ekey);
+    int ret = fido_load_key(curve, cred_id, &ekey);
     if (ret != 0) {
         mbedtls_ecdsa_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -301,7 +280,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         flags |= FIDO2_AUT_FLAG_ED;
     }
     uint8_t pkey[66];
-    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(mbedtls_curve);
+    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(ekey.grp.id);
     if (cinfo == NULL)
         CBOR_ERROR(CTAP1_ERR_OTHER);
     size_t olen = 0, pkey_len = ceil((float)cinfo->bit_size/8);
