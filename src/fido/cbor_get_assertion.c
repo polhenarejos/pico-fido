@@ -39,6 +39,24 @@ CredOptions optionsx = {0};
 uint8_t flagsx = 0;
 uint8_t credentialCounter = 1;
 uint8_t numberOfCredentialsx = 0;
+uint32_t timerx = 0;
+
+int cbor_get_next_assertion(const uint8_t *data, size_t len) {
+    CborError error = CborNoError;
+    if (clientDataHashx.present == false || rpIdx.present == false || pinUvAuthParamx.present == false || pinUvAuthProtocolx == 0 || numberOfCredentialsx == 0)
+        CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+    if (credentialCounter == numberOfCredentialsx)
+        CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+    if (timerx+30*1000 < board_millis())
+        CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+err:
+    if (error != CborNoError) {
+        if (error == CborErrorImproperValue)
+            return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        return error;
+    }
+    return 0;
+}
 
 int cbor_get_assertion(const uint8_t *data, size_t len) {
     size_t resp_size = 0;
@@ -289,6 +307,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
             extensionx = extensions;
             optionsx = options;
             flagsx = flags;
+            timerx = board_millis();
         }
     }
 
@@ -302,7 +321,6 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
 
     size_t ext_len = 0;
     uint8_t ext [512];
-    /*
     if (extensions.present == true) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
         int l = 0;
@@ -354,7 +372,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
             uint8_t cred_random[64], *crd = NULL;
-            ret = credential_derive_hmac_key(cred_id, cred_id_len, cred_random);
+            ret = credential_derive_hmac_key(selcred->id.data, selcred->id.len, cred_random);
             if (ret != 0) {
                 mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -375,7 +393,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
         ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
         flags |= FIDO2_AUT_FLAG_ED;
     }
-*/
+
     uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
 
     size_t aut_data_len = 32 + 1 + 4 + ext_len;
