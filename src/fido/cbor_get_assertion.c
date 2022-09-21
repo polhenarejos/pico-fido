@@ -29,28 +29,39 @@
 #include "credential.h"
 #include <math.h>
 
-CborCharString rpIdx = {0};
-CborByteString pinUvAuthParamx = {0}, clientDataHashx = {0};
 bool residentx = false;
 Credential credsx[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
-uint64_t pinUvAuthProtocolx = 0;
-CredExtensions extensionx = {0};
-CredOptions optionsx = {0};
-uint8_t flagsx = 0;
 uint8_t credentialCounter = 1;
 uint8_t numberOfCredentialsx = 0;
+uint8_t flagsx = 0;
 uint32_t timerx = 0;
+uint8_t *datax = NULL;
+size_t lenx = 0;
 
 int cbor_get_next_assertion(const uint8_t *data, size_t len) {
     CborError error = CborNoError;
-    if (clientDataHashx.present == false || rpIdx.present == false || pinUvAuthParamx.present == false || pinUvAuthProtocolx == 0 || numberOfCredentialsx == 0)
-        CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
-    if (credentialCounter == numberOfCredentialsx)
+    printf("%d %d %ld %ld\n", credentialCounter, numberOfCredentialsx, timerx, board_millis());
+    if (credentialCounter >= numberOfCredentialsx)
         CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
     if (timerx+30*1000 < board_millis())
         CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+    CBOR_CHECK(cbor_get_assertion(datax, lenx, true));
+    timerx = board_millis();
+    credentialCounter++;
 err:
     if (error != CborNoError) {
+        for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++)
+            credential_free(&credsx[i]);
+        if (datax) {
+            free(datax);
+            datax = NULL;
+        }
+        lenx = 0;
+        residentx = false;
+        timerx = 0;
+        flagsx = 0;
+        credentialCounter = 0;
+        numberOfCredentialsx = 0;
         if (error == CborErrorImproperValue)
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
         return error;
@@ -58,7 +69,7 @@ err:
     return 0;
 }
 
-int cbor_get_assertion(const uint8_t *data, size_t len) {
+int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     size_t resp_size = 0;
     uint64_t pinUvAuthProtocol = 0, hmacSecretPinUvAuthProtocol = 1;
     CredOptions options = {0};
@@ -189,128 +200,137 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rpId.data, rpId.len, rp_id_hash, 0);
 
-    if (pinUvAuthParam.present == true) {
-        if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
-            if (check_user_presence() == false)
-                CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
-            if (!file_has_data(ef_pin))
-                CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
-            else
-                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        }
-        else {
-            if (pinUvAuthProtocol == 0)
-            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-        }
-    }
-    if (options.present) {
-        if (options.uv == ptrue) { //4.3
-            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
-        }
-        //if (options.up != NULL) { //4.5
-        //    CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
-        //}
-        if (options.rk != NULL) {
-            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
-        }
-        //else if (options.up == NULL) //5.7
-            //rup = ptrue;
-    }
-
-    if (pinUvAuthParam.present == true) { //6.1
-        int ret = verify(pinUvAuthProtocol, paut.data, clientDataHash.data, clientDataHash.len, pinUvAuthParam.data);
-        if (ret != CborNoError)
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        if (getUserVerifiedFlagValue() == false)
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        flags |= FIDO2_AUT_FLAG_UV;
-        // Check pinUvAuthToken permissions. See 6.2.2.4
-    }
-
     bool resident = false;
-    if (allowList_len > 0)
-    {
-        for (int e = 0; e < allowList_len; e++) {
-            if (allowList[e].type.present == false || allowList[e].id.present == false)
-                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            if (strcmp(allowList[e].type.data, "public-key") != 0)
-                continue;
-            if (credential_load(allowList[e].id.data, allowList[e].id.len, rp_id_hash, &creds[e]) != 0)
-                CBOR_FREE_BYTE_STRING(allowList[e].id);
-        }
-        creds_len = allowList_len;
-    }
-    else {
-        for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-            file_t *ef = search_dynamic_file(EF_CRED + i);
-            if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0)
-                continue;
-            int ret = credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, &creds[creds_len]);
-            if (ret != 0)
-                credential_free(&creds[creds_len]);
-            else
-                creds_len++;
-        }
-        resident = true;
-    }
     uint8_t numberOfCredentials = 0;
-    for (int i = 0; i < creds_len; i++) {
-        if (creds[i].present == true) {
-            if (creds[i].extensions.present == true) {
-                if (creds[i].extensions.credProtect == CRED_PROT_UV_REQUIRED && !(flags & FIDO2_AUT_FLAG_UV))
-                    credential_free(&creds[i]);
-                else if (creds[i].extensions.credProtect == CRED_PROT_UV_OPTIONAL_WITH_LIST && resident == true && !(flags & FIDO2_AUT_FLAG_UV))
-                    credential_free(&creds[i]);
-                else
-                    numberOfCredentials++;
-            }
-            else
-                numberOfCredentials++;
-        }
-    }
-    if (numberOfCredentials == 0)
-        CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
-
-    if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
+    Credential *selcred = NULL;
+    if (next == false) {
         if (pinUvAuthParam.present == true) {
-            if (getUserPresentFlagValue() == false) {
+            if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
                 if (check_user_presence() == false)
                     CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                if (!file_has_data(ef_pin))
+                    CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
+                else
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
+            else {
+                if (pinUvAuthProtocol == 0)
+                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+                if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
         }
-        flags |= FIDO2_AUT_FLAG_UP;
-        clearUserPresentFlag();
-        clearUserVerifiedFlag();
-        clearPinUvAuthTokenPermissionsExceptLbw();
-    }
-    if (numberOfCredentials == 0)
-        CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
-    Credential *selcred = NULL;
-    if (resident == false) {
-        selcred = &creds[0];
-    }
-    else {
-        if (numberOfCredentials == 1)
-            selcred = &creds[0];
+        if (options.present) {
+            if (options.uv == ptrue) { //4.3
+                CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+            }
+            //if (options.up != NULL) { //4.5
+            //    CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+            //}
+            if (options.rk != NULL) {
+                CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+            }
+            //else if (options.up == NULL) //5.7
+                //rup = ptrue;
+        }
+
+        if (pinUvAuthParam.present == true) { //6.1
+            int ret = verify(pinUvAuthProtocol, paut.data, clientDataHash.data, clientDataHash.len, pinUvAuthParam.data);
+            if (ret != CborNoError)
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            if (getUserVerifiedFlagValue() == false)
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            flags |= FIDO2_AUT_FLAG_UV;
+            // Check pinUvAuthToken permissions. See 6.2.2.4
+        }
+
+        if (allowList_len > 0)
+        {
+            for (int e = 0; e < allowList_len; e++) {
+                if (allowList[e].type.present == false || allowList[e].id.present == false)
+                    CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+                if (strcmp(allowList[e].type.data, "public-key") != 0)
+                    continue;
+                if (credential_load(allowList[e].id.data, allowList[e].id.len, rp_id_hash, &creds[creds_len]) != 0) {
+                    CBOR_FREE_BYTE_STRING(allowList[e].id);
+                    credential_free(&creds[creds_len]);
+                }
+                else
+                    creds_len++;
+            }
+        }
         else {
-            asserted = true;
-            rpIdx = rpId;
-            pinUvAuthParamx = pinUvAuthParamx;
-            clientDataHashx = clientDataHash;
-            residentx = resident;
-            for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++)
-                credsx[i] = creds[i];
-            numberOfCredentialsx = numberOfCredentials;
-            pinUvAuthProtocolx = pinUvAuthProtocol;
-            extensionx = extensions;
-            optionsx = options;
-            flagsx = flags;
-            timerx = board_millis();
+            for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
+                file_t *ef = search_dynamic_file(EF_CRED + i);
+                if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0)
+                    continue;
+                int ret = credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, &creds[creds_len]);
+                if (ret != 0)
+                    credential_free(&creds[creds_len]);
+                else
+                    creds_len++;
+            }
+            resident = true;
+        }
+        for (int i = 0; i < creds_len; i++) {
+            if (creds[i].present == true) {
+                if (creds[i].extensions.present == true) {
+                    if (creds[i].extensions.credProtect == CRED_PROT_UV_REQUIRED && !(flags & FIDO2_AUT_FLAG_UV))
+                        credential_free(&creds[i]);
+                    else if (creds[i].extensions.credProtect == CRED_PROT_UV_OPTIONAL_WITH_LIST && resident == true && !(flags & FIDO2_AUT_FLAG_UV))
+                        credential_free(&creds[i]);
+                    else
+                        creds[numberOfCredentials++] = creds[i];
+                }
+                else
+                    creds[numberOfCredentials++] = creds[i];
+            }
+        }
+        printf("!! %d %d %d\n", numberOfCredentials, creds_len, allowList_len);
+        if (numberOfCredentials == 0)
+            CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+
+        if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
+            if (pinUvAuthParam.present == true) {
+                if (getUserPresentFlagValue() == false) {
+                    if (check_user_presence() == false)
+                        CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                }
+            }
+            flags |= FIDO2_AUT_FLAG_UP;
+            clearUserPresentFlag();
+            clearUserVerifiedFlag();
+            clearPinUvAuthTokenPermissionsExceptLbw();
+        }
+        if (numberOfCredentials == 0)
+            CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+
+        if (!(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV)) {
+            selcred = &creds[0];
+        }
+        else {
+            selcred = &creds[0];
+            if (numberOfCredentials > 1) {
+                asserted = true;
+                residentx = resident;
+                for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++)
+                    credsx[i] = creds[i];
+                numberOfCredentialsx = numberOfCredentials;
+                datax = (uint8_t *)calloc(1, len);
+                memcpy(datax, data, len);
+                lenx = len;
+                flagsx = flags;
+                timerx = board_millis();
+                credentialCounter = 1;
+            }
         }
     }
-
+    else {
+        resident = residentx;
+        numberOfCredentials = numberOfCredentialsx;
+        flags = flagsx;
+        selcred = &credsx[credentialCounter];
+    }
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
     int ret = fido_load_key(selcred->curve, selcred->id.data, &ekey);
@@ -419,7 +439,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
     uint8_t lfields = 3;
     if (resident)
         lfields++;
-    if (numberOfCredentials > 1)
+    if (numberOfCredentials > 1 && next == false)
         lfields++;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
@@ -444,7 +464,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->userId.data, selcred->userId.len));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
-    if (numberOfCredentials > 1) {
+    if (numberOfCredentials > 1 && next == false) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
     }

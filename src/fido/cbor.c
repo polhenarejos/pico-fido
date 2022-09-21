@@ -45,7 +45,9 @@ int cbor_parse(const uint8_t *data, size_t len) {
     else if (data[0] == CTAP_CLIENT_PIN)
         return cbor_client_pin(data + 1, len - 1);
     else if (data[0] == CTAP_GET_ASSERTION)
-        return cbor_get_assertion(data + 1, len - 1);
+        return cbor_get_assertion(data + 1, len - 1, false);
+    else if (data[0] == CTAP_GET_NEXT_ASSERTION)
+        return cbor_get_next_assertion(data + 1, len - 1);
     return CTAP2_ERR_INVALID_CBOR;
 }
 
