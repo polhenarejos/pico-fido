@@ -184,8 +184,8 @@ int authenticate(uint8_t protocol, const uint8_t *key, const uint8_t *data, size
 
 int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign) {
     uint8_t hmac[32];
-    if (paut.in_use == false)
-        return -2;
+    //if (paut.in_use == false)
+    //    return -2;
     int ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, hmac);
     if (ret != 0)
         return ret;
