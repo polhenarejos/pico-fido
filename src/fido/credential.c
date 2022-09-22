@@ -27,11 +27,14 @@
 #include "file.h"
 #include "hsm.h"
 
+int credential_derive_chacha_key(uint8_t *outk);
+
 int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {
     if (cred_id_len < 4+12+16)
             return -1;
     uint8_t key[32], *iv = cred_id + 4, *cipher = cred_id + 4 + 12, *tag = cred_id + cred_id_len - 16;
     memset(key, 0, sizeof(key));
+    credential_derive_chacha_key(key);
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
@@ -76,6 +79,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     *cred_id_len = 4 + 12 + rs + 16;
     uint8_t key[32];
     memset(key, 0, sizeof(key));
+    credential_derive_chacha_key(key);
     uint8_t iv[12];
     random_gen(NULL, iv, sizeof(12));
     mbedtls_chachapoly_context chatx;
@@ -227,5 +231,18 @@ int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"\xf1\xd0\x02\x00", 4, outk);
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"hmac-secret", 11, outk);
     mbedtls_md_hmac(md_info, outk, 32, cred_id, cred_id_len, outk);
+    return 0;
+}
+
+int credential_derive_chacha_key(uint8_t *outk) {
+    memset(outk, 0, 64);
+    int r = 0;
+    if ((r = load_keydev(outk)) != 0)
+        return r;
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"\xf1\xd0\x02\x00", 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"Encryption key", 14, outk);
     return 0;
 }
