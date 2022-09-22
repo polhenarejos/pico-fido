@@ -53,6 +53,7 @@ int cbor_parse(const uint8_t *data, size_t len) {
 
 void cbor_thread() {
 
+    card_init_core1();
     while (1) {
         uint32_t m;
         queue_remove_blocking(&usb_to_card_q, &m);
