@@ -64,7 +64,7 @@ int cmd_authenticate() {
     }
     resp->flags = 0;
     resp->flags |= P1(apdu) == CTAP_AUTH_ENFORCE ? CTAP_AUTH_FLAG_TUP : 0x0;
-    uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
+    uint32_t ctr = get_sign_counter();
     resp->ctr[0] = ctr >> 24;
     resp->ctr[1] = ctr >> 16;
     resp->ctr[2] = ctr >> 8;
