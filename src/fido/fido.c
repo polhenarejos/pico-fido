@@ -216,7 +216,6 @@ int scan_files(bool core1) {
             if (ret <= 0)
                 return ret;
             flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
-            DEBUG_DATA(cert + sizeof(cert) - ret, ret);
         }
     }
     else {

@@ -69,6 +69,5 @@ int cmd_register() {
     if (ret != 0)
         return SW_EXEC_ERROR();
     res_APDU_size = sizeof(CTAP_REGISTER_RESP) - sizeof(resp->keyHandleCertSig) + KEY_HANDLE_LEN + ef_certdev_size + olen;
-    DEBUG_PAYLOAD(res_APDU, res_APDU_size);
     return SW_OK();
 }
