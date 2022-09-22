@@ -61,7 +61,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
         }
         if (extensions->hmac_secret != NULL) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "hmac-secret"));
-            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *extensions->hmac_secret));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder2, *extensions->hmac_secret));
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
