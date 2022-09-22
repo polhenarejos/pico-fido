@@ -420,7 +420,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         flags |= FIDO2_AUT_FLAG_ED;
     }
 
-    uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
+    uint32_t ctr = get_sign_counter();
 
     size_t aut_data_len = 32 + 1 + 4 + ext_len;
     aut_data = (uint8_t *)calloc(1, aut_data_len + clientDataHash.len);

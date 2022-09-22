@@ -31,6 +31,6 @@ int cbor_reset() {
     if (check_user_presence() == false)
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     initialize_flash(true);
-    scan_all();
+    init_fido(true);
     return 0;
 }

@@ -33,7 +33,7 @@
 #include <math.h>
 #include <stdio.h>
 
-void init_fido();
+void init_fido(bool);
 int fido_process_apdu();
 int fido_unload();
 
@@ -49,7 +49,7 @@ app_t *fido_select(app_t *a) {
     a->process_apdu = fido_process_apdu;
     a->unload = fido_unload;
     current_app = a;
-    init_fido();
+    init_fido(false);
     return a;
 }
 
@@ -90,7 +90,7 @@ int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key)
     return derive_key(NULL, false, key_path, mbedtls_curve, key);
 }
 
-int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size) {
+int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size, bool core1) {
     mbedtls_x509write_cert ctx;
     mbedtls_x509write_crt_init(&ctx);
     mbedtls_x509write_crt_set_version(&ctx, MBEDTLS_X509_CRT_VERSION_3);
@@ -99,7 +99,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_mpi serial;
     mbedtls_mpi_init(&serial);
-    mbedtls_mpi_fill_random(&serial, 32, random_gen_core0, NULL);
+    mbedtls_mpi_fill_random(&serial, 32, core1 ? random_gen : random_gen_core0, NULL);
     mbedtls_x509write_crt_set_serial(&ctx, &serial);
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
@@ -112,7 +112,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_subject_key_identifier(&ctx);
     mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
     mbedtls_x509write_crt_set_key_usage(&ctx, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN);
-    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_gen_core0, NULL);
+    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, core1 ? random_gen : random_gen_core0, NULL);
     return ret;
 }
 
@@ -171,7 +171,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     return r;
 }
 
-int scan_files() {
+int scan_files(bool core1) {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     if (ef_keydev) {
         if (!file_has_data(ef_keydev)) {
@@ -179,7 +179,7 @@ int scan_files() {
             mbedtls_ecdsa_context ecdsa;
             mbedtls_ecdsa_init(&ecdsa);
             uint8_t index = 0;
-            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, random_gen_core0, &index);
+            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, core1 ? random_gen : random_gen_core0, &index);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ecdsa);
                 return ret;
@@ -208,12 +208,12 @@ int scan_files() {
             int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);
             if (ret != 0)
                 return ret;
-            ret = x509_create_cert(&key, cert, sizeof(cert));
+            ret = x509_create_cert(&key, cert, sizeof(cert), core1);
             mbedtls_ecdsa_free(&key);
             if (ret <= 0)
                 return ret;
             flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
-            DEBUG_PAYLOAD(cert + sizeof(cert) - ret, ret);
+//            DEBUG_PAYLOAD(cert + sizeof(cert) - ret, ret);
         }
     }
     else {
@@ -234,7 +234,10 @@ int scan_files() {
     if (ef_authtoken) {
         if (!file_has_data(ef_authtoken)) {
             uint8_t t[32];
-            random_gen_core0(NULL, t, sizeof(t));
+            if (core1)
+                random_gen(NULL, t, sizeof(t));
+            else
+                random_gen_core0(NULL, t, sizeof(t));
             flash_write_data_to_file(ef_authtoken, t, sizeof(t));
         }
         paut.data = file_get_data(ef_authtoken);
@@ -247,13 +250,13 @@ int scan_files() {
     return CCID_OK;
 }
 
-void scan_all() {
+void scan_all(bool core1) {
     scan_flash();
-    scan_files();
+    scan_files(core1);
 }
 
-void init_fido() {
-    scan_all();
+void init_fido(bool core1) {
+    scan_all(core1);
 }
 
 bool wait_button_pressed() {
@@ -274,6 +277,11 @@ bool check_user_presence() {
         user_present_time_limit = board_millis();
     }
     return true;
+}
+
+uint32_t get_sign_counter() {
+    uint8_t *caddr = file_get_data(ef_counter);
+    return (*caddr) | (*(caddr + 1) << 8) | (*(caddr + 2) << 16) | (*(caddr + 3) << 24);
 }
 
 typedef struct cmd

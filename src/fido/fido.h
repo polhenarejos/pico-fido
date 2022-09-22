@@ -30,11 +30,11 @@
 #define SHA256_DIGEST_LENGTH (32)
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
-extern int scan_files();
+extern int scan_files(bool);
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecdsa_context *key);
 extern bool wait_button_pressed();
 extern CTAPHID_FRAME *ctap_req, *ctap_resp;
-extern void init_fido();
+extern void init_fido(bool);
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);
 extern int load_keydev(uint8_t *key);
@@ -76,6 +76,7 @@ extern void clearUserPresentFlag();
 extern void clearUserVerifiedFlag();
 extern void clearPinUvAuthTokenPermissionsExceptLbw();
 extern void send_keepalive();
+extern uint32_t get_sign_counter();
 #define MAX_CREDENTIAL_COUNT_IN_LIST 16
 #define MAX_CRED_ID_LENGTH        1024
 #define MAX_RESIDENT_CREDENTIALS  256

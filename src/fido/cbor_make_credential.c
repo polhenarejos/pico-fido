@@ -285,7 +285,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (cinfo == NULL)
         CBOR_ERROR(CTAP1_ERR_OTHER);
     size_t olen = 0, pkey_len = ceil((float)cinfo->bit_size/8);
-    uint32_t ctr = *(uint32_t *)file_get_data(ef_counter);
+    uint32_t ctr = get_sign_counter();
     uint8_t cbor_buf[1024];
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  5));
