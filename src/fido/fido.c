@@ -189,8 +189,8 @@ int scan_files(bool core1) {
             mbedtls_mpi_write_binary(&ecdsa.d, kdata, key_size);
             ret = flash_write_data_to_file(ef_keydev, kdata, key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
+            mbedtls_ecdsa_free(&ecdsa);
             if (ret != CCID_OK) {
-                mbedtls_ecdsa_free(&ecdsa);
                 return ret;
             }
             printf(" done!\n");
@@ -205,7 +205,10 @@ int scan_files(bool core1) {
             uint8_t cert[4096];
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
-            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);
+            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+            if (ret != 0)
+                return ret;
+            ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, random_gen, NULL);
             if (ret != 0)
                 return ret;
             ret = x509_create_cert(&key, cert, sizeof(cert), core1);
@@ -213,7 +216,7 @@ int scan_files(bool core1) {
             if (ret <= 0)
                 return ret;
             flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
-//            DEBUG_PAYLOAD(cert + sizeof(cert) - ret, ret);
+            DEBUG_DATA(cert + sizeof(cert) - ret, ret);
         }
     }
     else {
