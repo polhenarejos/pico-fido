@@ -365,7 +365,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (ret != 0)
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         if (paddedNewPin[63] != 0)
-            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         uint8_t pin_len = 0;
         while (paddedNewPin[pin_len] != 0 && pin_len < sizeof(paddedNewPin))
             pin_len++;
@@ -384,7 +384,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         if (!file_has_data(ef_pin))
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
         if (*file_get_data(ef_pin) == 0)
             CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
         if (newPinEnc.len != 64 || pinHashEnc.len != 16)
@@ -431,6 +431,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
         }
         retries = MAX_PIN_RETRIES;
+        new_pin_mismatches = 0;
         flash_write_data_to_file(ef_pin, &retries, 1);
         ret = decrypt(pinUvAuthProtocol, sharedSecret, newPinEnc.data, newPinEnc.len, paddedNewPin);
         mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
@@ -496,6 +497,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
         }
         retries = MAX_PIN_RETRIES;
+        new_pin_mismatches = 0;
         flash_write_data_to_file(ef_pin, &retries, 1);
         low_flash_available();
         beginUsingPinUvAuthToken(false);
