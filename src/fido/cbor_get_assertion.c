@@ -40,7 +40,6 @@ size_t lenx = 0;
 
 int cbor_get_next_assertion(const uint8_t *data, size_t len) {
     CborError error = CborNoError;
-    printf("%d %d %ld %ld\n", credentialCounter, numberOfCredentialsx, timerx, board_millis());
     if (credentialCounter >= numberOfCredentialsx)
         CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
     if (timerx+30*1000 < board_millis())
@@ -286,9 +285,18 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     creds[numberOfCredentials++] = creds[i];
             }
         }
-        printf("!! %d %d %d\n", numberOfCredentials, creds_len, allowList_len);
         if (numberOfCredentials == 0)
             CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+
+        for (int i = 0; i < numberOfCredentials; i++) {
+            for (int j = i + 1; j < numberOfCredentials; j++) {
+                if (creds[j].creation > creds[i].creation) {
+                    Credential tmp = creds[j];
+                    creds[j] = creds[i];
+                    creds[i] = tmp;
+                }
+            }
+        }
 
         if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
             if (pinUvAuthParam.present == true) {
@@ -302,8 +310,6 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             clearUserVerifiedFlag();
             clearPinUvAuthTokenPermissionsExceptLbw();
         }
-        if (numberOfCredentials == 0)
-            CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
 
         if (!(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV)) {
             selcred = &creds[0];
