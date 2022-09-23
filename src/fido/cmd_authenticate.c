@@ -32,7 +32,7 @@ int cmd_authenticate() {
     if (apdu.nc < CTAP_CHAL_SIZE+CTAP_APPID_SIZE+1+1)
         return SW_WRONG_DATA();
     if (req->keyHandleLen < KEY_HANDLE_LEN)
-        return SW_WRONG_DATA();
+        return SW_INCORRECT_PARAMS();
     if (P1(apdu) == CTAP_AUTH_ENFORCE && wait_button_pressed() == true)
         return SW_CONDITIONS_NOT_SATISFIED();
 
@@ -53,9 +53,10 @@ int cmd_authenticate() {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
+    if (verify_key(req->appId, req->keyHandle, &key) != 0) {
+        return SW_INCORRECT_PARAMS();
+    }
     if (P1(apdu) == CTAP_AUTH_CHECK_ONLY) {
-        if (verify_key(req->appId, req->keyHandle, &key) != 0)
-            return SW_WRONG_DATA();
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     resp->flags = 0;
