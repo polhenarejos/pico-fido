@@ -84,7 +84,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     size_t allowList_len = 0, creds_len = 0;
     uint8_t *aut_data = NULL;
     bool asserted = false;
-    int64_t kty = 0, alg = 0, crv = 0;
+    int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = {0}, kay = {0}, salt_enc = {0}, salt_auth = {0};
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
@@ -243,6 +243,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             flags |= FIDO2_AUT_FLAG_UV;
             // Check pinUvAuthToken permissions. See 6.2.2.4
         }
+        if (extensions.present == true && extensions.hmac_secret == ptrue) {
+            if (kax.present == false || kay.present == false || crv == 0 || alg == 0 || salt_enc.present == false || salt_auth.present == false)
+                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            if (salt_enc.len != 32 && salt_enc.len != 64)
+                CBOR_ERROR(CTAP1_ERR_INVALID_LEN);
+        }
 
         if (allowList_len > 0)
         {
@@ -388,11 +394,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
             if (verify(hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, salt_enc.len, salt_auth.data) != 0) {
                 mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
-                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-            }
-            if (salt_enc.len != 32 || salt_enc.len != 64) {
-                mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                CBOR_ERROR(CTAP2_ERR_EXTENSION_FIRST);
             }
             uint8_t salt_dec[64];
             ret = decrypt(hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, salt_enc.len, salt_dec);
