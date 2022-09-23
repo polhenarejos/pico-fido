@@ -26,8 +26,10 @@
 extern void scan_all();
 
 int cbor_reset() {
+#if defined(ENABLE_POWER_ON_RESET) && ENABLE_POWER_ON_RESET==1
     if (board_millis() > 10000)
         return CTAP2_ERR_NOT_ALLOWED;
+#endif
     if (check_user_presence() == false)
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     initialize_flash(true);

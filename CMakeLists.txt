@@ -37,6 +37,15 @@ else()
     message("Disabling user presence with button")
 endif(ENABLE_UP_BUTTON)
 
+option(ENABLE_POWER_ON_RESET "Enable/disable power cycle on reset" ON)
+if(ENABLE_POWER_ON_RESET)
+    add_definitions(-DENABLE_POWER_ON_RESET=1)
+    message("Enabling power cycle on reset")
+else()
+    add_definitions(-DENABLE_POWER_ON_RESET=0)
+    message("Disabling power cycle on reset")
+endif(ENABLE_POWER_ON_RESET)
+
 target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c
