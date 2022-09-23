@@ -28,6 +28,15 @@ pico_sdk_init()
 
 add_executable(pico_fido)
 
+option(ENABLE_UP_BUTTON "Enable/disable user presence button" ON)
+if(ENABLE_UP_BUTTON)
+    add_definitions(-DENABLE_UP_BUTTON=1)
+    message("Enabling user presence with button")
+else()
+    add_definitions(-DENABLE_UP_BUTTON=0)
+    message("Disabling user presence with button")
+endif(ENABLE_UP_BUTTON)
+
 target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c

@@ -263,21 +263,25 @@ void init_fido(bool core1) {
 
 bool wait_button_pressed() {
     uint32_t val = EV_PRESS_BUTTON;
+#if defined(ENABLE_UP_BUTTON) && ENABLE_UP_BUTTON==1
     queue_try_add(&card_to_usb_q, &val);
     do {
         queue_remove_blocking(&usb_to_card_q, &val);
     } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT);
+#endif
     return (val == EV_BUTTON_TIMEOUT);
 }
 
 uint32_t user_present_time_limit = 0;
 
 bool check_user_presence() {
+#if defined(ENABLE_UP_BUTTON) && ENABLE_UP_BUTTON==1
     if (user_present_time_limit == 0 || user_present_time_limit+TRANSPORT_TIME_LIMIT < board_millis()) {
         if (wait_button_pressed() == true) //timeout
             return false;
         user_present_time_limit = board_millis();
     }
+#endif
     return true;
 }
 
