@@ -169,6 +169,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                             CBOR_ADVANCE(3);
                     }
                     CBOR_PARSE_MAP_END(_f2, 3);
+                    continue;
                 }
                 CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
                 CBOR_ADVANCE(2);
