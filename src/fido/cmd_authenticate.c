@@ -29,6 +29,8 @@ int cmd_authenticate() {
     CTAP_AUTHENTICATE_RESP *resp = (CTAP_AUTHENTICATE_RESP *)res_APDU;
     //if (scan_files(true) != CCID_OK)
     //    return SW_EXEC_ERROR();
+    if (apdu.nc < CTAP_CHAL_SIZE+CTAP_APPID_SIZE+1+1)
+        return SW_WRONG_DATA();
     if (req->keyHandleLen < KEY_HANDLE_LEN)
         return SW_WRONG_DATA();
     if (P1(apdu) == CTAP_AUTH_ENFORCE && wait_button_pressed() == true)
