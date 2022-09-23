@@ -307,7 +307,7 @@ bool check_user_presence() {
     if (user_present_time_limit == 0 || user_present_time_limit+TRANSPORT_TIME_LIMIT < board_millis()) {
         if (wait_button_pressed() == true) //timeout
             return false;
-        user_present_time_limit = board_millis();
+        //user_present_time_limit = board_millis();
     }
 #endif
     return true;
@@ -336,6 +336,8 @@ static const cmd_t cmds[] = {
 };
 
 int fido_process_apdu() {
+    if (CLA(apdu) != 0x00)
+        return SW_CLA_NOT_SUPPORTED();
     for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++)
     {
         if (cmd->ins == INS(apdu)) {
