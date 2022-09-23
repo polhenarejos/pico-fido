@@ -52,24 +52,7 @@ int cmd_authenticate() {
         return SW_EXEC_ERROR();
     }
     if (P1(apdu) == CTAP_AUTH_CHECK_ONLY) {
-        for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
-            uint32_t k = *(uint32_t *)&req->keyHandle[i*sizeof(uint32_t)];
-            if (!(k & 0x80000000)) {
-                mbedtls_ecdsa_free(&key);
-                return SW_WRONG_DATA();
-            }
-        }
-        uint8_t hmac[32], d[32];
-        ret = mbedtls_ecp_write_key(&key, d, sizeof(d));
-        mbedtls_ecdsa_free(&key);
-        if (ret != 0)
-            return SW_WRONG_DATA();
-        uint8_t key_base[CTAP_APPID_SIZE + KEY_PATH_LEN];
-        memcpy(key_base, req->appId, CTAP_APPID_SIZE);
-        memcpy(key_base + CTAP_APPID_SIZE, req->keyHandle, KEY_PATH_LEN);
-        ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
-        mbedtls_platform_zeroize(d, sizeof(d));
-        if (memcmp(req->keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac)) != 0)
+        if (verify_key(req->appId, req->keyHandle, &key) != 0)
             return SW_WRONG_DATA();
         return SW_CONDITIONS_NOT_SATISFIED();
     }

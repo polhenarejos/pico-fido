@@ -124,6 +124,36 @@ int load_keydev(uint8_t *key) {
     return CCID_OK;
 }
 
+int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *key) {
+    for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
+        uint32_t k = *(uint32_t *)&keyHandle[i*sizeof(uint32_t)];
+        if (!(k & 0x80000000)) {
+            return -1;
+        }
+    }
+    mbedtls_ecdsa_context ctx;
+    if (key == NULL) {
+        mbedtls_ecdsa_init(&ctx);
+        key = &ctx;
+        if (derive_key(appId, false, (uint8_t *)keyHandle, MBEDTLS_ECP_DP_SECP256R1, &ctx) != 0) {
+            mbedtls_ecdsa_free(&ctx);
+            return -3;
+        }
+    }
+    uint8_t hmac[32], d[32];
+    int ret = mbedtls_ecp_write_key(key, d, sizeof(d));
+    if (key == NULL)
+        mbedtls_ecdsa_free(&ctx);
+    if (ret != 0)
+        return -2;
+    uint8_t key_base[CTAP_APPID_SIZE + KEY_PATH_LEN];
+    memcpy(key_base, appId, CTAP_APPID_SIZE);
+    memcpy(key_base + CTAP_APPID_SIZE, keyHandle, KEY_PATH_LEN);
+    ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
+    mbedtls_platform_zeroize(d, sizeof(d));
+    return memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
+}
+
 int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecdsa_context *key) {
     uint8_t outk[64] = {0};
     int r = 0;
@@ -131,8 +161,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     if ((r = load_keydev(outk)) != CCID_OK)
         return r;
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
-    for (int i = 0; i < KEY_PATH_ENTRIES; i++)
-    {
+    for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
         if (new_key == true) {
             uint32_t val = 0;
             random_gen(NULL, (uint8_t *) &val, sizeof(val));
@@ -140,8 +169,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
             memcpy(&key_handle[i*sizeof(uint32_t)], &val, sizeof(uint32_t));
         }
         r = mbedtls_hkdf(md_info, &key_handle[i * sizeof(uint32_t)], sizeof(uint32_t), outk, 32, outk + 32, 32, outk, sizeof(outk));
-        if (r != 0)
-        {
+        if (r != 0) {
             mbedtls_platform_zeroize(outk, sizeof(outk));
             return r;
         }

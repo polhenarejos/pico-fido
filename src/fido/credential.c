@@ -104,52 +104,56 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
 
 int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred) {
     int ret = 0;
+    CborError error;
     uint8_t *copy_cred_id = (uint8_t *)calloc(1, cred_id_len);
     memcpy(copy_cred_id, cred_id, cred_id_len);
     ret = credential_verify(copy_cred_id, cred_id_len, rp_id_hash);
-    if (ret != 0)
-        return ret;
-    CborParser parser;
-    CborValue map;
-    CborError error;
-    memset(cred, 0, sizeof(Credential));
-    cred->curve = FIDO2_CURVE_P256;
-    cred->alg = FIDO2_ALG_ES256;
-    CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser, &map));
-    CBOR_PARSE_MAP_START(map, 1) {
-        uint64_t val_u = 0;
-        CBOR_FIELD_GET_UINT(val_u, 1);
-        if (val_u == 0x01) {
-            CBOR_FIELD_GET_TEXT(cred->rpId, 1);
-        }
-        else if (val_u == 0x03) {
-            CBOR_FIELD_GET_BYTES(cred->userId, 1);
-        }
-        else if (val_u == 0x06) {
-            CBOR_FIELD_GET_UINT(cred->creation, 1);
-        }
-        else if (val_u == 0x07) {
-            cred->extensions.present = true;
-            CBOR_PARSE_MAP_START(_f1, 2)
-            {
-                CBOR_FIELD_GET_KEY_TEXT(2);
-                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", cred->extensions.hmac_secret);
-                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
-                CBOR_ADVANCE(2);
+    if (ret != 0) { // U2F?
+        if (cred_id_len != KEY_HANDLE_LEN || verify_key(rp_id_hash, cred_id, NULL) != 0)
+            CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+    }
+    else {
+        CborParser parser;
+        CborValue map;
+        memset(cred, 0, sizeof(Credential));
+        cred->curve = FIDO2_CURVE_P256;
+        cred->alg = FIDO2_ALG_ES256;
+        CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser, &map));
+        CBOR_PARSE_MAP_START(map, 1) {
+            uint64_t val_u = 0;
+            CBOR_FIELD_GET_UINT(val_u, 1);
+            if (val_u == 0x01) {
+                CBOR_FIELD_GET_TEXT(cred->rpId, 1);
             }
-            CBOR_PARSE_MAP_END(_f1, 2);
-        }
-        else if (val_u == 0x08) {
-            CBOR_FIELD_GET_BOOL(cred->use_sign_count, 1);
-        }
-        else if (val_u == 0x09) {
-            CBOR_FIELD_GET_INT(cred->alg, 1);
-        }
-        else if (val_u == 0x0A) {
-            CBOR_FIELD_GET_INT(cred->curve, 1);
-        }
-        else {
-            CBOR_ADVANCE(1);
+            else if (val_u == 0x03) {
+                CBOR_FIELD_GET_BYTES(cred->userId, 1);
+            }
+            else if (val_u == 0x06) {
+                CBOR_FIELD_GET_UINT(cred->creation, 1);
+            }
+            else if (val_u == 0x07) {
+                cred->extensions.present = true;
+                CBOR_PARSE_MAP_START(_f1, 2)
+                {
+                    CBOR_FIELD_GET_KEY_TEXT(2);
+                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", cred->extensions.hmac_secret);
+                    CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
+                    CBOR_ADVANCE(2);
+                }
+                CBOR_PARSE_MAP_END(_f1, 2);
+            }
+            else if (val_u == 0x08) {
+                CBOR_FIELD_GET_BOOL(cred->use_sign_count, 1);
+            }
+            else if (val_u == 0x09) {
+                CBOR_FIELD_GET_INT(cred->alg, 1);
+            }
+            else if (val_u == 0x0A) {
+                CBOR_FIELD_GET_INT(cred->curve, 1);
+            }
+            else {
+                CBOR_ADVANCE(1);
+            }
         }
     }
     cred->id.present = true;

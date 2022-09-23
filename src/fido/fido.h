@@ -32,6 +32,7 @@
 
 extern int scan_files(bool);
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecdsa_context *key);
+extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *);
 extern bool wait_button_pressed();
 extern CTAPHID_FRAME *ctap_req, *ctap_resp;
 extern void init_fido(bool);
