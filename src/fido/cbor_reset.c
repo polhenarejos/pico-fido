@@ -30,7 +30,7 @@ int cbor_reset() {
     if (board_millis() > 10000)
         return CTAP2_ERR_NOT_ALLOWED;
 #endif
-    if (check_user_presence() == false)
+    if (wait_button_pressed() == true)
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     initialize_flash(true);
     init_fido(true);
