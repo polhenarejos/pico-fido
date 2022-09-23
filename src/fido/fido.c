@@ -49,7 +49,7 @@ app_t *fido_select(app_t *a) {
     a->process_apdu = fido_process_apdu;
     a->unload = fido_unload;
     current_app = a;
-    init_fido(false);
+    //init_fido(false);
     return a;
 }
 
