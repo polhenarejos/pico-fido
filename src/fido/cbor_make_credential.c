@@ -221,8 +221,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (strcmp(excludeList[e].type.data, "public-key") != 0)
             continue;
-        if (credential_verify(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash) == 0)
-            CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
+        Credential ecred;
+        if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || flags & FIDO2_AUT_FLAG_UV))
+                    CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
     }
 
     if (options.up == ptrue) { //14.1
