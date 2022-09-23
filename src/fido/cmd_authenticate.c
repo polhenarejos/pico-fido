@@ -22,20 +22,31 @@
 #include "mbedtls/ecdsa.h"
 #include "random.h"
 #include "files.h"
+#include "credential.h"
 
 int cmd_authenticate() {
     CTAP_AUTHENTICATE_REQ *req = (CTAP_AUTHENTICATE_REQ *)apdu.data;
     CTAP_AUTHENTICATE_RESP *resp = (CTAP_AUTHENTICATE_RESP *)res_APDU;
     //if (scan_files(true) != CCID_OK)
     //    return SW_EXEC_ERROR();
-    if (req->keyHandleLen != KEY_HANDLE_LEN)
+    if (req->keyHandleLen < KEY_HANDLE_LEN)
         return SW_WRONG_DATA();
     if (P1(apdu) == CTAP_AUTH_ENFORCE && wait_button_pressed() == true)
         return SW_CONDITIONS_NOT_SATISFIED();
 
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
-    int ret = derive_key(req->appId, false, req->keyHandle, MBEDTLS_ECP_DP_SECP256R1, &key);
+    int ret = 0;
+    uint8_t *tmp_kh = (uint8_t *)calloc(1, req->keyHandleLen);
+    memcpy(tmp_kh, req->keyHandle, req->keyHandleLen);
+    if (credential_verify(tmp_kh, req->keyHandleLen, req->appId) == 0) {
+        DEBUG_DATA(req->keyHandle, req->keyHandleLen);
+        ret = fido_load_key(FIDO2_CURVE_P256, req->keyHandle, &key);
+    }
+    else {
+        ret = derive_key(req->appId, false, req->keyHandle, MBEDTLS_ECP_DP_SECP256R1, &key);
+    }
+    free(tmp_kh);
     if (ret != CCID_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
