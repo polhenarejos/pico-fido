@@ -44,7 +44,7 @@ extern const bool _btrue, _bfalse;
         error = f;      \
         if (error != CborNoError) \
         {                       \
-            printf("Cannot encode CBOR [%s:%d]: %s\n", __FILE__, __LINE__, #f); \
+            printf("Cannot encode CBOR [%s:%d]: %s (%d)\n", __FILE__, __LINE__, #f, error); \
             goto err; \
         } \
     } while (0)
