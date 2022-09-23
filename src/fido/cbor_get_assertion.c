@@ -341,8 +341,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_ecdsa_init(&ekey);
     int ret = fido_load_key(selcred->curve, selcred->id.data, &ekey);
     if (ret != 0) {
-        mbedtls_ecdsa_free(&ekey);
-        CBOR_ERROR(CTAP1_ERR_OTHER);
+        if (derive_key(rp_id_hash, false, selcred->id.data, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
+            mbedtls_ecdsa_free(&ekey);
+            CBOR_ERROR(CTAP1_ERR_OTHER);
+        }
     }
 
     size_t ext_len = 0;
