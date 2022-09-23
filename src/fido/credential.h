@@ -45,6 +45,7 @@ typedef struct Credential
     int64_t alg;
     int64_t curve;
     CborByteString id;
+    CredOptions opts;
     bool present;
 } Credential;
 
@@ -53,7 +54,7 @@ typedef struct Credential
 #define CRED_PROT_UV_REQUIRED               0x03
 
 extern int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
-extern int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len);
+extern int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredOptions *opts, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len);
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
 extern int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred);

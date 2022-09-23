@@ -41,7 +41,7 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
     return mbedtls_chachapoly_auth_decrypt(&chatx, cred_id_len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
 }
 
-int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
+int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredOptions *opts, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
     uint8_t rp_id_hash[32];
@@ -73,6 +73,15 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     if (alg != FIDO2_ALG_ES256 || curve != FIDO2_CURVE_P256) {
         CBOR_APPEND_KEY_UINT_VAL_INT(mapEncoder, 0x09, alg);
         CBOR_APPEND_KEY_UINT_VAL_INT(mapEncoder, 0x0A, curve);
+    }
+    if (opts->present == true) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0B));
+        CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  CborIndefiniteLength));
+        if (opts->rk != NULL) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "rk"));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder2, opts->rk == ptrue));
+        }
+        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cred_id);
@@ -151,6 +160,16 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
             else if (val_u == 0x0A) {
                 CBOR_FIELD_GET_INT(cred->curve, 1);
             }
+            else if (val_u == 0x0B) {
+                cred->opts.present = true;
+                CBOR_PARSE_MAP_START(_f1, 2)
+                {
+                    CBOR_FIELD_GET_KEY_TEXT(2);
+                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "rk", cred->opts.rk);
+                    CBOR_ADVANCE(2);
+                }
+                CBOR_PARSE_MAP_END(_f1, 2);
+            }
             else {
                 CBOR_ADVANCE(1);
             }
@@ -179,6 +198,7 @@ void credential_free(Credential *cred) {
     CBOR_FREE_BYTE_STRING(cred->id);
     cred->present = false;
     cred->extensions.present = false;
+    cred->opts.present = false;
 }
 
 int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {

@@ -87,6 +87,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = {0}, kay = {0}, salt_enc = {0}, salt_auth = {0};
 
+    DEBUG_DATA(data, len);
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
     CBOR_PARSE_MAP_START(map, 1) {
@@ -448,7 +449,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_ecdsa_free(&ekey);
 
     uint8_t lfields = 3;
-    if (resident)
+    if (selcred->opts.present == true && selcred->opts.rk == ptrue)
         lfields++;
     if (numberOfCredentials > 1 && next == false)
         lfields++;
@@ -468,7 +469,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, sig, olen));
 
-    if (resident) {
+    if (selcred->opts.present == true && selcred->opts.rk == ptrue) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 1));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
@@ -481,6 +482,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    DEBUG_DATA(ctap_resp->init.data + 1,resp_size);
     err:
     if (asserted == false) {
         CBOR_FREE_BYTE_STRING(clientDataHash);

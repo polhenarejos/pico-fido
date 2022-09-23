@@ -243,7 +243,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t cred_id[MAX_CRED_ID_LENGTH];
     size_t cred_id_len = 0;
 
-    CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
+    CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &options, &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
