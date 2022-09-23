@@ -87,7 +87,6 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = {0}, kay = {0}, salt_enc = {0}, salt_auth = {0};
 
-    DEBUG_DATA(data, len);
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
     CBOR_PARSE_MAP_START(map, 1) {
@@ -313,6 +312,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                         CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                 }
             }
+            else {
+                if (!(flags & FIDO2_AUT_FLAG_UP)) {
+                    if (check_user_presence() == false)
+                        CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                }
+            }
             flags |= FIDO2_AUT_FLAG_UP;
             clearUserPresentFlag();
             clearUserVerifiedFlag();
@@ -482,7 +487,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
-    DEBUG_DATA(ctap_resp->init.data + 1,resp_size);
+
     err:
     if (asserted == false) {
         CBOR_FREE_BYTE_STRING(clientDataHash);
