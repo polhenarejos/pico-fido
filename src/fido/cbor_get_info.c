@@ -20,12 +20,13 @@
 #include "ctap.h"
 #include "files.h"
 #include "apdu.h"
+#include "version.h"
 
 int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 8));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 9));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
@@ -74,6 +75,8 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0D));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 4)); // minPINLength
 
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0E));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, PICO_FIDO_VERSION)); // firmwareVersion
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     err:
