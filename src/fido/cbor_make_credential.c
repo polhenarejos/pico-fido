@@ -43,6 +43,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
     CredExtensions extensions = {0};
+    //options.present = true;
+    options.up = ptrue;
+    options.uv = pfalse;
+    options.rk = pfalse;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
