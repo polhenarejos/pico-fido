@@ -36,7 +36,8 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 1));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
