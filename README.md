@@ -4,14 +4,21 @@ This project aims at transforming your Raspberry Pico into a FIDO key integrated
 ## Features
 Pico FIDO has implemented the following features:
 
-- ECDSA authentication.
-- App registration and login.
-- User presence enforcement through physical button.
+- CTAP 2.1 / CTAP 1
+- WebAuthn
+- U2F
+- HMAC-Secret extension
+- CredProtect extension
+- User presence enforcement through physical button
+- User Verification with PIN
+- Discoverable credentials
+- ECDSA authentication
+- App registration and login
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
 ## Security considerations
-Pico FIDO is an open platform so be careful. The contents in the flash memory may be easily dumpled and obtain the private/master keys. There is no way to ensure the master key is stored securely, as the specifications do not support external passphrases or PIN numbers. Therefore, it is not possible to encrypt the content. At least, one key (the master, the supreme key) must be stored in clear text.
+Pico FIDO is an open platform so be careful. The contents in the flash memory may be easily dumpled and obtain the private/master keys. Therefore, it is not possible to encrypt the content. At least, one key (the master, the supreme key) must be stored in clear text.
 
 If the Pico is stolen the contents of private and secret keys can be read.
 
@@ -66,3 +73,4 @@ Pico FIDO uses the `HID` driver, present in all OS. It should be detected by all
 Pico FIDO uses the following libraries or portion of code:
 - MbedTLS for cryptographic operations.
 - TinyUSB for low level USB procedures.
+- TinyCBOR for CBOR parsing and formatting.
