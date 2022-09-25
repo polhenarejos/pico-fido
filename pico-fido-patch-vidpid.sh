@@ -18,7 +18,7 @@
 #
 
 VERSION_MAJOR="3" #Version of Pico CCID Core
-VERSION_MINOR="2"
+VERSION_MINOR="4"
 
 echo "----------------------------"
 echo "VID/PID patcher for Pico FIDO"
