@@ -489,7 +489,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
-
+    ctr++;
+    flash_write_data_to_file(ef_counter, (uint8_t *)&ctr, sizeof(ctr));
+    low_flash_available();
     err:
     if (asserted == false) {
         CBOR_FREE_BYTE_STRING(clientDataHash);
