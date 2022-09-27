@@ -236,7 +236,7 @@ int scan_files(bool core1) {
             int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), file_get_size(ef_keydev));
             if (ret != 0)
                 return ret;
-            ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, random_gen, NULL);
+            ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, core1 ? random_gen : random_gen_core0, NULL);
             if (ret != 0)
                 return ret;
             ret = x509_create_cert(&key, cert, sizeof(cert), core1);
