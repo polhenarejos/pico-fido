@@ -104,6 +104,17 @@ typedef struct {
     uint8_t sig[CTAP_MAX_EC_SIG_SIZE];   // Signature
 } CTAP_AUTHENTICATE_RESP;
 
+// CTAP CBOR commands
+
+#define CTAP_MAKE_CREDENTIAL     0x01
+#define CTAP_GET_ASSERTION       0x02
+#define CTAP_GET_INFO            0x04
+#define CTAP_CLIENT_PIN          0x06
+#define CTAP_RESET               0x07
+#define CTAP_GET_NEXT_ASSERTION  0x08
+#define CTAP_CREDENTIAL_MGMT     0x0A
+#define CTAP_AUTHENTICATOR_SEL   0x0B
+
 // Command status responses
 
 #define CTAP_SW_NO_ERROR                 0x9000 // SW_NO_ERROR
@@ -112,6 +123,7 @@ typedef struct {
 #define CTAP_SW_COMMAND_NOT_ALLOWED      0x6986 // SW_COMMAND_NOT_ALLOWED
 #define CTAP_SW_INS_NOT_SUPPORTED        0x6D00 // SW_INS_NOT_SUPPORTED
 
+#define CTAP2_OK                            0x00
 #define CTAP2_ERR_CBOR_UNEXPECTED_TYPE      0x11
 #define CTAP2_ERR_INVALID_CBOR              0x12
 #define CTAP2_ERR_MISSING_PARAMETER         0x14
