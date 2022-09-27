@@ -26,12 +26,6 @@
 extern uint8_t *driver_prepare_response();
 extern void driver_exec_finished(size_t size_next);
 extern int cbor_process(const uint8_t *data, size_t len);
-extern int cbor_reset();
-extern int cbor_get_info();
-extern int cbor_make_credential(const uint8_t *data, size_t len);
-extern int cbor_client_pin(const uint8_t *data, size_t len);
-extern int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
-extern int cbor_get_next_assertion(const uint8_t *data, size_t len);
 extern const uint8_t aaguid[16];
 
 extern const bool _btrue, _bfalse;

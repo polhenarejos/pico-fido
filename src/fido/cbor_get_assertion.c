@@ -29,6 +29,8 @@
 #include "credential.h"
 #include <math.h>
 
+int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
+
 bool residentx = false;
 Credential credsx[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
 uint8_t credentialCounter = 1;
