@@ -234,12 +234,46 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     }
     if (sloti == -1)
         return -1;
-    credential_free(&cred);
     uint8_t *data = (uint8_t *)calloc(1, cred_id_len+32);
     memcpy(data, rp_id_hash, 32);
     memcpy(data + 32, cred_id, cred_id_len);
     file_t *ef = file_new(EF_CRED+sloti);
     flash_write_data_to_file(ef, data, cred_id_len + 32);
+    free(data);
+
+    sloti = -1;
+    for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+        ef = search_dynamic_file(EF_RP + i);
+        if (!file_has_data(ef)) {
+            if (sloti == -1)
+                sloti = i;
+            continue;
+        }
+        if (memcmp(file_get_data(ef)+1, rp_id_hash, 32) == 0) {
+            sloti = i;
+            break;
+        }
+    }
+    if (sloti == -1)
+        return -1;
+    ef = search_dynamic_file(EF_RP + sloti);
+    if (file_has_data(ef)) {
+        data = (uint8_t *)calloc(1, file_get_size(ef));
+        memcpy(data, file_get_data(ef), file_get_size(ef));
+        data[0] += 1;
+        flash_write_data_to_file(ef, data, file_get_size(ef));
+        free(data);
+    }
+    else {
+        ef = file_new(EF_RP+sloti);
+        data = (uint8_t *)calloc(1, 1 + 32 + cred.rpId.len);
+        data[0] = 0;
+        memcpy(data+1, rp_id_hash, 32);
+        memcpy(data + 1 + 32, cred.rpId.data, cred.rpId.len);
+        flash_write_data_to_file(ef, data, 1 + 32 + cred.rpId.len);
+        free(data);
+    }
+    credential_free(&cred);
     low_flash_available();
     return 0;
 }
