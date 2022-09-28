@@ -289,7 +289,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(ekey.grp.id);
     if (cinfo == NULL)
         CBOR_ERROR(CTAP1_ERR_OTHER);
-    size_t olen = 0, pkey_len = ceil((float)cinfo->bit_size/8);
+    size_t olen = 0;
     uint32_t ctr = get_sign_counter();
     uint8_t cbor_buf[1024];
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
@@ -301,11 +301,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 1));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, curve));
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 2));
-    mbedtls_mpi_write_binary(&ekey.Q.X, pkey, pkey_len);
-    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, pkey_len));
+    mbedtls_mpi_write_binary(&ekey.Q.X, pkey, mbedtls_mpi_size(&ekey.Q.X));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, mbedtls_mpi_size(&ekey.Q.X)));
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder, 3));
-    mbedtls_mpi_write_binary(&ekey.Q.Y, pkey, pkey_len);
-    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, pkey_len));
+    mbedtls_mpi_write_binary(&ekey.Q.Y, pkey, mbedtls_mpi_size(&ekey.Q.Y));
+    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pkey, mbedtls_mpi_size(&ekey.Q.Y)));
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
