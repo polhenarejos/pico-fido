@@ -205,6 +205,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     int sloti = -1;
     Credential cred = {0};
     int ret = 0;
+    bool new_record = true;
     ret = credential_load(cred_id, cred_id_len, rp_id_hash, &cred);
     if (ret != 0) {
         credential_free(&cred);
@@ -228,6 +229,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         if (memcmp(rcred.userId.data, cred.userId.data, MIN(rcred.userId.len, cred.userId.len)) == 0) {
             sloti = i;
             credential_free(&rcred);
+            new_record = false;
             break;
         }
         credential_free(&rcred);
@@ -241,37 +243,39 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     flash_write_data_to_file(ef, data, cred_id_len + 32);
     free(data);
 
-    sloti = -1;
-    for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-        ef = search_dynamic_file(EF_RP + i);
-        if (!file_has_data(ef)) {
-            if (sloti == -1)
+    if (new_record == true) { //increase rps
+        sloti = -1;
+        for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+            ef = search_dynamic_file(EF_RP + i);
+            if (!file_has_data(ef)) {
+                if (sloti == -1)
+                    sloti = i;
+                continue;
+            }
+            if (memcmp(file_get_data(ef)+1, rp_id_hash, 32) == 0) {
                 sloti = i;
-            continue;
+                break;
+            }
         }
-        if (memcmp(file_get_data(ef)+1, rp_id_hash, 32) == 0) {
-            sloti = i;
-            break;
+        if (sloti == -1)
+            return -1;
+        ef = search_dynamic_file(EF_RP + sloti);
+        if (file_has_data(ef)) {
+            data = (uint8_t *)calloc(1, file_get_size(ef));
+            memcpy(data, file_get_data(ef), file_get_size(ef));
+            data[0] += 1;
+            flash_write_data_to_file(ef, data, file_get_size(ef));
+            free(data);
         }
-    }
-    if (sloti == -1)
-        return -1;
-    ef = search_dynamic_file(EF_RP + sloti);
-    if (file_has_data(ef)) {
-        data = (uint8_t *)calloc(1, file_get_size(ef));
-        memcpy(data, file_get_data(ef), file_get_size(ef));
-        data[0] += 1;
-        flash_write_data_to_file(ef, data, file_get_size(ef));
-        free(data);
-    }
-    else {
-        ef = file_new(EF_RP+sloti);
-        data = (uint8_t *)calloc(1, 1 + 32 + cred.rpId.len);
-        data[0] = 0;
-        memcpy(data+1, rp_id_hash, 32);
-        memcpy(data + 1 + 32, cred.rpId.data, cred.rpId.len);
-        flash_write_data_to_file(ef, data, 1 + 32 + cred.rpId.len);
-        free(data);
+        else {
+            ef = file_new(EF_RP+sloti);
+            data = (uint8_t *)calloc(1, 1 + 32 + cred.rpId.len);
+            data[0] = 1;
+            memcpy(data+1, rp_id_hash, 32);
+            memcpy(data + 1 + 32, cred.rpId.data, cred.rpId.len);
+            flash_write_data_to_file(ef, data, 1 + 32 + cred.rpId.len);
+            free(data);
+        }
     }
     credential_free(&cred);
     low_flash_available();
