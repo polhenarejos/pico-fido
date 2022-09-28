@@ -34,7 +34,7 @@ int cbor_make_credential(const uint8_t *data, size_t len);
 int cbor_client_pin(const uint8_t *data, size_t len);
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
 int cbor_get_next_assertion(const uint8_t *data, size_t len);
-int cbor_authenticator_selection();
+int cbor_selection();
 
 const uint8_t aaguid[16] = {0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45}; // First 16 bytes of SHA256("Pico FIDO2")
 
@@ -58,8 +58,8 @@ int cbor_parse(const uint8_t *data, size_t len) {
         return cbor_get_assertion(data + 1, len - 1, false);
     else if (data[0] == CTAP_GET_NEXT_ASSERTION)
         return cbor_get_next_assertion(data + 1, len - 1);
-    else if (data[0] == CTAP_AUTHENTICATOR_SEL)
-        return cbor_authenticator_selection();
+    else if (data[0] == CTAP_SELECTION)
+        return cbor_selection();
     return CTAP2_ERR_INVALID_CBOR;
 }
 

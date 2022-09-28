@@ -113,7 +113,7 @@ typedef struct {
 #define CTAP_RESET               0x07
 #define CTAP_GET_NEXT_ASSERTION  0x08
 #define CTAP_CREDENTIAL_MGMT     0x0A
-#define CTAP_AUTHENTICATOR_SEL   0x0B
+#define CTAP_SELECTION           0x0B
 
 // Command status responses
 
