@@ -99,7 +99,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     if (ret != 0) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
-    memcpy(cred_id, "\xf1\xd0\x02\x00", 4);
+    memcpy(cred_id, CRED_PROTO, 4);
     memcpy(cred_id + 4, iv, 12);
 
     err:
@@ -252,7 +252,7 @@ int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
 
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"\xf1\xd0\x02\x00", 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"hmac-secret", 11, outk);
     mbedtls_md_hmac(md_info, outk, 32, cred_id, cred_id_len, outk);
     return 0;
@@ -266,7 +266,7 @@ int credential_derive_chacha_key(uint8_t *outk) {
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
 
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"\xf1\xd0\x02\x00", 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"Encryption key", 14, outk);
     return 0;
 }
