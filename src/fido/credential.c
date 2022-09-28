@@ -90,7 +90,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     memset(key, 0, sizeof(key));
     credential_derive_chacha_key(key);
     uint8_t iv[12];
-    random_gen(NULL, iv, sizeof(12));
+    random_gen(NULL, iv, sizeof(iv));
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
