@@ -1,4 +1,5 @@
 from fido2.client import CtapError
+from fido2.cose import ES256
 import pytest
 
 
@@ -6,22 +7,22 @@ def test_register(device):
     device.reset()
     REGRes,AUTData = device.register()
 
-def test_make_credential(device, MCRes):
+def test_make_credential():
     pass
 
-def test_attestation_format(device, MCRes):
+def test_attestation_format( MCRes):
         assert MCRes.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
 
-def test_authdata_length(device, MCRes):
+def test_authdata_length( MCRes):
     assert len(MCRes.auth_data) >= 77
 
-def test_missing_cdh(device, MCRes):
+def test_missing_cdh(device):
     with pytest.raises(CtapError) as e:
         device.MC(client_data_hash=None)
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
-def test_bad_type_cdh(device, MCRes):
+def test_bad_type_cdh(device):
     with pytest.raises(CtapError) as e:
         device.MC(client_data_hash=b'\xff')
 
@@ -31,230 +32,130 @@ def test_missing_user(device, MCRes):
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
-def test_bad_type_user_user(device, MCRes):
+def test_bad_type_user_user(device):
     with pytest.raises(CtapError) as e:
         device.MC(user=b"12345678")
 
-def test_missing_rp(device, MCRes):
-    req = FidoRequest(MCRes, rp=None)
-
+def test_missing_rp(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(rp=None)
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
-def test_bad_type_rp(device, MCRes):
-    req = FidoRequest(MCRes, rp=b"1234abcdef")
-
+def test_bad_type_rp(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(rp=b"12345678")
 
-def test_missing_pubKeyCredParams(device, MCRes):
-    req = FidoRequest(MCRes, key_params=None)
-
+def test_missing_pubKeyCredParams(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(key_params=None)
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
-def test_bad_type_pubKeyCredParams(device, MCRes):
-    req = FidoRequest(MCRes, key_params=b"1234a")
-
+def test_bad_type_pubKeyCredParams(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(key_params=b"12345678")
 
-def test_bad_type_excludeList(device, MCRes):
-    req = FidoRequest(MCRes, exclude_list=8)
-
+def test_bad_type_excludeList(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(exclude_list=8)
 
-def test_bad_type_extensions(device, MCRes):
-    req = FidoRequest(MCRes, extensions=8)
-
+def test_bad_type_extensions(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(extensions=8)
 
-def test_bad_type_options(device, MCRes):
-    req = FidoRequest(MCRes, options=8)
-
+def test_bad_type_options(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(options=8)
 
-def test_bad_type_rp_name(device, MCRes):
-    req = FidoRequest(MCRes, rp={"id": "test.org", "name": 8, "icon": "icon"})
-
+def test_bad_type_rp_name(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(rp={"id": "test.org", "name": 8, "icon": "icon"})
 
-def test_bad_type_rp_id(device, MCRes):
-    req = FidoRequest(MCRes, rp={"id": 8, "name": "name", "icon": "icon"})
-
+def test_bad_type_rp_id(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(rp={"id": 8, "name": "name", "icon": "icon"})
 
-def test_bad_type_rp_icon(device, MCRes):
-    req = FidoRequest(MCRes, rp={"id": "test.org", "name": "name", "icon": 8})
-
+def test_bad_type_rp_icon(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(rp={"id": "test.org", "name": "name", "icon": 8})
 
-def test_bad_type_user_name(device, MCRes):
-    req = FidoRequest(MCRes, user={"id": b"user_id", "name": 8})
-
+def test_bad_type_user_name(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(user={"id": b"user_id", "name": 8})
 
-def test_bad_type_user_id(device, MCRes):
-    req = FidoRequest(MCRes, user={"id": "user_id", "name": "name"})
-
+def test_bad_type_user_id(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(user={"id": "user_id", "name": "name"})
 
-def test_bad_type_user_displayName(device, MCRes):
-    req = FidoRequest(
-        MCRes, user={"id": "user_id", "name": "name", "displayName": 8}
-    )
-
+def test_bad_type_user_displayName(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(user={"id": "user_id", "name": "name", "displayName": 8})
 
-def test_bad_type_user_icon(device, MCRes):
-    req = FidoRequest(MCRes, user={"id": "user_id", "name": "name", "icon": 8})
-
+def test_bad_type_user_icon(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(user={"id": "user_id", "name": "name", "icon": 8})
 
-def test_bad_type_pubKeyCredParams(device, MCRes):
-    req = FidoRequest(MCRes, key_params=["wrong"])
-
+def test_bad_type_pubKeyCredParams(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(key_params=["wrong"])
 
-def test_missing_pubKeyCredParams_type(device, MCRes):
-    req = FidoRequest(MCRes, key_params=[{"alg": ES256.ALGORITHM}])
-
+def test_missing_pubKeyCredParams_type(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(key_params=[{"alg": ES256.ALGORITHM}])
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
-def test_missing_pubKeyCredParams_alg(device, MCRes):
-    req = FidoRequest(MCRes, key_params=[{"type": "public-key"}])
-
+def test_missing_pubKeyCredParams_alg(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(key_params=[{"type": "public-key"}])
 
     assert e.value.code in [
         CtapError.ERR.MISSING_PARAMETER,
         CtapError.ERR.UNSUPPORTED_ALGORITHM,
     ]
 
-def test_bad_type_pubKeyCredParams_alg(device, MCRes):
-    req = FidoRequest(MCRes, key_params=[{"alg": "7", "type": "public-key"}])
-
+def test_bad_type_pubKeyCredParams_alg(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(key_params=[{"alg": "7", "type": "public-key"}])
 
-def test_unsupported_algorithm(device, MCRes):
-    req = FidoRequest(MCRes, key_params=[{"alg": 1337, "type": "public-key"}])
-
+def test_unsupported_algorithm(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(key_params=[{"alg": 1337, "type": "public-key"}])
 
     assert e.value.code == CtapError.ERR.UNSUPPORTED_ALGORITHM
 
-def test_exclude_list(device, MCRes):
-    req = FidoRequest(MCRes, exclude_list=[{"id": b"1234", "type": "rot13"}])
+def test_exclude_list(resetdevice):
+    resetdevice.MC(exclude_list=[{"id": b"1234", "type": "rot13"}])
 
-    device.sendMC(*req.toMC())
+def test_exclude_list2(resetdevice):
+    resetdevice.MC(exclude_list=[{"id": b"1234", "type": "mangoPapayaCoconutNotAPublicKey"}])
 
-def test_exclude_list2(device, MCRes):
-    req = FidoRequest(
-        MCRes,
-        exclude_list=[{"id": b"1234", "type": "mangoPapayaCoconutNotAPublicKey"}],
-    )
-
-    device.sendMC(*req.toMC())
-
-def test_bad_type_exclude_list(device, MCRes):
-    req = FidoRequest(MCRes, exclude_list=["1234"])
-
+def test_bad_type_exclude_list(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(exclude_list=["1234"])
 
-def test_missing_exclude_list_type(device, MCRes):
-    req = FidoRequest(MCRes, exclude_list=[{"id": b"1234"}])
-
+def test_missing_exclude_list_type(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(exclude_list=[{"id": b"1234"}])
 
-def test_missing_exclude_list_id(device, MCRes):
-    req = FidoRequest(MCRes, exclude_list=[{"type": "public-key"}])
-
+def test_missing_exclude_list_id(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(exclude_list=[{"type": "public-key"}])
 
-def test_bad_type_exclude_list_id(device, MCRes):
-    req = FidoRequest(MCRes, exclude_list=[{"type": "public-key", "id": "1234"}])
-
+def test_bad_type_exclude_list_id(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(exclude_list=[{"type": "public-key", "id": "1234"}])
 
-def test_bad_type_exclude_list_type(device, MCRes):
-    req = FidoRequest(MCRes, exclude_list=[{"type": b"public-key", "id": b"1234"}])
-
+def test_bad_type_exclude_list_type(device):
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(exclude_list=[{"type": b"public-key", "id": b"1234"}])
 
 def test_exclude_list_excluded(device, MCRes, GARes):
-    req = FidoRequest(MCRes, exclude_list=GARes.request.allow_list)
-
     with pytest.raises(CtapError) as e:
-        device.sendMC(*req.toMC())
+        device.MC(exclude_list=GARes.request.allow_list)
 
     assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
 
-def test_unknown_option(device, MCRes):
-    req = FidoRequest(MCRes, options={"unknown": False})
-    print("MC", req.toMC())
-    device.sendMC(*req.toMC())
-
-def test_eddsa(device):
-    mc_req = FidoRequest(
-        key_params=[{"type": "public-key", "alg": EdDSA.ALGORITHM}]
-    )
-    try:
-        mc_res = device.sendMC(*mc_req.toMC())
-    except CtapError as e:
-        if e.code == CtapError.ERR.UNSUPPORTED_ALGORITHM:
-            print("ed25519 is not supported.  Skip this test.")
-            return
-
-    setattr(mc_res, "request", mc_req)
-
-    allow_list = [
-        {
-            "id": mc_res.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        }
-    ]
-
-    ga_req = FidoRequest(allow_list=allow_list)
-    ga_res = device.sendGA(*ga_req.toGA())
-    setattr(ga_res, "request", ga_req)
-
-    try:
-        verify(mc_res, ga_res)
-    except:
-        # Print out extra details on failure
-        from binascii import hexlify
-
-        print("authdata", hexlify(ga_res.auth_data))
-        print("cdh", hexlify(ga_res.request.cdh))
-        print("sig", hexlify(ga_res.signature))
-        from fido2.ctap2 import AttestedCredentialData
-
-        credential_data = AttestedCredentialData(mc_res.auth_data.credential_data)
-        print("public key:", hexlify(credential_data.public_key[-2]))
-        verify(mc_res, ga_res)
+def test_unknown_option(resetdevice):
+    resetdevice.MC(options={"unknown": False})
