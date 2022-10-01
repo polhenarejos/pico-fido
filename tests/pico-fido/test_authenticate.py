@@ -187,3 +187,8 @@ def test_user_presence_option_false(device, MCRes):
             {"id": MCRes.auth_data.credential_data.credential_id, "type": "public-key"}
         ])
 
+def test_credential_resets(device, MCRes, GARes):
+    device.reset()
+    with pytest.raises(CtapError) as e:
+        new_auth = device.doGA()
+    assert e.value.code == CtapError.ERR.NO_CREDENTIALS
