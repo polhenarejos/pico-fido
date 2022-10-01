@@ -198,6 +198,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
+    if (rpId.present == false || clientDataHash.present == false)
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+
     uint8_t flags = 0;
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *)rpId.data, rpId.len, rp_id_hash, 0);
