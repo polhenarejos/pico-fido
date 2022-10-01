@@ -10,10 +10,10 @@ def test_register(device):
 def test_make_credential():
     pass
 
-def test_attestation_format( MCRes):
+def test_attestation_format(MCRes):
         assert MCRes.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
 
-def test_authdata_length( MCRes):
+def test_authdata_length(MCRes):
     assert len(MCRes.auth_data) >= 77
 
 def test_missing_cdh(device):
@@ -26,15 +26,15 @@ def test_bad_type_cdh(device):
     with pytest.raises(CtapError) as e:
         device.MC(client_data_hash=b'\xff')
 
-def test_missing_user(device, MCRes):
+def test_missing_user(device):
     with pytest.raises(CtapError) as e:
-        device.MC(user=None)
+        device.doMC(user=None)
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
 def test_bad_type_user_user(device):
     with pytest.raises(CtapError) as e:
-        device.MC(user=b"12345678")
+        device.doMC(user=b"12345678")
 
 def test_missing_rp(device):
     with pytest.raises(CtapError) as e:
@@ -48,7 +48,7 @@ def test_bad_type_rp(device):
 
 def test_missing_pubKeyCredParams(device):
     with pytest.raises(CtapError) as e:
-        device.MC(key_params=None)
+        device.doMC(key_params=None)
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
@@ -70,45 +70,45 @@ def test_bad_type_options(device):
 
 def test_bad_type_rp_name(device):
     with pytest.raises(CtapError) as e:
-        device.MC(rp={"id": "test.org", "name": 8, "icon": "icon"})
+        device.doMC(rp={"id": "test.org", "name": 8, "icon": "icon"})
 
 def test_bad_type_rp_id(device):
     with pytest.raises(CtapError) as e:
-        device.MC(rp={"id": 8, "name": "name", "icon": "icon"})
+        device.doMC(rp={"id": 8, "name": "name", "icon": "icon"})
 
 def test_bad_type_rp_icon(device):
     with pytest.raises(CtapError) as e:
-        device.MC(rp={"id": "test.org", "name": "name", "icon": 8})
+        device.doMC(rp={"id": "test.org", "name": "name", "icon": 8})
 
 def test_bad_type_user_name(device):
     with pytest.raises(CtapError) as e:
-        device.MC(user={"id": b"user_id", "name": 8})
+        device.doMC(user={"id": b"user_id", "name": 8})
 
 def test_bad_type_user_id(device):
     with pytest.raises(CtapError) as e:
-        device.MC(user={"id": "user_id", "name": "name"})
+        device.doMC(user={"id": "user_id", "name": "name"})
 
 def test_bad_type_user_displayName(device):
     with pytest.raises(CtapError) as e:
-        device.MC(user={"id": "user_id", "name": "name", "displayName": 8})
+        device.doMC(user={"id": "user_id", "name": "name", "displayName": 8})
 
 def test_bad_type_user_icon(device):
     with pytest.raises(CtapError) as e:
-        device.MC(user={"id": "user_id", "name": "name", "icon": 8})
+        device.doMC(user={"id": "user_id", "name": "name", "icon": 8})
 
 def test_bad_type_pubKeyCredParams(device):
     with pytest.raises(CtapError) as e:
-        device.MC(key_params=["wrong"])
+        device.doMC(key_params=["wrong"])
 
 def test_missing_pubKeyCredParams_type(device):
     with pytest.raises(CtapError) as e:
-        device.MC(key_params=[{"alg": ES256.ALGORITHM}])
+        device.doMC(key_params=[{"alg": ES256.ALGORITHM}])
 
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
 def test_missing_pubKeyCredParams_alg(device):
     with pytest.raises(CtapError) as e:
-        device.MC(key_params=[{"type": "public-key"}])
+        device.doMC(key_params=[{"type": "public-key"}])
 
     assert e.value.code in [
         CtapError.ERR.MISSING_PARAMETER,
@@ -117,43 +117,46 @@ def test_missing_pubKeyCredParams_alg(device):
 
 def test_bad_type_pubKeyCredParams_alg(device):
     with pytest.raises(CtapError) as e:
-        device.MC(key_params=[{"alg": "7", "type": "public-key"}])
+        device.doMC(key_params=[{"alg": "7", "type": "public-key"}])
 
 def test_unsupported_algorithm(device):
     with pytest.raises(CtapError) as e:
-        device.MC(key_params=[{"alg": 1337, "type": "public-key"}])
+        device.doMC(key_params=[{"alg": 1337, "type": "public-key"}])
 
     assert e.value.code == CtapError.ERR.UNSUPPORTED_ALGORITHM
 
 def test_exclude_list(resetdevice):
-    resetdevice.MC(exclude_list=[{"id": b"1234", "type": "rot13"}])
+    resetdevice.doMC(exclude_list=[{"id": b"1234", "type": "rot13"}])
 
 def test_exclude_list2(resetdevice):
-    resetdevice.MC(exclude_list=[{"id": b"1234", "type": "mangoPapayaCoconutNotAPublicKey"}])
+    resetdevice.doMC(exclude_list=[{"id": b"1234", "type": "mangoPapayaCoconutNotAPublicKey"}])
 
 def test_bad_type_exclude_list(device):
     with pytest.raises(CtapError) as e:
-        device.MC(exclude_list=["1234"])
+        device.doMC(exclude_list=["1234"])
 
 def test_missing_exclude_list_type(device):
     with pytest.raises(CtapError) as e:
-        device.MC(exclude_list=[{"id": b"1234"}])
+        device.doMC(exclude_list=[{"id": b"1234"}])
 
 def test_missing_exclude_list_id(device):
     with pytest.raises(CtapError) as e:
-        device.MC(exclude_list=[{"type": "public-key"}])
+        device.doMC(exclude_list=[{"type": "public-key"}])
 
 def test_bad_type_exclude_list_id(device):
     with pytest.raises(CtapError) as e:
-        device.MC(exclude_list=[{"type": "public-key", "id": "1234"}])
+        device.doMC(exclude_list=[{"type": "public-key", "id": "1234"}])
 
 def test_bad_type_exclude_list_type(device):
     with pytest.raises(CtapError) as e:
-        device.MC(exclude_list=[{"type": b"public-key", "id": b"1234"}])
+        device.doMC(exclude_list=[{"type": b"public-key", "id": b"1234"}])
 
-def test_exclude_list_excluded(device, MCRes, GARes):
+def test_exclude_list_excluded(device):
+    res = device.doMC().attestation_object
     with pytest.raises(CtapError) as e:
-        device.MC(exclude_list=GARes.request.allow_list)
+        device.doMC(exclude_list=[
+            {"id": res.auth_data.credential_data.credential_id, "type": "public-key"}
+        ])
 
     assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
 
