@@ -137,6 +137,12 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
             else if (val_u == 0x03) {
                 CBOR_FIELD_GET_BYTES(cred->userId, 1);
             }
+            else if (val_u == 0x04) {
+                CBOR_FIELD_GET_TEXT(cred->userName, 1);
+            }
+            else if (val_u == 0x05) {
+                CBOR_FIELD_GET_TEXT(cred->userDisplayName, 1);
+            }
             else if (val_u == 0x06) {
                 CBOR_FIELD_GET_UINT(cred->creation, 1);
             }
