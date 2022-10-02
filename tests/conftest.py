@@ -102,7 +102,8 @@ class Device():
     def reboot(self):
         print("Please reboot authenticator and hit enter")
         input()
-        self.__setup_client(self.__origin, self.__user_interaction, self.__uv)
+        self.__set_client(self.__origin, self.__user_interaction, self.__uv)
+        self.__set_server(rp=self.__rp, attestation=self.__attestation)
 
     def MC(self, client_data_hash=Ellipsis, rp=Ellipsis, user=Ellipsis, key_params=Ellipsis, exclude_list=None, extensions=None, options=None, pin_uv_param=None, pin_uv_protocol=None, enterprise_attestation=None):
         att_obj = self.__client._backend.ctap2.make_credential(
@@ -251,5 +252,16 @@ def resetdevice(device):
 def GARes(device, MCRes, *args):
     r = device.doGA(allow_list=[
             {"id": MCRes.auth_data.credential_data.credential_id, "type": "public-key"}
+        ], *args)
+    return r
+
+@pytest.fixture(scope="session")
+def MCRes_DC(device, *args):
+    return device.doMC(rk=True, *args).attestation_object
+
+@pytest.fixture(scope="session")
+def GARes_DC(device, MCRes_DC, *args):
+    r = device.GA(allow_list=[
+            {"id": MCRes_DC.auth_data.credential_data.credential_id, "type": "public-key"}
         ], *args)
     return r
