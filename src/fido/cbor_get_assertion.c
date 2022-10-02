@@ -481,7 +481,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     if (selcred->opts.present == true && selcred->opts.rk == ptrue) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
         uint8_t lu = 1;
-        if (numberOfCredentials > 1) {
+        if (numberOfCredentials > 1 && next == false && allowList_len == 0) {
             if (selcred->userName.present == true)
                 lu++;
             if (selcred->userDisplayName.present == true)
@@ -490,7 +490,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, lu));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->userId.data, selcred->userId.len));
-        if (numberOfCredentials > 1) {
+        if (numberOfCredentials > 1 && next == false && allowList_len == 0) {
             if (selcred->userName.present == true) {
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "name"));
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, selcred->userName.data));
