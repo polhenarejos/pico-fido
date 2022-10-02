@@ -50,7 +50,7 @@ int cbor_get_next_assertion(const uint8_t *data, size_t len) {
     timerx = board_millis();
     credentialCounter++;
 err:
-    if (error != CborNoError) {
+    if (error != CborNoError || credentialCounter == numberOfCredentialsx) {
         for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++)
             credential_free(&credsx[i]);
         if (datax) {
@@ -255,8 +255,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_LEN);
         }
 
-        if (allowList_len > 0)
-        {
+        if (allowList_len > 0) {
             for (int e = 0; e < allowList_len; e++) {
                 if (allowList[e].type.present == false || allowList[e].id.present == false)
                     CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -334,7 +333,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         else {
             selcred = &creds[0];
-            if (numberOfCredentials > 1) {
+            if (numberOfCredentials > 1 && allowList_len == 0) {
                 asserted = true;
                 residentx = resident;
                 for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++)
@@ -461,7 +460,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     uint8_t lfields = 3;
     if (selcred->opts.present == true && selcred->opts.rk == ptrue)
         lfields++;
-    if (numberOfCredentials > 1 && next == false)
+    if (numberOfCredentials > 1 && next == false && allowList_len == 0)
         lfields++;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
@@ -503,7 +502,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
-    if (numberOfCredentials > 1 && next == false) {
+    if (numberOfCredentials > 1 && next == false && allowList_len == 0) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
     }
