@@ -75,6 +75,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "id", user.id);
                 CBOR_FIELD_KEY_TEXT_VAL_TEXT(2, "name", user.parent.name);
                 CBOR_FIELD_KEY_TEXT_VAL_TEXT(2, "displayName", user.displayName);
+                CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
         }
