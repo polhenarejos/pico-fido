@@ -4,7 +4,7 @@ from fido2.client import Fido2Client, WindowsClient, UserInteraction, ClientErro
 from fido2.ctap2.pin import ClientPin
 from fido2.server import Fido2Server
 from fido2.ctap import CtapError
-from fido2.webauthn import CollectedClientData
+from fido2.webauthn import CollectedClientData, AttestedCredentialData
 from getpass import getpass
 import sys
 import pytest
@@ -106,11 +106,15 @@ class Device():
         self.__set_server(rp=self.__rp, attestation=self.__attestation)
 
     def MC(self, client_data_hash=Ellipsis, rp=Ellipsis, user=Ellipsis, key_params=Ellipsis, exclude_list=None, extensions=None, options=None, pin_uv_param=None, pin_uv_protocol=None, enterprise_attestation=None):
+        client_data_hash = client_data_hash if client_data_hash is not Ellipsis else os.urandom(32)
+        rp = rp if rp is not Ellipsis else self.__rp
+        user = user if user is not Ellipsis else self.user()
+        key_params = key_params if key_params is not Ellipsis else self.__server.allowed_algorithms
         att_obj = self.__client._backend.ctap2.make_credential(
-            client_data_hash=client_data_hash if client_data_hash is not Ellipsis else os.urandom(32),
-            rp=rp if rp is not Ellipsis else self.__rp,
-            user=user if user is not Ellipsis else self.user(),
-            key_params=key_params if key_params is not Ellipsis else self.__server.allowed_algorithms,
+            client_data_hash=client_data_hash,
+            rp=rp,
+            user=user,
+            key_params=key_params,
             exclude_list=exclude_list,
             extensions=extensions,
             options=options,
@@ -118,17 +122,23 @@ class Device():
             pin_uv_protocol=pin_uv_protocol,
             enterprise_attestation=enterprise_attestation
             )
-        return att_obj
+        return {'res':att_obj,'req':{'client_data_hash':client_data_hash,
+                        'rp':rp,
+                        'user':user,
+                        'key_params':key_params}}
 
     def doMC(self, client_data=Ellipsis, rp=Ellipsis, user=Ellipsis, key_params=Ellipsis, exclude_list=None, extensions=None, rk=None, user_verification=None, enterprise_attestation=None, event=None):
-
-        result = self.__client._backend.do_make_credential(
-            client_data=client_data if client_data is not Ellipsis else CollectedClientData.create(
+        client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
                     type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
-                ),
-            rp=rp if rp is not Ellipsis else self.__rp,
-            user=user if user is not Ellipsis else self.user(),
-            key_params=key_params if key_params is not Ellipsis else self.__server.allowed_algorithms,
+                )
+        rp = rp if rp is not Ellipsis else self.__rp
+        user = user if user is not Ellipsis else self.user()
+        key_params = key_params if key_params is not Ellipsis else self.__server.allowed_algorithms
+        result = self.__client._backend.do_make_credential(
+            client_data=client_data,
+            rp=rp,
+            user=user,
+            key_params=key_params,
             exclude_list=exclude_list,
             extensions=extensions,
             rk=rk,
@@ -136,7 +146,10 @@ class Device():
             enterprise_attestation=enterprise_attestation,
             event=event
         )
-        return result
+        return {'res':result,'req':{'client_data':client_data,
+                       'rp':rp,
+                       'user':user,
+                       'key_params':key_params}}
 
     def try_make_credential(self, options=None):
         if (options is None):
@@ -202,32 +215,38 @@ class Device():
         print("AUTH DATA:", result.authenticator_data)
 
     def GA(self, rp_id=Ellipsis, client_data_hash=Ellipsis, allow_list=None, extensions=None, options=None, pin_uv_param=None, pin_uv_protocol=None):
+        rp_id = rp_id if rp_id is not Ellipsis else self.__rp['id']
+        client_data_hash = client_data_hash if client_data_hash is not Ellipsis else os.urandom(32)
         att_obj = self.__client._backend.ctap2.get_assertion(
-        rp_id=rp_id if rp_id is not Ellipsis else self.__rp['id'],
-        client_data_hash=client_data_hash if client_data_hash is not Ellipsis else os.urandom(32),
+        rp_id=rp_id,
+        client_data_hash=client_data_hash,
         allow_list=allow_list,
         extensions=extensions,
         options=options,
         pin_uv_param=pin_uv_param,
         pin_uv_protocol=pin_uv_protocol
         )
-        return att_obj
+        return {'res':att_obj,'req':{'rp_id':rp_id,
+                        'client_data_hash':client_data_hash}}
 
     def GNA(self):
         return self.__client._backend.ctap2.get_next_assertion()
 
     def doGA(self, client_data=Ellipsis, rp_id=Ellipsis, allow_list=None, extensions=None, user_verification=None, event=None):
-        result = self.__client._backend.do_get_assertion(
-            client_data=client_data if client_data is not Ellipsis else CollectedClientData.create(
+        client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
                     type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
-                ),
-            rp_id=rp_id if rp_id is not Ellipsis else self.__rp['id'],
+                )
+        rp_id = rp_id if rp_id is not Ellipsis else self.__rp['id']
+        result = self.__client._backend.do_get_assertion(
+            client_data=client_data,
+            rp_id=rp_id,
             allow_list=allow_list,
             extensions=extensions,
             user_verification=user_verification,
             event=event
         )
-        return result
+        return {'res':result,'req':{'client_data':client_data,
+                       'rp_id':rp_id}}
 
 
 @pytest.fixture(scope="session")
@@ -241,7 +260,7 @@ def info(device):
 
 @pytest.fixture(scope="session")
 def MCRes(device, *args):
-    return device.doMC(*args).attestation_object
+    return device.doMC(*args)
 
 @pytest.fixture(scope="session")
 def resetdevice(device):
@@ -250,18 +269,24 @@ def resetdevice(device):
 
 @pytest.fixture(scope="session")
 def GARes(device, MCRes, *args):
-    r = device.doGA(allow_list=[
-            {"id": MCRes.auth_data.credential_data.credential_id, "type": "public-key"}
+    res = device.doGA(allow_list=[
+            {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ], *args)
-    return r
+    credential_data = AttestedCredentialData(MCRes['res'].attestation_object.auth_data.credential_data)
+    assertions = res['res'].get_assertions()
+    for a in assertions:
+        a.verify(res['req']['client_data'].hash, credential_data.public_key)
+    return res
 
 @pytest.fixture(scope="session")
 def MCRes_DC(device, *args):
-    return device.doMC(rk=True, *args).attestation_object
+    return device.doMC(rk=True, *args)
 
 @pytest.fixture(scope="session")
 def GARes_DC(device, MCRes_DC, *args):
-    r = device.GA(allow_list=[
-            {"id": MCRes_DC.auth_data.credential_data.credential_id, "type": "public-key"}
+    res = device.GA(allow_list=[
+            {"id": MCRes_DC['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ], *args)
-    return r
+    credential_data = AttestedCredentialData(MCRes_DC['res'].attestation_object.auth_data.credential_data)
+    res['res'].verify(res['req']['client_data_hash'], credential_data.public_key)
+    return res

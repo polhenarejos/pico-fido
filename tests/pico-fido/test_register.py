@@ -11,10 +11,10 @@ def test_make_credential():
     pass
 
 def test_attestation_format(MCRes):
-        assert MCRes.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
+        assert MCRes['res'].attestation_object.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
 
 def test_authdata_length(MCRes):
-    assert len(MCRes.auth_data) >= 77
+    assert len(MCRes['res'].attestation_object.auth_data) >= 77
 
 def test_missing_cdh(device):
     with pytest.raises(CtapError) as e:
@@ -152,7 +152,7 @@ def test_bad_type_exclude_list_type(device):
         device.doMC(exclude_list=[{"type": b"public-key", "id": b"1234"}])
 
 def test_exclude_list_excluded(device):
-    res = device.doMC().attestation_object
+    res = device.doMC()['res'].attestation_object
     with pytest.raises(CtapError) as e:
         device.doMC(exclude_list=[
             {"id": res.auth_data.credential_data.credential_id, "type": "public-key"}
