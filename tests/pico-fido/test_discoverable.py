@@ -140,7 +140,8 @@ def test_rk_maximum_size_nodisplay(device):
     user_max_GA = auths[0]
     print(auths)
     for y in ("name", "displayName", "id"):
-        assert user_max_GA.user[y] == user_max[y]
+        if (y in user_max_GA):
+            assert user_max_GA.user[y] == user_max[y]
 
 
 def test_rk_maximum_list_capacity_per_rp_nodisplay(info, device, MCRes_DC):
