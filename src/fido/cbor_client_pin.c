@@ -401,10 +401,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
-        uint8_t tmp[64 + 16];
-        memcpy(tmp, newPinEnc.data, 64);
-        memcpy(tmp + 64, pinHashEnc.data, 16);
-        if (verify(pinUvAuthProtocol, sharedSecret, tmp, sizeof(tmp), pinUvAuthParam.data) != 0) {
+        uint8_t tmp[80 + 32];
+        memcpy(tmp, newPinEnc.data, newPinEnc.len);
+        memcpy(tmp + newPinEnc.len, pinHashEnc.data, pinHashEnc.len);
+        if (verify(pinUvAuthProtocol, sharedSecret, tmp, newPinEnc.len+pinHashEnc.len, pinUvAuthParam.data) != 0) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
