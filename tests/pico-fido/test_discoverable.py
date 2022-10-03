@@ -1,48 +1,7 @@
 from fido2.client import CtapError
-from fido2.cose import ES256
 import pytest
-import secrets
 import random
-import string
-
-def generate_random_user():
-    # https://www.w3.org/TR/webauthn/#user-handle
-    user_id_length = random.randint(1, 64)
-    user_id = secrets.token_bytes(user_id_length)
-
-    # https://www.w3.org/TR/webauthn/#dictionary-pkcredentialentity
-    name = "User name"
-    icon = "https://www.w3.org/TR/webauthn/"
-    display_name = "Displayed " + name
-
-    return {"id": user_id, "name": name, "icon": icon, "displayName": display_name}
-
-counter = 1
-def generate_user_maximum():
-    """
-    Generate RK with the maximum lengths of the fields, according to the minimal requirements of the FIDO2 spec
-    """
-    global counter
-
-    # https://www.w3.org/TR/webauthn/#user-handle
-    user_id_length = 64
-    user_id = secrets.token_bytes(user_id_length)
-
-    # https://www.w3.org/TR/webauthn/#dictionary-pkcredentialentity
-    name = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(64))
-
-    name = f"{counter}: {name}"
-    icon = "https://www.w3.org/TR/webauthn/" + "A" * 128
-    display_name = "Displayed " + name
-
-    name = name[:64]
-    display_name = display_name[:64]
-    icon = icon[:128]
-
-    counter += 1
-
-    return {"id": user_id, "name": name, "icon": icon, "displayName": display_name}
-
+from utils import *
 
 @pytest.mark.parametrize("do_reboot", [False, True])
 def test_user_info_returned_when_using_allowlist(device, MCRes_DC, GARes_DC, do_reboot):
@@ -269,9 +228,7 @@ def test_returned_credential(device):
         allow_list.append({"id": res.auth_data.credential_data.credential_id[:], "type": "public-key"})
 
 
-    print('allow_list: ' , allow_list)
-    ga_res = device.GA(allow_list=allow_list)['res']
-    print(ga_res)
+    ga_res = device.GA(allow_list=allow_list,options={'up':False})['res']
 
     # No other credentials should be returned
     with pytest.raises(CtapError) as e:
