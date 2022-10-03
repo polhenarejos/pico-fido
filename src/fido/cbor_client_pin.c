@@ -460,6 +460,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         if ((subcommand == 0x9 && permissions == 0) || (subcommand == 0x5 && (permissions != 0 || rpId.present == true)))
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        if (!file_has_data(ef_pin))
+            CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
         if (*file_get_data(ef_pin) == 0)
             CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
         if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.X, kax.data, kax.len) != 0) {
