@@ -6,6 +6,7 @@ from fido2.server import Fido2Server
 from fido2.ctap import CtapError
 from fido2.webauthn import CollectedClientData, AttestedCredentialData
 from getpass import getpass
+from utils import *
 import sys
 import pytest
 import os
@@ -237,14 +238,27 @@ class Device():
                     type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
                 )
         rp_id = rp_id if rp_id is not Ellipsis else self.__rp['id']
-        result = self.__client._backend.do_get_assertion(
-            client_data=client_data,
-            rp_id=rp_id,
-            allow_list=allow_list,
-            extensions=extensions,
-            user_verification=user_verification,
-            event=event
-        )
+        try:
+            result = self.__client._backend.do_get_assertion(
+                client_data=client_data,
+                rp_id=rp_id,
+                allow_list=allow_list,
+                extensions=extensions,
+                user_verification=user_verification,
+                event=event
+            )
+        except ClientError as e:
+            if (e.code == ClientError.ERR.CONFIGURATION_UNSUPPORTED):
+                client_pin = ClientPin(self.__client._backend.ctap2)
+                client_pin.set_pin(DEFAULT_PIN)
+                result = self.__client._backend.do_get_assertion(
+                    client_data=client_data,
+                    rp_id=rp_id,
+                    allow_list=allow_list,
+                    extensions=extensions,
+                    user_verification=user_verification,
+                    event=event
+                )
         return {'res':result,'req':{'client_data':client_data,
                        'rp_id':rp_id}}
 
@@ -272,10 +286,10 @@ def GARes(device, MCRes, *args):
     res = device.doGA(allow_list=[
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ], *args)
-    credential_data = AttestedCredentialData(MCRes['res'].attestation_object.auth_data.credential_data)
+
     assertions = res['res'].get_assertions()
     for a in assertions:
-        a.verify(res['req']['client_data'].hash, credential_data.public_key)
+        verify(MCRes['res'].attestation_object, a, res['req']['client_data'].hash)
     return res
 
 @pytest.fixture(scope="session")
@@ -287,6 +301,6 @@ def GARes_DC(device, MCRes_DC, *args):
     res = device.GA(allow_list=[
             {"id": MCRes_DC['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ], *args)
-    credential_data = AttestedCredentialData(MCRes_DC['res'].attestation_object.auth_data.credential_data)
-    res['res'].verify(res['req']['client_data_hash'], credential_data.public_key)
+    verify(MCRes_DC['res'].attestation_object, res['res'], res['req']['client_data_hash'])
+
     return res
