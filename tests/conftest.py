@@ -1,12 +1,13 @@
 from http import client
 from fido2.hid import CtapHidDevice
-from fido2.client import Fido2Client, WindowsClient, UserInteraction, ClientError
+from fido2.client import Fido2Client, WindowsClient, UserInteraction, ClientError, _Ctap1ClientBackend
+from fido2.attestation import FidoU2FAttestation
 from fido2.ctap2.pin import ClientPin
 from fido2.server import Fido2Server
 from fido2.ctap import CtapError
 from fido2.webauthn import CollectedClientData, AttestedCredentialData
-from getpass import getpass
 from utils import *
+from fido2.cose import ES256
 import sys
 import pytest
 import os
@@ -36,6 +37,7 @@ class Device():
         self.__user = None
         self.__set_client(origin=origin, user_interaction=user_interaction, uv=uv)
         self.__set_server(rp=rp, attestation=attestation)
+
 
     def __set_client(self, origin, user_interaction, uv):
         self.__uv = uv
@@ -67,6 +69,9 @@ class Device():
         if self.__client.info.options.get("uv") or self.__client.info.options.get("pinUvAuthToken"):
             self.__uv = "preferred"
             print("Authenticator supports User Verification")
+
+        self.__client1 = Fido2Client(self.__dev, self.__origin, user_interaction=self.__user_interaction)
+        self.__client1._backend = _Ctap1ClientBackend(self.__dev, user_interaction=self.__user_interaction)
 
     def __set_server(self, rp, attestation):
         self.__rp = rp
@@ -128,14 +133,18 @@ class Device():
                         'user':user,
                         'key_params':key_params}}
 
-    def doMC(self, client_data=Ellipsis, rp=Ellipsis, user=Ellipsis, key_params=Ellipsis, exclude_list=None, extensions=None, rk=None, user_verification=None, enterprise_attestation=None, event=None):
+    def doMC(self, client_data=Ellipsis, rp=Ellipsis, user=Ellipsis, key_params=Ellipsis, exclude_list=None, extensions=None, rk=None, user_verification=None, enterprise_attestation=None, event=None, ctap1=False):
         client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
                     type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
                 )
         rp = rp if rp is not Ellipsis else self.__rp
         user = user if user is not Ellipsis else self.user()
         key_params = key_params if key_params is not Ellipsis else self.__server.allowed_algorithms
-        result = self.__client._backend.do_make_credential(
+        if (ctap1 is True):
+            client = self.__client1
+        else:
+            client = self.__client
+        result = client._backend.do_make_credential(
             client_data=client_data,
             rp=rp,
             user=user,
@@ -233,13 +242,17 @@ class Device():
     def GNA(self):
         return self.__client._backend.ctap2.get_next_assertion()
 
-    def doGA(self, client_data=Ellipsis, rp_id=Ellipsis, allow_list=None, extensions=None, user_verification=None, event=None):
+    def doGA(self, client_data=Ellipsis, rp_id=Ellipsis, allow_list=None, extensions=None, user_verification=None, event=None, ctap1=False):
         client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
                     type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
                 )
         rp_id = rp_id if rp_id is not Ellipsis else self.__rp['id']
+        if (ctap1 is True):
+            client = self.__client1
+        else:
+            client = self.__client
         try:
-            result = self.__client._backend.do_get_assertion(
+            result = client._backend.do_get_assertion(
                 client_data=client_data,
                 rp_id=rp_id,
                 allow_list=allow_list,
@@ -251,7 +264,7 @@ class Device():
             if (e.code == ClientError.ERR.CONFIGURATION_UNSUPPORTED):
                 client_pin = ClientPin(self.__client._backend.ctap2)
                 client_pin.set_pin(DEFAULT_PIN)
-                result = self.__client._backend.do_get_assertion(
+                result = client._backend.do_get_assertion(
                     client_data=client_data,
                     rp_id=rp_id,
                     allow_list=allow_list,
@@ -259,6 +272,8 @@ class Device():
                     user_verification=user_verification,
                     event=event
                 )
+            else:
+                raise
         return {'res':result,'req':{'client_data':client_data,
                        'rp_id':rp_id}}
 
@@ -304,3 +319,21 @@ def GARes_DC(device, MCRes_DC, *args):
     verify(MCRes_DC['res'].attestation_object, res['res'], res['req']['client_data_hash'])
 
     return res
+
+@pytest.fixture(scope="module")
+def RegRes(resetdevice, *args):
+    res = resetdevice.doMC(ctap1=True, *args)
+    att = FidoU2FAttestation()
+    att.verify(res['res'].attestation_object.att_stmt, res['res'].attestation_object.auth_data, res['req']['client_data'].hash)
+    return res
+
+
+@pytest.fixture(scope="class")
+def AuthRes(device, RegRes, *args):
+    res = device.doGA(ctap1=True, allow_list=[
+            {"id": RegRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
+        ], *args)
+    aut_data = res['res'].get_response(0)
+    m = aut_data.authenticator_data.rp_id_hash + aut_data.authenticator_data.flags.to_bytes(1, 'big') + aut_data.authenticator_data.counter.to_bytes(4, 'big') + aut_data.client_data.hash
+    ES256(RegRes['res'].attestation_object.auth_data.credential_data.public_key).verify(m, aut_data.signature)
+    return aut_data
