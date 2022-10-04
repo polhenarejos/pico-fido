@@ -42,21 +42,22 @@ int cmd_authenticate() {
     uint8_t *tmp_kh = (uint8_t *)calloc(1, req->keyHandleLen);
     memcpy(tmp_kh, req->keyHandle, req->keyHandleLen);
     if (credential_verify(tmp_kh, req->keyHandleLen, req->appId) == 0) {
-        DEBUG_DATA(req->keyHandle, req->keyHandleLen);
         ret = fido_load_key(FIDO2_CURVE_P256, req->keyHandle, &key);
     }
     else {
         ret = derive_key(req->appId, false, req->keyHandle, MBEDTLS_ECP_DP_SECP256R1, &key);
+        if (verify_key(req->appId, req->keyHandle, &key) != 0) {
+            mbedtls_ecdsa_free(&key);
+            return SW_INCORRECT_PARAMS();
+        }
     }
     free(tmp_kh);
     if (ret != CCID_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
-    if (verify_key(req->appId, req->keyHandle, &key) != 0) {
-        return SW_INCORRECT_PARAMS();
-    }
     if (P1(apdu) == CTAP_AUTH_CHECK_ONLY) {
+        mbedtls_ecdsa_free(&key);
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     resp->flags = 0;
