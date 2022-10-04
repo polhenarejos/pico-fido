@@ -30,6 +30,7 @@ uint8_t rp_counter = 1;
 uint8_t rp_total = 0;
 uint8_t cred_counter = 1;
 uint8_t cred_total = 0;
+CborByteString rpIdHashx = {0};
 
 int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     CborParser parser;
@@ -43,13 +44,14 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     uint8_t *raw_subpara = NULL;
     size_t raw_subpara_len = 0;
+    bool asserted = false;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
     CBOR_PARSE_MAP_START(map, 1) {
         uint64_t val_u = 0;
         CBOR_FIELD_GET_UINT(val_u, 1);
-        if (val_c <= 4 && val_c != val_u)
+        if (val_c <= 1 && val_c != val_u)
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (val_u < val_c)
             CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
@@ -103,7 +105,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    if (subcommand != 0x03) {
+    if (subcommand != 0x03 && subcommand != 0x05) {
         if (pinUvAuthParam.present == false)
             CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
         if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
@@ -130,9 +132,11 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         if (subcommand == 0x02) {
             if (verify(pinUvAuthProtocol, paut.data, (const uint8_t *)"\x02", 1, pinUvAuthParam.data) != CborNoError)
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            rp_counter = 1;
+            rp_total = 0;
         }
         else {
-            if (rp_counter >= rp_total)
+            if (rp_counter > rp_total)
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         }
         uint8_t skip = 0;
@@ -145,7 +149,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                     if (subcommand == 0x03)
                         break;
                 }
-                rp_total++;
+                if (subcommand == 0x02)
+                    rp_total++;
             }
         }
         if (rp_ef == NULL) // should not happen
@@ -165,16 +170,20 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
     }
     else if (subcommand == 0x04 || subcommand == 0x05) {
-        if (rpIdHash.present == false)
+        if (subcommand == 0x04 && rpIdHash.present == false)
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (subcommand == 0x04) {
             *(raw_subpara-1) = 0x04;
             if (verify(pinUvAuthProtocol, paut.data, raw_subpara-1, raw_subpara_len+1, pinUvAuthParam.data) != CborNoError)
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            cred_counter = 1;
+            cred_total = 0;
         }
         else {
-            if (cred_counter >= cred_total)
+            if (cred_counter > cred_total) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
+            rpIdHash = rpIdHashx;
         }
         file_t *cred_ef = NULL;
         uint8_t skip = 0;
@@ -187,7 +196,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                     if (subcommand == 0x05)
                         break;
                 }
-                cred_total++;
+                if (subcommand == 0x04)
+                    cred_total++;
             }
         }
         if (!file_has_data(cred_ef))
@@ -259,6 +269,10 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         if (subcommand == 0x04) {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x09));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, cred_total));
+        }
+        if (cred_counter <= cred_total) {
+            asserted = true;
+            rpIdHashx = rpIdHash;
         }
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, cred.extensions.credProtect));
@@ -335,7 +349,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
 
-    CBOR_FREE_BYTE_STRING(rpIdHash);
+    if (asserted == false) {
+        CBOR_FREE_BYTE_STRING(rpIdHash);
+    }
     CBOR_FREE_BYTE_STRING(user.id);
     CBOR_FREE_BYTE_STRING(user.displayName);
     CBOR_FREE_BYTE_STRING(user.parent.name);
