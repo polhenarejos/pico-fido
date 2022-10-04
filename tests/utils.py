@@ -3,6 +3,9 @@ import random
 import string
 import secrets
 import math
+from threading import Event, Timer
+from numbers import Number
+
 
 def verify(MC, GA, client_data_hash):
     credential_data = AttestedCredentialData(MC.auth_data.credential_data)
@@ -56,3 +59,59 @@ def shannon_entropy(data):
             s -= p * math.log2(p)
     return s
 
+
+# Timeout from:
+#   https://github.com/Yubico/python-fido2/blob/f1dc028d6158e1d6d51558f72055c65717519b9b/fido2/utils.py
+# Copyright (c) 2013 Yubico AB
+# All rights reserved.
+#
+#   Redistribution and use in source and binary forms, with or
+#   without modification, are permitted provided that the following
+#   conditions are met:
+#
+#    1. Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#    2. Redistributions in binary form must reproduce the above
+#       copyright notice, this list of conditions and the following
+#       disclaimer in the documentation and/or other materials provided
+#       with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+
+class Timeout(object):
+    """Utility class for adding a timeout to an event.
+    :param time_or_event: A number, in seconds, or a threading.Event object.
+    :ivar event: The Event associated with the Timeout.
+    :ivar timer: The Timer associated with the Timeout, if any.
+    """
+
+    def __init__(self, time_or_event):
+
+        if isinstance(time_or_event, Number):
+            self.event = Event()
+            self.timer = Timer(time_or_event, self.event.set)
+        else:
+            self.event = time_or_event
+            self.timer = None
+
+    def __enter__(self):
+        if self.timer:
+            self.timer.start()
+        return self.event
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.timer:
+            self.timer.cancel()
+            self.timer.join()

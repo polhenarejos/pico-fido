@@ -11,8 +11,23 @@ from fido2.cose import ES256
 import sys
 import pytest
 import os
+import struct
 
 DEFAULT_PIN='12345678'
+
+
+class Packet(object):
+    def __init__(self, data):
+        self.data = data
+
+    def ToWireFormat(
+        self,
+    ):
+        return self.data
+
+    @staticmethod
+    def FromWireFormat(pkt_size, data):
+        return Packet(data)
 
 class CliInteraction(UserInteraction):
     def prompt_up(self):
@@ -47,6 +62,7 @@ class Device():
 
         # Locate a device
         self.__dev = next(CtapHidDevice.list_devices(), None)
+        self.dev = self.__dev
         if self.__dev is not None:
             print("Use USB HID channel.")
         else:
@@ -95,6 +111,41 @@ class Device():
         if (rp is not None):
             self.__rp = rp
         return self.__rp
+
+    def send_data(self, cmd, data, timeout = 1.0, on_keepalive = None):
+        if not isinstance(data, bytes):
+            data = struct.pack("%dB" % len(data), *[ord(x) for x in data])
+        with Timeout(timeout) as event:
+            event.is_set()
+            return self.dev.call(cmd, data, event, on_keepalive = on_keepalive)
+
+    def cid(self):
+        return self.dev._channel_id
+
+    def set_cid(self, cid):
+        self.dev._channel_id = int.from_bytes(cid, 'big')
+
+    def recv_raw(self):
+            with Timeout(1.0):
+                r = self.dev._connection.read_packet()
+            return r[4], r[7:]
+
+    def send_raw(self, data, cid=None):
+        if cid is None:
+            cid = self.dev._channel_id.to_bytes(4, 'big')
+        elif not isinstance(cid, bytes):
+            cid = struct.pack("%dB" % len(cid), *[ord(x) for x in cid])
+        if not isinstance(data, bytes):
+            data = struct.pack("%dB" % len(data), *[ord(x) for x in data])
+        data = cid + data
+        l = len(data)
+        if l != 64:
+            pad = "\x00" * (64 - l)
+            pad = struct.pack("%dB" % len(pad), *[ord(x) for x in pad])
+            data = data + pad
+        data = bytes(data)
+        assert len(data) == 64
+        self.dev._connection.write_packet(data)
 
     def reset(self):
         print("Resetting Authenticator...")
