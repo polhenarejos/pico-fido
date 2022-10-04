@@ -423,7 +423,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             if (retries == 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
             }
-            if (++new_pin_mismatches == 3)  {
+            if (++new_pin_mismatches >= 3)  {
                 needs_power_cycle = true;
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
             }
