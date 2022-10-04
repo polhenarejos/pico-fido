@@ -512,10 +512,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     flash_write_data_to_file(ef_counter, (uint8_t *)&ctr, sizeof(ctr));
     low_flash_available();
     err:
+    CBOR_FREE_BYTE_STRING(clientDataHash);
+    CBOR_FREE_BYTE_STRING(pinUvAuthParam);
+    CBOR_FREE_BYTE_STRING(rpId);
     if (asserted == false) {
-        CBOR_FREE_BYTE_STRING(clientDataHash);
-        CBOR_FREE_BYTE_STRING(pinUvAuthParam);
-        CBOR_FREE_BYTE_STRING(rpId);
+        for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++)
+            credential_free(&creds[i]);
     }
 
     for (int m = 0; m < allowList_len; m++) {
