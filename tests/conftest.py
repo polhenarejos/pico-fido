@@ -72,6 +72,7 @@ class Device():
 
         self.__client1 = Fido2Client(self.__dev, self.__origin, user_interaction=self.__user_interaction)
         self.__client1._backend = _Ctap1ClientBackend(self.__dev, user_interaction=self.__user_interaction)
+        self.ctap1 = self.__client1._backend.ctap1
 
     def __set_server(self, rp, attestation):
         self.__rp = rp
@@ -242,7 +243,7 @@ class Device():
     def GNA(self):
         return self.__client._backend.ctap2.get_next_assertion()
 
-    def doGA(self, client_data=Ellipsis, rp_id=Ellipsis, allow_list=None, extensions=None, user_verification=None, event=None, ctap1=False):
+    def doGA(self, client_data=Ellipsis, rp_id=Ellipsis, allow_list=None, extensions=None, user_verification=None, event=None, ctap1=False, check_only=False):
         client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
                     type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
                 )
