@@ -337,3 +337,7 @@ def AuthRes(device, RegRes, *args):
     m = aut_data.authenticator_data.rp_id_hash + aut_data.authenticator_data.flags.to_bytes(1, 'big') + aut_data.authenticator_data.counter.to_bytes(4, 'big') + aut_data.client_data.hash
     ES256(RegRes['res'].attestation_object.auth_data.credential_data.public_key).verify(m, aut_data.signature)
     return aut_data
+
+@pytest.fixture(scope="class")
+def client_pin(resetdevice):
+    return ClientPin(resetdevice.client()._backend.ctap2)
