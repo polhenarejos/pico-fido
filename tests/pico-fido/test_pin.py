@@ -1,17 +1,11 @@
 import os
 import pytest
 from fido2.ctap import CtapError
-from fido2.ctap2.pin import PinProtocolV1
 from fido2.client import ClientPin
 from fido2.webauthn import UserVerificationRequirement
 from fido2.utils import hmac_sha256
 
 from utils import *
-
-
-@pytest.fixture(scope="class")
-def client_pin(resetdevice):
-    return ClientPin(resetdevice.client()._backend.ctap2)
 
 def test_lockout(device, resetdevice, client_pin):
     pin = "TestPin"
