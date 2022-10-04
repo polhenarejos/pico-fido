@@ -16,10 +16,9 @@ def generate_random_user():
 
     # https://www.w3.org/TR/webauthn/#dictionary-pkcredentialentity
     name = "User name"
-    icon = "https://www.w3.org/TR/webauthn/"
     display_name = "Displayed " + name
 
-    return {"id": user_id, "name": name, "icon": icon, "displayName": display_name}
+    return {"id": user_id, "name": name, "displayName": display_name}
 
 counter = 1
 def generate_user_maximum():
