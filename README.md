@@ -12,8 +12,10 @@ Pico FIDO has implemented the following features:
 - User presence enforcement through physical button
 - User Verification with PIN
 - Discoverable credentials
+- Credential management
 - ECDSA authentication
 - App registration and login
+- Device selection
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
@@ -23,7 +25,7 @@ Pico FIDO is an open platform so be careful. The contents in the flash memory ma
 If the Pico is stolen the contents of private and secret keys can be read.
 
 ## Download
-Please, go to the [Release page](https://github.com/polhenarejos/pico-fido/releases "Release page"))  and download the UF2 file for your board.
+Please, go to the [Release page](https://github.com/polhenarejos/pico-fido/releases "Release page") and download the UF2 file for your board.
 
 Note that UF2 files are shiped with a dummy VID/PID to avoid license issues (FEFF:FCFD). If you are planning to use it with OpenSC or similar, you should modify Info.plist of CCID driver to add these VID/PID or use the VID/PID patcher as follows: `./pico-fido-patch-vidpid.sh VID:PID input_fido_file.uf2 output_fido_file.uf2`
 
@@ -68,6 +70,21 @@ While processing, the Pico FIDO is busy and cannot receive additional commands u
 ## Driver
 
 Pico FIDO uses the `HID` driver, present in all OS. It should be detected by all OS and browser/applications, like normal USB FIDO keys.
+
+## Tests
+
+Tests can be found at `tests` folder. It is based on [FIDO2 tests](https://github.com/solokeys/fido2-tests "FIDO2 tests") from Solokeys, but adapted to [python-fido2](https://github.com/Yubico/python-fido2 "python-fido2") v1.0 package, which is a major refactor from previous 0.8 version and includes latests improvements from CTAP 2.1.
+
+All tests can be run by
+
+```
+pytest
+```
+
+or by selecting a subset with `-k <test>` flag:
+```
+pytest -k test_credprotect
+```
 
 ## Credits
 Pico FIDO uses the following libraries or portion of code:
