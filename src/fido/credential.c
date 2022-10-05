@@ -303,7 +303,7 @@ int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8
 }
 
 int credential_derive_chacha_key(uint8_t *outk) {
-    memset(outk, 0, 64);
+    memset(outk, 0, 32);
     int r = 0;
     if ((r = load_keydev(outk)) != 0)
         return r;
