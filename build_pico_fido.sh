@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VERSION_MAJOR="2"
-VERSION_MINOR="0"
+VERSION_MINOR="2"
 
 rm -rf release/*
 cd build_release
@@ -46,7 +46,7 @@ for board in adafruit_feather_rp2040 \
     wiznet_w5100s_evb_pico
 do
     rm -rf *
-    PICO_SDK_PATH=~/Devel/pico/pico-sdk cmake .. -DPICO_BOARD=$board
+    PICO_SDK_PATH=../../pico-sdk cmake .. -DPICO_BOARD=$board
     make -kj20
     mv pico_fido.uf2 ../release/pico_fido_$board-$VERSION_MAJOR.$VERSION_MINOR.uf2
 
