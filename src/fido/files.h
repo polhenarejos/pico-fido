@@ -21,6 +21,7 @@
 #include "file.h"
 
 #define EF_KEY_DEV      0xCC00
+#define EF_KEY_DEV_ENC  0xCC01
 #define EF_EE_DEV       0xCE00
 #define EF_COUNTER      0xC000
 #define EF_PIN          0x1080
