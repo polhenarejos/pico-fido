@@ -114,6 +114,10 @@ typedef struct {
 #define CTAP_GET_NEXT_ASSERTION  0x08
 #define CTAP_CREDENTIAL_MGMT     0x0A
 #define CTAP_SELECTION           0x0B
+#define CTAP_CONFIG              0x0D
+
+#define CTAP_CONFIG_AUT             0x03e43f56b34285e2
+#define CTAP_CONFIG_KEY_AGREEMENT   0x1831a40f04a25ed9
 
 // Command status responses
 

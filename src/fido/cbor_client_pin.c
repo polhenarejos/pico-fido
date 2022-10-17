@@ -35,8 +35,8 @@ uint8_t permissions_rp_id = 0, permission_set = 0;
 uint32_t usage_timer = 0, initial_usage_time_limit = 0;
 uint32_t max_usage_time_period  = 600*1000;
 bool needs_power_cycle = false;
-mbedtls_ecdh_context hkey;
-bool hkey_init = false;
+static mbedtls_ecdh_context hkey;
+static bool hkey_init = false;
 
 int beginUsingPinUvAuthToken(bool userIsPresent) {
     paut.user_present = userIsPresent;
