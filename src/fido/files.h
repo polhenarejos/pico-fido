@@ -34,5 +34,6 @@ extern file_t *ef_certdev;
 extern file_t *ef_counter;
 extern file_t *ef_pin;
 extern file_t *ef_authtoken;
+extern file_t *ef_keydev_enc;
 
 #endif //_FILES_H_

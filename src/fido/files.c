@@ -36,3 +36,4 @@ file_t *ef_certdev = NULL;
 file_t *ef_counter = NULL;
 file_t *ef_pin = NULL;
 file_t *ef_authtoken = NULL;
+file_t *ef_keydev_enc = NULL;
