@@ -16,6 +16,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "common.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
@@ -32,6 +33,8 @@
 
 static mbedtls_ecdh_context hkey;
 static bool hkey_init = false;
+extern uint8_t keydev_dec[32];
+extern bool has_keydev_dec;
 
 int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
@@ -138,12 +141,9 @@ int cbor_config(const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, 32));
             CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
         }
-        else if (vendorCommandId == CTAP_CONFIG_AUT) {
-
-            if (*file_get_data(ef_keydev) == 0x01) { // Already encrypted
+        else if (vendorCommandId == CTAP_CONFIG_AUT || vendorCommandId == CTAP_CONFIG_UNLOCK) {
+            if (vendorCommandId == CTAP_CONFIG_AUT && !file_has_data(ef_keydev))
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
-            }
-
             if (kax.present == false || kay.present == false || alg == 0)
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
 
@@ -190,21 +190,42 @@ int cbor_config(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
 
-            file_t *ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
-            uint8_t key_dev_enc[12+32+16];
-            random_gen(NULL, key_dev_enc, 12);
-            mbedtls_chachapoly_init(&chatx);
-            mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
-            ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, file_get_size(ef_keydev), key_dev_enc, NULL, 0, file_get_data(ef_keydev), key_dev_enc + 12, key_dev_enc + 12 + file_get_size(ef_keydev));
-            mbedtls_chachapoly_free(&chatx);
-            if (ret != 0){
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            if (vendorCommandId == CTAP_CONFIG_AUT) {
+                uint8_t key_dev_enc[12+32+16];
+                random_gen(NULL, key_dev_enc, 12);
+                mbedtls_chachapoly_init(&chatx);
+                mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
+                ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, file_get_size(ef_keydev), key_dev_enc, NULL, 0, file_get_data(ef_keydev), key_dev_enc + 12, key_dev_enc + 12 + file_get_size(ef_keydev));
+                mbedtls_chachapoly_free(&chatx);
+                if (ret != 0){
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+
+                flash_write_data_to_file(ef_keydev_enc, key_dev_enc, sizeof(key_dev_enc));
+                mbedtls_platform_zeroize(key_dev_enc, sizeof(key_dev_enc));
+                flash_write_data_to_file(ef_keydev, key_dev_enc, file_get_size(ef_keydev)); // Overwrite ef with 0
+                flash_write_data_to_file(ef_keydev, NULL, 0); // Set ef to 0 bytes
+                low_flash_available();
             }
+            else if (vendorCommandId == CTAP_CONFIG_UNLOCK) {
+                if (!file_has_data(ef_keydev_enc))
+                    CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
 
-            flash_write_data_to_file(ef_keydev_enc, key_dev_enc, sizeof(key_dev_enc));
-            low_flash_available();
-
+                uint8_t *keyenc = file_get_data(ef_keydev_enc);
+                size_t keyenc_len = file_get_size(ef_keydev_enc);
+                mbedtls_chachapoly_init(&chatx);
+                mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
+                ret = mbedtls_chachapoly_auth_decrypt(&chatx, sizeof(keydev_dec), keyenc, NULL, 0, keyenc + keyenc_len - 16, keyenc + 12, keydev_dec);
+                mbedtls_chachapoly_free(&chatx);
+                if (ret != 0){
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                has_keydev_dec = true;
+            }
             goto err; //No return
+        }
+        else {
+            CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
     }
     else

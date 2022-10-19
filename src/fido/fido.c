@@ -39,6 +39,9 @@ int fido_unload();
 
 pinUvAuthToken_t paut = {0};
 
+uint8_t keydev_dec[32];
+bool has_keydev_dec = false;
+
 const uint8_t fido_aid[] = {
     8,
     0xA0, 0x00, 0x00, 0x06, 0x47, 0x2F, 0x00, 0x01
@@ -117,9 +120,12 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
 }
 
 int load_keydev(uint8_t *key) {
-    if (!ef_keydev || file_get_size(ef_keydev) == 0)
+    if (has_keydev_dec == false && !file_has_data(ef_keydev))
         return CCID_ERR_MEMORY_FATAL;
-    memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+    if (has_keydev_dec == true)
+        memcpy(key, keydev_dec, sizeof(keydev_dec));
+    else
+        memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
     //return mkek_decrypt(key, file_get_size(ef_keydev));
     return CCID_OK;
 }
@@ -201,8 +207,9 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
 
 int scan_files(bool core1) {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
+    ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
     if (ef_keydev) {
-        if (!file_has_data(ef_keydev)) {
+        if (!file_has_data(ef_keydev) && !file_has_data(ef_keydev_enc)) {
             printf("KEY DEVICE is empty. Generating SECP256R1 curve...");
             mbedtls_ecdsa_context ecdsa;
             mbedtls_ecdsa_init(&ecdsa);
