@@ -22,6 +22,7 @@ class VendorConfig(Config):
     class CMD(IntEnum):
         CONFIG_AUT           = 0x03e43f56b34285e2
         CONFIG_KEY_AGREEMENT = 0x1831a40f04a25ed9
+        CONFIG_UNLOCK        = 0x54365966c9a74770
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -29,7 +30,10 @@ class VendorConfig(Config):
     def __init__(self, ctap, pin_uv_protocol=None, pin_uv_token=None):
         super().__init__(ctap, pin_uv_protocol, pin_uv_token)
 
-    def enable_device_aut(self):
+    def _get_key_device(self):
+        return b"\x69"*32
+
+    def _get_shared_key(self):
         ret = self._call(
             Config.CMD.VENDOR_PROTOTYPE,
             {
@@ -60,25 +64,35 @@ class VendorConfig(Config):
             salt=None,
             info=pb
         )
-        print(hexlify(shared_key))
         kdf_out = xkdf.derive(shared_key)
         key_enc = kdf_out[12:]
         iv = kdf_out[:12]
-        print(hexlify(kdf_out))
-        print(hexlify(pb))
+        return iv, key_enc, key_agreement, pb
+
+    def _send_command_key(self, cmd):
+        iv, key_enc, key_agreement, pb = self._get_shared_key()
+
         chacha = ChaCha20Poly1305(key_enc)
-        ct = chacha.encrypt(iv, b"\x69"*32, pb)
+        ct = chacha.encrypt(iv, self._get_key_device(), pb)
         self._call(
             Config.CMD.VENDOR_PROTOTYPE,
             {
-                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT,
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: cmd,
                 VendorConfig.PARAM.VENDOR_AUT_KEY_AGREEMENT: key_agreement,
                 VendorConfig.PARAM.VENDOR_AUT_CT: ct
             },
         )
 
+    def enable_device_aut(self):
+        self._send_command_key(VendorConfig.CMD.CONFIG_AUT)
+
+    def unlock_device(self):
+        self._send_command_key(VendorConfig.CMD.CONFIG_UNLOCK)
+
 dev = next(CtapHidDevice.list_devices(), None)
 
 vcfg = VendorConfig(Ctap2(dev))
 
-vcfg.enable_device_aut()
+#vcfg.enable_disable_device_aut(True)
+vcfg.unlock_device()
+
