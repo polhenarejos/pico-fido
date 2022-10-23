@@ -142,87 +142,99 @@ int cbor_config(const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
         }
         else if (vendorCommandId == CTAP_CONFIG_AUT || vendorCommandId == CTAP_CONFIG_UNLOCK) {
-            if (vendorCommandId == CTAP_CONFIG_AUT && !file_has_data(ef_keydev))
-                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
-            if (kax.present == false || kay.present == false || alg == 0)
-                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-
-            if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.X, kax.data, kax.len) != 0) {
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.Y, kay.data, kay.len) != 0) {
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-
-            mbedtls_mpi z;
-            mbedtls_mpi_init(&z);
-            int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, &hkey.ctx.mbed_ecdh.Qp, &hkey.ctx.mbed_ecdh.d, random_gen, NULL);
-            if (ret != 0) {
-                mbedtls_mpi_free(&z);
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            uint8_t buf[32], Qpt[65];
-            size_t olen = 0;
-            ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.Qp, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, Qpt, sizeof(Qpt));
-            if (ret != 0) {
-                mbedtls_mpi_free(&z);
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            ret = mbedtls_mpi_write_binary(&z, buf, sizeof(buf));
-            mbedtls_mpi_free(&z);
-            if (ret != 0) {
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            uint8_t key_enc[12+32];
-            ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0, buf, sizeof(buf), Qpt, 65, key_enc, 12+32);
-            if (ret != 0){
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-
-            mbedtls_chachapoly_context chatx;
-            mbedtls_chachapoly_init(&chatx);
-            mbedtls_chachapoly_setkey(&chatx, key_enc + 12);
-            ret = mbedtls_chachapoly_auth_decrypt(&chatx, vendorAutCt.len - 16, key_enc, Qpt, 65, vendorAutCt.data + vendorAutCt.len - 16, vendorAutCt.data, vendorAutCt.data);
-            mbedtls_chachapoly_free(&chatx);
-            mbedtls_ecdh_free(&hkey);
-            hkey_init = false;
-            if (ret != 0){
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-
-            if (vendorCommandId == CTAP_CONFIG_AUT) {
-                uint8_t key_dev_enc[12+32+16];
-                random_gen(NULL, key_dev_enc, 12);
-                mbedtls_chachapoly_init(&chatx);
-                mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
-                ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, file_get_size(ef_keydev), key_dev_enc, NULL, 0, file_get_data(ef_keydev), key_dev_enc + 12, key_dev_enc + 12 + file_get_size(ef_keydev));
-                mbedtls_chachapoly_free(&chatx);
-                if (ret != 0){
-                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-                }
-
-                flash_write_data_to_file(ef_keydev_enc, key_dev_enc, sizeof(key_dev_enc));
-                mbedtls_platform_zeroize(key_dev_enc, sizeof(key_dev_enc));
-                flash_write_data_to_file(ef_keydev, key_dev_enc, file_get_size(ef_keydev)); // Overwrite ef with 0
-                flash_write_data_to_file(ef_keydev, NULL, 0); // Set ef to 0 bytes
+            if (vendorCommandId == CTAP_CONFIG_AUT && (kax.present == false || kay.present == false || vendorAutCt.present == false || alg == 0)) { // Disable
+                if (!file_has_data(ef_keydev_enc))
+                    CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+                if (has_keydev_dec == false)
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                flash_write_data_to_file(ef_keydev, keydev_dec, sizeof(keydev_dec));
+                mbedtls_platform_zeroize(keydev_dec, sizeof(keydev_dec));
+                flash_write_data_to_file(ef_keydev_enc, NULL, 0); // Set ef to 0 bytes
                 low_flash_available();
             }
-            else if (vendorCommandId == CTAP_CONFIG_UNLOCK) {
-                if (!file_has_data(ef_keydev_enc))
-                    CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
+            else { // Enable
+                if (vendorCommandId == CTAP_CONFIG_AUT && !file_has_data(ef_keydev))
+                    CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+                if (kax.present == false || kay.present == false || alg == 0)
+                    CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
 
-                uint8_t *keyenc = file_get_data(ef_keydev_enc);
-                size_t keyenc_len = file_get_size(ef_keydev_enc);
-                mbedtls_chachapoly_init(&chatx);
-                mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
-                ret = mbedtls_chachapoly_auth_decrypt(&chatx, sizeof(keydev_dec), keyenc, NULL, 0, keyenc + keyenc_len - 16, keyenc + 12, keydev_dec);
-                mbedtls_chachapoly_free(&chatx);
+                if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.X, kax.data, kax.len) != 0) {
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.Y, kay.data, kay.len) != 0) {
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+
+                mbedtls_mpi z;
+                mbedtls_mpi_init(&z);
+                int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, &hkey.ctx.mbed_ecdh.Qp, &hkey.ctx.mbed_ecdh.d, random_gen, NULL);
+                if (ret != 0) {
+                    mbedtls_mpi_free(&z);
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                uint8_t buf[32], Qpt[65];
+                size_t olen = 0;
+                ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.Qp, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, Qpt, sizeof(Qpt));
+                if (ret != 0) {
+                    mbedtls_mpi_free(&z);
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                ret = mbedtls_mpi_write_binary(&z, buf, sizeof(buf));
+                mbedtls_mpi_free(&z);
+                if (ret != 0) {
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                uint8_t key_enc[12+32];
+                ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0, buf, sizeof(buf), Qpt, 65, key_enc, 12+32);
                 if (ret != 0){
                     CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
                 }
-                has_keydev_dec = true;
+
+                mbedtls_chachapoly_context chatx;
+                mbedtls_chachapoly_init(&chatx);
+                mbedtls_chachapoly_setkey(&chatx, key_enc + 12);
+                ret = mbedtls_chachapoly_auth_decrypt(&chatx, vendorAutCt.len - 16, key_enc, Qpt, 65, vendorAutCt.data + vendorAutCt.len - 16, vendorAutCt.data, vendorAutCt.data);
+                mbedtls_chachapoly_free(&chatx);
+                mbedtls_ecdh_free(&hkey);
+                hkey_init = false;
+                if (ret != 0) {
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+
+                if (vendorCommandId == CTAP_CONFIG_AUT) {
+                    uint8_t key_dev_enc[12+32+16];
+                    random_gen(NULL, key_dev_enc, 12);
+                    mbedtls_chachapoly_init(&chatx);
+                    mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
+                    ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, file_get_size(ef_keydev), key_dev_enc, NULL, 0, file_get_data(ef_keydev), key_dev_enc + 12, key_dev_enc + 12 + file_get_size(ef_keydev));
+                    mbedtls_chachapoly_free(&chatx);
+                    if (ret != 0){
+                        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                    }
+
+                    flash_write_data_to_file(ef_keydev_enc, key_dev_enc, sizeof(key_dev_enc));
+                    mbedtls_platform_zeroize(key_dev_enc, sizeof(key_dev_enc));
+                    flash_write_data_to_file(ef_keydev, key_dev_enc, file_get_size(ef_keydev)); // Overwrite ef with 0
+                    flash_write_data_to_file(ef_keydev, NULL, 0); // Set ef to 0 bytes
+                    low_flash_available();
+                }
+                else if (vendorCommandId == CTAP_CONFIG_UNLOCK) {
+                    if (!file_has_data(ef_keydev_enc))
+                        CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
+
+                    uint8_t *keyenc = file_get_data(ef_keydev_enc);
+                    size_t keyenc_len = file_get_size(ef_keydev_enc);
+                    mbedtls_chachapoly_init(&chatx);
+                    mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
+                    ret = mbedtls_chachapoly_auth_decrypt(&chatx, sizeof(keydev_dec), keyenc, NULL, 0, keyenc + keyenc_len - 16, keyenc + 12, keydev_dec);
+                    mbedtls_chachapoly_free(&chatx);
+                    if (ret != 0){
+                        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                    }
+                    has_keydev_dec = true;
+                }
+                goto err; //No return
             }
-            goto err; //No return
         }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);

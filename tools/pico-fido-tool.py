@@ -121,9 +121,15 @@ class VendorConfig(Config):
     def unlock_device(self):
         self._send_command_key(VendorConfig.CMD.CONFIG_UNLOCK)
 
+    def disable_device_aut(self):
+        self._call(
+            Config.CMD.VENDOR_PROTOTYPE,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT,
+            },
+        )
 
 
-#vcfg.enable_disable_device_aut(True)
 
 def parse_args():
     parser = argparse.ArgumentParser()
