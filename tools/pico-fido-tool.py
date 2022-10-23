@@ -1,13 +1,45 @@
-from fido2.ctap2.config import Config
-from fido2.ctap2 import Ctap2
-from fido2.hid import CtapHidDevice
-from fido2.utils import bytes2int, int2bytes
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+/*
+ * This file is part of the Pico Fido distribution (https://github.com/polhenarejos/pico-fido).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+"""
 
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-from cryptography.hazmat.primitives import hashes
+import sys
+import argparse
+
+try:
+    from fido2.ctap2.config import Config
+    from fido2.ctap2 import Ctap2
+    from fido2.hid import CtapHidDevice
+    from fido2.utils import bytes2int, int2bytes
+except:
+    print('ERROR: fido2 module not found! Install fido2 package.\nTry with `pip install fido2`')
+    sys.exit(-1)
+
+try:
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+    from cryptography.hazmat.primitives import hashes
+except:
+    print('ERROR: cryptography module not found! Install cryptography package.\nTry with `pip install cryptography`')
+    sys.exit(-1)
 
 from enum import IntEnum
 from binascii import hexlify
@@ -89,10 +121,42 @@ class VendorConfig(Config):
     def unlock_device(self):
         self._send_command_key(VendorConfig.CMD.CONFIG_UNLOCK)
 
-dev = next(CtapHidDevice.list_devices(), None)
 
-vcfg = VendorConfig(Ctap2(dev))
 
 #vcfg.enable_disable_device_aut(True)
-vcfg.unlock_device()
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    subparser = parser.add_subparsers(title="commands", dest="command")
+    parser_secure = subparser.add_parser('secure', help='Manages security of Pico Fido.')
+    parser_secure.add_argument('subcommand', choices=['enable', 'disable', 'unlock'], help='Enables, disables or unlocks the security.')
+    args = parser.parse_args()
+    return args
+
+def secure(dev, args):
+    vcfg = VendorConfig(Ctap2(dev))
+
+    if (args.subcommand == 'enable'):
+        vcfg.enable_device_aut()
+    elif (args.subcommand == 'unlock'):
+        vcfg.unlock_device()
+
+
+def main(args):
+    print('Pico Fido Tool v1.0')
+    print('Author: Pol Henarejos')
+    print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
+    print('')
+    print('')
+
+    dev = next(CtapHidDevice.list_devices(), None)
+
+    if (args.command == 'secure'):
+        secure(dev, args)
+
+def run():
+    args = parse_args()
+    main(args)
+
+if __name__ == "__main__":
+    run()
