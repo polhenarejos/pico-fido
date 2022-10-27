@@ -141,7 +141,6 @@ class VendorConfig(Config):
         )
 
 
-
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -157,7 +156,8 @@ def secure(dev, args):
         vcfg.enable_device_aut()
     elif (args.subcommand == 'unlock'):
         vcfg.unlock_device()
-
+    elif (args.subcommand == 'disable'):
+        vcfg.disable_device_aut()
 
 def main(args):
     print('Pico Fido Tool v1.0')
