@@ -233,7 +233,27 @@ int cbor_config(const uint8_t *data, size_t len) {
                     }
                     has_keydev_dec = true;
                 }
-                goto err; //No return
+            }
+            goto err; //No return
+        }
+        else if (vendorCommandId == CTAP_CONFIG_BACKUP) {
+            if (vendorAutCt.present == false) { // Save
+                if (has_keydev_dec == false)
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+
+                CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
+                CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_keydev_enc), file_get_size(ef_keydev_enc)));
+            }
+            else { // Load
+                uint8_t zeros[32];
+                memset(zeros, 0, sizeof(zeros));
+                flash_write_data_to_file(ef_keydev_enc, vendorAutCt.data, vendorAutCt.len);
+                flash_write_data_to_file(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
+                flash_write_data_to_file(ef_keydev, NULL, 0); // Set ef to 0 bytes
+                low_flash_available();
+                goto err;
             }
         }
         else {

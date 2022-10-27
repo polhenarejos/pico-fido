@@ -11,6 +11,12 @@ except:
     print('ERROR: keyring module not found! Install keyring package.\nTry with `pip install keyrings.osx-keychain-keys`')
     sys.exit(-1)
 
+try:
+    from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
+except:
+    print('ERROR: cryptography module not found! Install cryptography package.\nTry with `pip install cryptography`')
+    sys.exit(-1)
+
 
 def get_backend(use_secure_enclave=False):
     backend = OSXKeychainKeysBackend(
@@ -31,6 +37,14 @@ def generate_secure_key(use_secure_enclave=False):
 
 def get_d(key):
     return key.private_numbers().private_value.to_bytes(32, 'big')
+
+def set_secure_key(pk):
+    backend = get_backend(False)
+    try:
+        backend.delete_password(DOMAIN, USERNAME)
+    except:
+        pass
+    backend.set_password(DOMAIN, USERNAME, pk.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()))
 
 def get_secure_key():
     key = None

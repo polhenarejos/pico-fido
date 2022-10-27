@@ -119,6 +119,7 @@ typedef struct {
 #define CTAP_CONFIG_AUT             0x03e43f56b34285e2
 #define CTAP_CONFIG_KEY_AGREEMENT   0x1831a40f04a25ed9
 #define CTAP_CONFIG_UNLOCK          0x54365966c9a74770
+#define CTAP_CONFIG_BACKUP          0x6b1ede62beff0d5e
 
 // Command status responses
 

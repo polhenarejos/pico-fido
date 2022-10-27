@@ -80,10 +80,11 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, PICO_FIDO_VERSION)); // firmwareVersion
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_KEY_AGREEMENT));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_UNLOCK));
+    CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_BACKUP));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));

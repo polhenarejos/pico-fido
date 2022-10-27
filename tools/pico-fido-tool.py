@@ -22,6 +22,8 @@
 import sys
 import argparse
 import platform
+from binascii import hexlify
+from words import words
 
 try:
     from fido2.ctap2.config import Config
@@ -66,9 +68,11 @@ class VendorConfig(Config):
         CONFIG_AUT           = 0x03e43f56b34285e2
         CONFIG_KEY_AGREEMENT = 0x1831a40f04a25ed9
         CONFIG_UNLOCK        = 0x54365966c9a74770
+        CONFIG_BACKUP        = 0x6b1ede62beff0d5e
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
+        BACKUP        = 0x01
 
     def __init__(self, ctap, pin_uv_protocol=None, pin_uv_token=None):
         super().__init__(ctap, pin_uv_protocol, pin_uv_token)
@@ -140,12 +144,63 @@ class VendorConfig(Config):
             },
         )
 
+    def backup_save(self, filename):
+        ret = self._call(
+            Config.CMD.VENDOR_PROTOTYPE,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_BACKUP,
+            },
+        )
+        data = ret[VendorConfig.RESP.BACKUP]
+        d = int.from_bytes(skey.get_secure_key(), 'big')
+        with open(filename, 'wb') as fp:
+            fp.write(b'\x01')
+            fp.write(data)
+            pk = ec.derive_private_key(d, ec.SECP256R1())
+            signature = pk.sign(data, ec.ECDSA(hashes.SHA256()))
+            fp.write(signature)
+        print('Remember the following words in this order:')
+        for c in range(24):
+            coef = (d//(2048**c))%2048
+            print(f'{(c+1):02d} - {words[coef]}')
+
+    def backup_load(self, filename):
+        d = 0
+        if (d == 0):
+            for c in range(24):
+                word = input(f'Introduce word {(c+1):02d}: ')
+                while (word not in words):
+                    word = input(f'Word not found. Please, tntroduce the correct word {(c+1):02d}: ')
+                coef = words.index(word)
+                d = d+(2048**c)*coef
+
+        pk = ec.derive_private_key(d, ec.SECP256R1())
+        pb = pk.public_key()
+        with open(filename, 'rb') as fp:
+            format = fp.read(1)[0]
+            if (format == 0x1):
+                data = fp.read(60)
+                signature = fp.read()
+            pb.verify(signature, data, ec.ECDSA(hashes.SHA256()))
+        skey.set_secure_key(pk)
+        self._call(
+            Config.CMD.VENDOR_PROTOTYPE,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_BACKUP,
+                VendorConfig.PARAM.VENDOR_AUT_CT: data,
+            },
+        )
 
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
     parser_secure = subparser.add_parser('secure', help='Manages security of Pico Fido.')
     parser_secure.add_argument('subcommand', choices=['enable', 'disable', 'unlock'], help='Enables, disables or unlocks the security.')
+
+    parser_backup = subparser.add_parser('backup', help='Manages the backup of Pico Fido.')
+    parser_backup.add_argument('subcommand', choices=['save', 'load'], help='Saves or loads a backup.')
+    parser_backup.add_argument('filename', help='File to save or load the backup.')
+
     args = parser.parse_args()
     return args
 
@@ -159,8 +214,17 @@ def secure(dev, args):
     elif (args.subcommand == 'disable'):
         vcfg.disable_device_aut()
 
+def backup(dev, args):
+    vcfg = VendorConfig(Ctap2(dev))
+
+    if (args.subcommand == 'save'):
+        vcfg.backup_save(args.filename)
+    elif (args.subcommand == 'load'):
+        vcfg.backup_load(args.filename)
+
+
 def main(args):
-    print('Pico Fido Tool v1.0')
+    print('Pico Fido Tool v1.2')
     print('Author: Pol Henarejos')
     print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
     print('')
@@ -170,6 +234,8 @@ def main(args):
 
     if (args.command == 'secure'):
         secure(dev, args)
+    elif (args.command == 'backup'):
+        backup(dev, args)
 
 def run():
     args = parse_args()
