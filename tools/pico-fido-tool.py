@@ -21,6 +21,7 @@
 
 import sys
 import argparse
+import platform
 
 try:
     from fido2.ctap2.config import Config
@@ -44,6 +45,16 @@ except:
 from enum import IntEnum
 from binascii import hexlify
 
+if (platform.system() == 'Windows'):
+    from secure_key import windows as skey
+elif (platform.system() == 'Linux'):
+    from secure_key import linux as skey
+elif (platform.system() == 'Darwin'):
+    from secure_key import macos as skey
+else:
+    print('ERROR: platform not supported')
+    sys.exit(-1)
+
 class VendorConfig(Config):
 
     class PARAM(IntEnum):
@@ -63,7 +74,7 @@ class VendorConfig(Config):
         super().__init__(ctap, pin_uv_protocol, pin_uv_token)
 
     def _get_key_device(self):
-        return b"\x69"*32
+        return skey.get_secure_key()
 
     def _get_shared_key(self):
         ret = self._call(
