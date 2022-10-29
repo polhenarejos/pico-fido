@@ -24,12 +24,20 @@ import argparse
 import platform
 from binascii import hexlify
 from words import words
+from threading import Event
+from typing import Mapping, Any, Optional, Callable
+import struct
+from enum import IntEnum, unique
 
 try:
     from fido2.ctap2.config import Config
     from fido2.ctap2 import Ctap2
-    from fido2.hid import CtapHidDevice
+    from fido2.hid import CtapHidDevice, CTAPHID
     from fido2.utils import bytes2int, int2bytes
+    from fido2 import cbor
+    from fido2.ctap import CtapDevice, CtapError
+    from fido2.ctap2.pin import PinProtocol, _PinUv
+    from fido2.ctap2.base import args
 except:
     print('ERROR: fido2 module not found! Install fido2 package.\nTry with `pip install fido2`')
     sys.exit(-1)
@@ -191,6 +199,177 @@ class VendorConfig(Config):
             },
         )
 
+class Ctap2Vendor(Ctap2):
+    def __init__(self, device: CtapDevice, strict_cbor: bool = True):
+        super().__init__(device=device, strict_cbor=strict_cbor)
+
+
+    def send_vendor(
+        self,
+        cmd: int,
+        data: Optional[Mapping[int, Any]] = None,
+        *,
+        event: Optional[Event] = None,
+        on_keepalive: Optional[Callable[[int], None]] = None,
+    ) -> Mapping[int, Any]:
+        """Sends a VENDOR message to the device, and waits for a response.
+
+        :param cmd: The command byte of the request.
+        :param data: The payload to send (to be CBOR encoded).
+        :param event: Optional threading.Event used to cancel the request.
+        :param on_keepalive: Optional function called when keep-alive is sent by
+            the authenticator.
+        """
+        request = struct.pack(">B", cmd)
+        if data is not None:
+            request += cbor.encode(data)
+        response = self.device.call(CTAPHID.VENDOR_FIRST + 1, request, event, on_keepalive)
+        status = response[0]
+        if status != 0x00:
+            raise CtapError(status)
+        enc = response[1:]
+        if not enc:
+            return {}
+        decoded = cbor.decode(enc)
+        if self._strict_cbor:
+            expected = cbor.encode(decoded)
+            if expected != enc:
+                raise ValueError(
+                    "Non-canonical CBOR from Authenticator.\n"
+                    f"Got: {enc.hex()}\nExpected: {expected.hex()}"
+                )
+        if isinstance(decoded, Mapping):
+            return decoded
+        raise TypeError("Decoded value of wrong type")
+
+    def vendor(
+        self,
+        cmd: int,
+        sub_cmd: int,
+        sub_cmd_params: Optional[Mapping[int, Any]] = None,
+        pin_uv_protocol: Optional[int] = None,
+        pin_uv_param: Optional[bytes] = None,
+    ) -> Mapping[int, Any]:
+        """CTAP2 authenticator vendor command.
+
+        This command is used to configure various authenticator features through the
+        use of its subcommands.
+
+        This method is not intended to be called directly. It is intended to be used by
+        an instance of the Config class.
+
+        :param sub_cmd: A Config sub command.
+        :param sub_cmd_params: Sub command specific parameters.
+        :param pin_uv_protocol: PIN/UV auth protocol version used.
+        :param pin_uv_param: PIN/UV Auth parameter.
+        """
+        return self.send_vendor(
+            cmd,
+            args(sub_cmd, sub_cmd_params, pin_uv_protocol, pin_uv_param),
+        )
+
+
+class Vendor:
+    """Implementation of the CTAP2.1 Authenticator Vendor API. It is vendor implementation.
+
+    :param ctap: An instance of a CTAP2Vendor object.
+    :param pin_uv_protocol: An instance of a PinUvAuthProtocol.
+    :param pin_uv_token: A valid PIN/UV Auth Token for the current CTAP session.
+    """
+
+    @unique
+    class CMD(IntEnum):
+        VENDOR_BACKUP    = 0x01
+
+    @unique
+    class PARAM(IntEnum):
+        PARAM      = 0x01
+
+    class SUBCMD(IntEnum):
+        ENABLE      = 0x01
+        DISABLE     = 0x02
+
+    class RESP(IntEnum):
+        PARAM       = 0x01
+
+    def __init__(
+        self,
+        ctap: Ctap2Vendor,
+        pin_uv_protocol: Optional[PinProtocol] = None,
+        pin_uv_token: Optional[bytes] = None,
+    ):
+        self.ctap = ctap
+        self.pin_uv = (
+            _PinUv(pin_uv_protocol, pin_uv_token)
+            if pin_uv_protocol and pin_uv_token
+            else None
+        )
+
+    def _call(self, cmd, sub_cmd, params=None):
+        if params:
+            params = {k: v for k, v in params.items() if v is not None}
+        else:
+            params = None
+        if self.pin_uv:
+            msg = (
+                b"\xff" * 32
+                + b"\x0d"
+                + struct.pack("<b", sub_cmd)
+                + (cbor.encode(params) if params else b"")
+            )
+            pin_uv_protocol = self.pin_uv.protocol.VERSION
+            pin_uv_param = self.pin_uv.protocol.authenticate(self.pin_uv.token, msg)
+        else:
+            pin_uv_protocol = None
+            pin_uv_param = None
+        return self.ctap.vendor(cmd, sub_cmd, params, pin_uv_protocol, pin_uv_param)
+
+    def backup_save(self, filename):
+        ret = self._call(
+            Vendor.CMD.VENDOR_BACKUP,
+            Vendor.SUBCMD.ENABLE,
+        )
+        data = ret[Vendor.RESP.PARAM]
+        d = int.from_bytes(skey.get_secure_key(), 'big')
+        with open(filename, 'wb') as fp:
+            fp.write(b'\x01')
+            fp.write(data)
+            pk = ec.derive_private_key(d, ec.SECP256R1())
+            signature = pk.sign(data, ec.ECDSA(hashes.SHA256()))
+            fp.write(signature)
+        print('Remember the following words in this order:')
+        for c in range(24):
+            coef = (d//(2048**c))%2048
+            print(f'{(c+1):02d} - {words[coef]}')
+
+    def backup_load(self, filename):
+        d = 0
+        if (d == 0):
+            for c in range(24):
+                word = input(f'Introduce word {(c+1):02d}: ')
+                while (word not in words):
+                    word = input(f'Word not found. Please, tntroduce the correct word {(c+1):02d}: ')
+                coef = words.index(word)
+                d = d+(2048**c)*coef
+
+        pk = ec.derive_private_key(d, ec.SECP256R1())
+        pb = pk.public_key()
+        with open(filename, 'rb') as fp:
+            format = fp.read(1)[0]
+            if (format == 0x1):
+                data = fp.read(60)
+                signature = fp.read()
+            pb.verify(signature, data, ec.ECDSA(hashes.SHA256()))
+        skey.set_secure_key(pk)
+        return self._call(
+            Vendor.CMD.VENDOR_BACKUP,
+            Vendor.SUBCMD.DISABLE,
+            {
+                Vendor.PARAM.PARAM: data
+            },
+        )
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -215,12 +394,12 @@ def secure(dev, args):
         vcfg.disable_device_aut()
 
 def backup(dev, args):
-    vcfg = VendorConfig(Ctap2(dev))
+    vdr = Vendor(Ctap2Vendor(dev))
 
     if (args.subcommand == 'save'):
-        vcfg.backup_save(args.filename)
+        vdr.backup_save(args.filename)
     elif (args.subcommand == 'load'):
-        vcfg.backup_load(args.filename)
+        vdr.backup_load(args.filename)
 
 
 def main(args):

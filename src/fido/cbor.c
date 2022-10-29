@@ -27,7 +27,6 @@
 
 const bool _btrue = true, _bfalse = false;
 
-extern int cbor_process(const uint8_t *data, size_t len);
 int cbor_reset();
 int cbor_get_info();
 int cbor_make_credential(const uint8_t *data, size_t len);
@@ -37,35 +36,42 @@ int cbor_get_next_assertion(const uint8_t *data, size_t len);
 int cbor_selection();
 int cbor_cred_mgmt(const uint8_t *data, size_t len);
 int cbor_config(const uint8_t *data, size_t len);
+int cbor_vendor(const uint8_t *data, size_t len);
 
 const uint8_t aaguid[16] = {0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45}; // First 16 bytes of SHA256("Pico FIDO2")
 
-const uint8_t *cbor_data = NULL;
-size_t cbor_len = 0;
+static const uint8_t *cbor_data = NULL;
+static size_t cbor_len = 0;
+static uint8_t cmd = 0;
 
-int cbor_parse(const uint8_t *data, size_t len) {
+int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len == 0)
         return CTAP1_ERR_INVALID_LEN;
     DEBUG_DATA(data+1,len-1);
     driver_prepare_response();
-    if (data[0] == CTAP_MAKE_CREDENTIAL)
-        return cbor_make_credential(data + 1, len - 1);
-    if (data[0] == CTAP_GET_INFO)
-        return cbor_get_info();
-    else if (data[0] == CTAP_RESET)
-        return cbor_reset();
-    else if (data[0] == CTAP_CLIENT_PIN)
-        return cbor_client_pin(data + 1, len - 1);
-    else if (data[0] == CTAP_GET_ASSERTION)
-        return cbor_get_assertion(data + 1, len - 1, false);
-    else if (data[0] == CTAP_GET_NEXT_ASSERTION)
-        return cbor_get_next_assertion(data + 1, len - 1);
-    else if (data[0] == CTAP_SELECTION)
-        return cbor_selection();
-    else if (data[0] == CTAP_CREDENTIAL_MGMT)
-        return cbor_cred_mgmt(data + 1, len - 1);
-    else if (data[0] == CTAP_CONFIG)
-        return cbor_config(data + 1, len - 1);
+    if (cmd == CTAPHID_CBOR) {
+        if (data[0] == CTAP_MAKE_CREDENTIAL)
+            return cbor_make_credential(data + 1, len - 1);
+        if (data[0] == CTAP_GET_INFO)
+            return cbor_get_info();
+        else if (data[0] == CTAP_RESET)
+            return cbor_reset();
+        else if (data[0] == CTAP_CLIENT_PIN)
+            return cbor_client_pin(data + 1, len - 1);
+        else if (data[0] == CTAP_GET_ASSERTION)
+            return cbor_get_assertion(data + 1, len - 1, false);
+        else if (data[0] == CTAP_GET_NEXT_ASSERTION)
+            return cbor_get_next_assertion(data + 1, len - 1);
+        else if (data[0] == CTAP_SELECTION)
+            return cbor_selection();
+        else if (data[0] == CTAP_CREDENTIAL_MGMT)
+            return cbor_cred_mgmt(data + 1, len - 1);
+        else if (data[0] == CTAP_CONFIG)
+            return cbor_config(data + 1, len - 1);
+    }
+    else if (cmd == CTAP_VENDOR_CBOR) {
+        return cbor_vendor(data, len);
+    }
     return CTAP2_ERR_INVALID_CBOR;
 }
 
@@ -81,7 +87,7 @@ void cbor_thread() {
 	        break;
 	    }
 
-        apdu.sw = cbor_parse(cbor_data, cbor_len);
+        apdu.sw = cbor_parse(cmd, cbor_data, cbor_len);
         if (apdu.sw == 0)
             DEBUG_DATA(res_APDU + 1, res_APDU_size);
 
@@ -91,9 +97,10 @@ void cbor_thread() {
     }
 }
 
-int cbor_process(const uint8_t *data, size_t len) {
+int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     cbor_data = data;
     cbor_len = len;
+    cmd = last_cmd;
     res_APDU = ctap_resp->init.data + 1;
     res_APDU_size = 0;
     return 1;

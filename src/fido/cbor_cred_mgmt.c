@@ -1,4 +1,3 @@
-
 /*
  * This file is part of the Pico FIDO distribution (https://github.com/polhenarejos/pico-fido).
  * Copyright (c) 2022 Pol Henarejos.
