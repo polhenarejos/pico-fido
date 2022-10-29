@@ -116,13 +116,23 @@ typedef struct {
 #define CTAP_SELECTION           0x0B
 #define CTAP_CONFIG              0x0D
 
-#define CTAP_CONFIG_AUT             0x03e43f56b34285e2
-#define CTAP_CONFIG_KEY_AGREEMENT   0x1831a40f04a25ed9
-#define CTAP_CONFIG_UNLOCK          0x54365966c9a74770
+#define CTAP_CONFIG_AUT_ENABLE      0x03e43f56b34285e2
+#define CTAP_CONFIG_AUT_DISABLE     0x1831a40f04a25ed9
 
 #define CTAP_VENDOR_CBOR            (CTAPHID_VENDOR_FIRST + 1)
 
-#define CTAP_VENDOR_BACKUP      0x01
+#define CTAP_VENDOR_BACKUP              0x01
+#define CTAP_VENDOR_MSE                 0x02
+#define CTAP_VENDOR_UNLOCK              0x03
+
+typedef struct mse {
+    uint8_t Qpt[65];
+    uint8_t key_enc[12 + 32];
+    bool init;
+} mse_t;
+extern mse_t mse;
+
+extern int mse_decrypt_ct(uint8_t *, size_t);
 
 // Command status responses
 
