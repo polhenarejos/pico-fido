@@ -158,36 +158,26 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
 
-            mbedtls_mpi z;
-            mbedtls_mpi_init(&z);
-            ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, &hkey.ctx.mbed_ecdh.Qp, &hkey.ctx.mbed_ecdh.d, random_gen, NULL);
-            if (ret != 0) {
-                mbedtls_mpi_free(&z);
-                mbedtls_ecdh_free(&hkey);
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            uint8_t buf[32];
+            uint8_t buf[MBEDTLS_ECP_MAX_BYTES];
             size_t olen = 0;
             ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.Qp, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, mse.Qpt, sizeof(mse.Qpt));
             if (ret != 0) {
-                mbedtls_mpi_free(&z);
                 mbedtls_ecdh_free(&hkey);
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
-            ret = mbedtls_mpi_write_binary(&z, buf, sizeof(buf));
-            mbedtls_mpi_free(&z);
+
+            ret = mbedtls_ecdh_calc_secret(&hkey, &olen, buf, MBEDTLS_ECP_MAX_BYTES, random_gen, NULL);
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
                 mbedtls_platform_zeroize(buf, sizeof(buf));
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
-            ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0, buf, sizeof(buf), mse.Qpt, sizeof(mse.Qpt), mse.key_enc, sizeof(mse.key_enc));
-            if (ret != 0){
+            ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0, buf, olen, mse.Qpt, sizeof(mse.Qpt), mse.key_enc, sizeof(mse.key_enc));
+            mbedtls_platform_zeroize(buf, sizeof(buf));
+            if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
-                mbedtls_platform_zeroize(buf, sizeof(buf));
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
-            mbedtls_platform_zeroize(buf, sizeof(buf));
             mse.init = true;
 
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
