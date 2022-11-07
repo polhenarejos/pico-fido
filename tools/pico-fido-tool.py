@@ -55,10 +55,8 @@ except:
 from enum import IntEnum
 from binascii import hexlify
 
-if (platform.system() == 'Windows'):
+if (platform.system() == 'Windows' or platform.system() == 'Linux'):
     from secure_key import windows as skey
-elif (platform.system() == 'Linux'):
-    from secure_key import linux as skey
 elif (platform.system() == 'Darwin'):
     from secure_key import macos as skey
 else:
