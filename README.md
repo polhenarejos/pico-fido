@@ -16,6 +16,9 @@ Pico FIDO has implemented the following features:
 - ECDSA authentication
 - App registration and login
 - Device selection
+- Support for vendor Config
+- Backup with 24 words
+- Secure lock to protect the device from flash dumpings
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
