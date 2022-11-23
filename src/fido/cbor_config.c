@@ -38,8 +38,9 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborError error = CborNoError;
     uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0;
     CborByteString pinUvAuthParam = {0}, vendorAutCt = {0};
-    size_t resp_size = 0;
+    size_t resp_size = 0, raw_subpara_len = 0;
     CborEncoder encoder, mapEncoder;
+    uint8_t *raw_subpara = NULL;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -56,6 +57,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         else if (val_u == 0x02) {
             uint64_t subpara = 0;
+            raw_subpara = (uint8_t *)cbor_value_get_next_byte(&_f1);
             CBOR_PARSE_MAP_START(_f1, 2) {
                 if (subcommand == 0xff) {
                     CBOR_FIELD_GET_UINT(subpara, 2);
@@ -68,6 +70,7 @@ int cbor_config(const uint8_t *data, size_t len) {
                 }
             }
             CBOR_PARSE_MAP_END(_f1, 2);
+            raw_subpara_len = cbor_value_get_next_byte(&_f1) - raw_subpara;
         }
         else if (val_u == 0x03) {
             CBOR_FIELD_GET_UINT(pinUvAuthProtocol, 1);
@@ -79,6 +82,24 @@ int cbor_config(const uint8_t *data, size_t len) {
     CBOR_PARSE_MAP_END(map, 1);
 
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+
+    if (pinUvAuthParam.present == false)
+        CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+    if (pinUvAuthProtocol  == 0)
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+
+    uint8_t *verify_payload = (uint8_t *)calloc(1, 32 + 1 + 1 + raw_subpara_len);
+    memset(verify_payload, 0xff, 32);
+    verify_payload[32] = 0x0d;
+    verify_payload[33] = subcommand;
+    memcpy(verify_payload + 34, raw_subpara, raw_subpara_len);
+    error = verify(pinUvAuthProtocol, paut.data, verify_payload, 32 + 1 + 1 + raw_subpara_len, pinUvAuthParam.data);
+    free(verify_payload);
+    if (error != CborNoError)
+        CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+
+    if (!(paut.permissions & CTAP_PERMISSION_ACFG))
+        CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
 
     if (subcommand == 0xff) {
         if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE) {
