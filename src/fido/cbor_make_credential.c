@@ -118,6 +118,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
                 CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "minPinLength", extensions.minPinLength);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -274,10 +275,25 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (extensions.present == true) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
         int l = 0;
+        uint8_t minPinLen = 0;
         if (extensions.hmac_secret != NULL)
             l++;
         if (extensions.credProtect != 0)
             l++;
+        if (extensions.minPinLength != NULL) {
+            file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+            if (file_has_data(ef_minpin)) {
+                uint8_t *minpin_data = file_get_data(ef_minpin);
+                for (int o = 2; o < file_get_size(ef_minpin); o += 32) {
+                    if (memcmp(minpin_data + o, rp_id_hash, 32) == 0) {
+                        minPinLen = minpin_data[0];
+                        if (minPinLen > 0)
+                            l++;
+                        break;
+                    }
+                }
+            }
+        }
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
         if (extensions.credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
@@ -287,6 +303,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
             CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *extensions.hmac_secret));
+        }
+        if (minPinLen > 0) {
+
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "minPinLength"));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, minPinLen));
         }
 
         CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));

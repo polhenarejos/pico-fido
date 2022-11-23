@@ -30,6 +30,7 @@ typedef struct CredOptions {
 typedef struct CredExtensions {
     const bool *hmac_secret;
     uint64_t credProtect;
+    const bool *minPinLength;
     bool present;
 } CredExtensions;
 
