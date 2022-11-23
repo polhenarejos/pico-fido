@@ -26,7 +26,7 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 10));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 11));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
@@ -45,7 +45,7 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aaguid, sizeof(aaguid)));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
-    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 5));
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 6));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credMgmt"));
@@ -58,6 +58,8 @@ int cbor_get_info() {
     else
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, false));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "pinUvAuthToken"));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "setMinPINLength"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
@@ -73,8 +75,17 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CRED_ID_LENGTH)); // MAX_CRED_ID_MAX_LENGTH
 
+    file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
+    if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1)
+        CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+    else
+        CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0D));
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 4)); // minPINLength
+    if (file_has_data(ef_minpin))
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, *file_get_data(ef_minpin))); // minPINLength
+    else
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 4)); // minPINLength
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0E));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, PICO_FIDO_VERSION)); // firmwareVersion

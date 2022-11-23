@@ -26,6 +26,7 @@
 #define EF_COUNTER      0xC000
 #define EF_PIN          0x1080
 #define EF_AUTHTOKEN    0x1090
+#define EF_MINPINLEN    0x1100
 #define EF_CRED         0xCF00 // Creds at 0xCF00 - 0xCFFF
 #define EF_RP           0xD000 // RPs at 0xD000 - 0xD0FF
 

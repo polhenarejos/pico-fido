@@ -27,7 +27,7 @@
 #include "random.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
-#include "mbedtls/hkdf.h"
+#include "mbedtls/sha256.h"
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
@@ -36,11 +36,13 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
-    uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0;
+    uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0;
     CborByteString pinUvAuthParam = {0}, vendorAutCt = {0};
-    size_t resp_size = 0, raw_subpara_len = 0;
+    CborCharString minPinLengthRPIDs[32] = {0};
+    size_t resp_size = 0, raw_subpara_len = 0, minPinLengthRPIDs_len = 0;
     CborEncoder encoder, mapEncoder;
     uint8_t *raw_subpara = NULL;
+    const bool *forceChangePin = NULL;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -66,6 +68,24 @@ int cbor_config(const uint8_t *data, size_t len) {
                     }
                     else if (subpara == 0x02) {
                         CBOR_FIELD_GET_BYTES(vendorAutCt, 2);
+                    }
+                }
+                else if (subcommand == 0x03) {
+                    CBOR_FIELD_GET_UINT(subpara, 2);
+                    if (subpara == 0x01) {
+                        CBOR_FIELD_GET_UINT(newMinPinLength, 2);
+                    }
+                    else if (subpara == 0x02) {
+                        CBOR_PARSE_ARRAY_START(_f2, 3) {
+                            CBOR_FIELD_GET_TEXT(minPinLengthRPIDs[minPinLengthRPIDs_len], 3);
+                            minPinLengthRPIDs_len++;
+                            if (minPinLengthRPIDs_len >= 32)
+                                CBOR_ERROR(CTAP2_ERR_KEY_STORE_FULL);
+                        }
+                        CBOR_PARSE_ARRAY_END(_f2, 3);
+                    }
+                    else if (subpara == 0x03) {
+                        CBOR_FIELD_GET_BOOL(forceChangePin, 2);
                     }
                 }
             }
@@ -145,6 +165,29 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         goto err;
     }
+    else if (subcommand == 0x03) {
+        uint8_t currentMinPinLen = 4;
+        file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+        if (file_has_data(ef_minpin))
+            currentMinPinLen = *file_get_data(ef_minpin);
+        if (newMinPinLength == 0)
+            newMinPinLength = currentMinPinLen;
+        else if (newMinPinLength > 0 && newMinPinLength < currentMinPinLen)
+            CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
+        if (forceChangePin == ptrue && !file_has_data(ef_pin))
+            CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
+        if (file_has_data(ef_pin) && file_get_data(ef_pin)[1] < newMinPinLength)
+            forceChangePin = ptrue;
+        uint8_t *data = (uint8_t *)calloc(1, 2 + minPinLengthRPIDs_len * 32);
+        data[0] = newMinPinLength;
+        data[1] = forceChangePin == ptrue ? 1 : 0;
+        for (int m = 0; m < minPinLengthRPIDs_len; m++) {
+            mbedtls_sha256((uint8_t *)minPinLengthRPIDs[m].data, minPinLengthRPIDs[m].len, data + 2 + m*32, 0);
+        }
+        flash_write_data_to_file(ef_minpin, data, 2 + minPinLengthRPIDs_len * 32);
+        low_flash_available();
+        goto err; //No return
+    }
     else
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
@@ -153,12 +196,16 @@ int cbor_config(const uint8_t *data, size_t len) {
     err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(vendorAutCt);
-
-    if (error != CborNoError) {
-        if (error == CborErrorImproperValue)
-            return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
-        return error;
+    for (int i = 0; i < minPinLengthRPIDs_len; i++) {
+        CBOR_FREE_BYTE_STRING(minPinLengthRPIDs[i]);
     }
+
+        if (error != CborNoError)
+        {
+            if (error == CborErrorImproperValue)
+                return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+            return error;
+        }
     res_APDU_size = resp_size;
     return 0;
 }

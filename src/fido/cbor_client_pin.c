@@ -369,7 +369,11 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint8_t pin_len = 0;
         while (paddedNewPin[pin_len] != 0 && pin_len < sizeof(paddedNewPin))
             pin_len++;
-        if (pin_len < 4)
+        uint8_t minPin = 4;
+        file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+        if (file_has_data(ef_minpin))
+            minPin = *file_get_data(ef_minpin);
+        if (pin_len < minPin)
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         uint8_t hsh[34];
         hsh[0] = MAX_PIN_RETRIES;
@@ -448,13 +452,26 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint8_t pin_len = 0;
         while (paddedNewPin[pin_len] != 0 && pin_len < sizeof(paddedNewPin))
             pin_len++;
-        if (pin_len < 4)
+        uint8_t minPin = 4;
+        file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+        if (file_has_data(ef_minpin))
+            minPin = *file_get_data(ef_minpin);
+        if (pin_len < minPin)
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         uint8_t hsh[33];
         hsh[0] = MAX_PIN_RETRIES;
         hsh[1] = pin_len;
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, hsh + 2);
+        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 && memcmp(hsh+2, file_get_data(ef_pin)+2, 16) == 0)
+            CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         flash_write_data_to_file(ef_pin, hsh, 2+16);
+        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
+            uint8_t *tmp = (uint8_t *)calloc(1, file_get_size(ef_minpin));
+            memcpy(tmp, file_get_data(ef_minpin), file_get_size(ef_minpin));
+            tmp[1] = 0;
+            flash_write_data_to_file(ef_minpin, tmp, file_get_size(ef_minpin));
+            free(tmp);
+        }
         low_flash_available();
         resetPinUvAuthToken();
         goto err; // No return
@@ -518,6 +535,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         new_pin_mismatches = 0;
         flash_write_data_to_file(ef_pin, pin_data, sizeof(pin_data));
         low_flash_available();
+        file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1)
+            CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
+        resetPinUvAuthToken();
         beginUsingPinUvAuthToken(false);
         if (subcommand == 0x05)
             permissions = CTAP_PERMISSION_MC | CTAP_PERMISSION_GA;
