@@ -101,6 +101,7 @@ typedef struct pinUvAuthToken {
     bool in_use;
     uint8_t permissions;
     uint8_t rp_id_hash[32];
+    bool has_rp_id;
     bool user_present;
     bool user_verified;
 } pinUvAuthToken_t;

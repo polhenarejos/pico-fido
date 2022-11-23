@@ -115,6 +115,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     if(subcommand == 0x01) {
         if (verify(pinUvAuthProtocol, paut.data, (const uint8_t *)"\x01", 1, pinUvAuthParam.data) != CborNoError)
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        if (!(paut.permissions & CTAP_PERMISSION_CM) || paut.has_rp_id == true)
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         uint8_t existing = 0;
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             if (file_has_data(search_dynamic_file(EF_CRED + i)))
@@ -130,6 +132,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         file_t *rp_ef = NULL;
         if (subcommand == 0x02) {
             if (verify(pinUvAuthProtocol, paut.data, (const uint8_t *)"\x02", 1, pinUvAuthParam.data) != CborNoError)
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            if (!(paut.permissions & CTAP_PERMISSION_CM) || paut.has_rp_id == true)
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             rp_counter = 1;
             rp_total = 0;
@@ -174,6 +178,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         if (subcommand == 0x04) {
             *(raw_subpara-1) = 0x04;
             if (verify(pinUvAuthProtocol, paut.data, raw_subpara-1, raw_subpara_len+1, pinUvAuthParam.data) != CborNoError)
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            if (!(paut.permissions & CTAP_PERMISSION_CM) || (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             cred_counter = 1;
             cred_total = 0;
@@ -284,6 +290,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         *(raw_subpara - 1) = 0x06;
         if (verify(pinUvAuthProtocol, paut.data, raw_subpara-1, raw_subpara_len+1, pinUvAuthParam.data) != CborNoError)
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        if (!(paut.permissions & CTAP_PERMISSION_CM) || (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *ef = search_dynamic_file(EF_CRED + i);
             if (file_has_data(ef) && memcmp(file_get_data(ef)+32, credentialId.id.data, MIN(file_get_size(ef)-32, credentialId.id.len)) == 0) {
@@ -315,6 +323,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         *(raw_subpara - 1) = 0x07;
         if (verify(pinUvAuthProtocol, paut.data, raw_subpara-1, raw_subpara_len+1, pinUvAuthParam.data) != CborNoError)
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        if (!(paut.permissions & CTAP_PERMISSION_CM) || (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *ef = search_dynamic_file(EF_CRED + i);

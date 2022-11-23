@@ -453,13 +453,20 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         resetPinUvAuthToken();
         goto err; // No return
     }
-    else if (subcommand == 0x9 || subcommand == 0x5) { //getUVRgetPinUvAuthTokenUsingPinWithPermissionsetries
+    else if (subcommand == 0x9 || subcommand == 0x5) { //getPinUvAuthTokenUsingPinWithPermissions
         if (kax.present == false || kay.present == false || pinUvAuthProtocol == 0 || alg == 0 || pinHashEnc.present == false)
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2)
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-        if ((subcommand == 0x9 && permissions == 0) || (subcommand == 0x5 && (permissions != 0 || rpId.present == true)))
+        if (subcommand == 0x5 && (permissions != 0 || rpId.present == true))
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        if (subcommand == 0x9) {
+            if (permissions == 0)
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            if ((permissions & CTAP_PERMISSION_BE) || (permissions & CTAP_PERMISSION_LBW)) // Not supported yet
+                CBOR_ERROR(CTAP2_ERR_UNAUTHORIZED_PERMISSION);
+
+        }
         if (!file_has_data(ef_pin))
             CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
         if (*file_get_data(ef_pin) == 0)
@@ -503,11 +510,13 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         flash_write_data_to_file(ef_pin, &retries, 1);
         low_flash_available();
         beginUsingPinUvAuthToken(false);
+        if (subcommand == 0x05)
+            permissions = CTAP_PERMISSION_MC | CTAP_PERMISSION_GA;
         paut.permissions = permissions;
-        if (rpId.present == true)
+        if (rpId.present == true) {
             memcpy(paut.rp_id_hash, rpId.data, 32);
-        else
-            memset(paut.rp_id_hash, 0, sizeof(paut.rp_id_hash));
+            paut.has_rp_id = true;
+        }
         uint8_t pinUvAuthToken_enc[32+IV_SIZE];
         encrypt(pinUvAuthProtocol, sharedSecret, paut.data, 32, pinUvAuthToken_enc);
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));

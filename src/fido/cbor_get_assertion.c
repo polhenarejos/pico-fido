@@ -245,6 +245,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             if (getUserVerifiedFlagValue() == false)
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            if (!(paut.permissions & CTAP_PERMISSION_GA))
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, 32) != 0)
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             flags |= FIDO2_AUT_FLAG_UV;
             // Check pinUvAuthToken permissions. See 6.2.2.4
         }

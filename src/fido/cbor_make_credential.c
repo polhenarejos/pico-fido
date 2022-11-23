@@ -215,10 +215,17 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         int ret = verify(pinUvAuthProtocol, paut.data, clientDataHash.data, clientDataHash.len, pinUvAuthParam.data);
         if (ret != CborNoError)
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        if (!(paut.permissions & CTAP_PERMISSION_MC))
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, 32) != 0)
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         if (getUserVerifiedFlagValue() == false)
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         flags |= FIDO2_AUT_FLAG_UV;
-        // Check pinUvAuthToken permissions. See 6.1.2.11
+        if (paut.has_rp_id == false) {
+            memcpy(paut.rp_id_hash, rp_id_hash, 32);
+            paut.has_rp_id = true;
+        }
     }
 
     for (int e = 0; e < excludeList_len; e++) { //12.1

@@ -125,6 +125,13 @@ typedef struct {
 #define CTAP_VENDOR_MSE                 0x02
 #define CTAP_VENDOR_UNLOCK              0x03
 
+#define CTAP_PERMISSION_MC              0x01  // MakeCredential
+#define CTAP_PERMISSION_GA              0x02  // GetAssertion
+#define CTAP_PERMISSION_CM              0x04  // CredentialManagement
+#define CTAP_PERMISSION_BE              0x08  // BioEnrollment
+#define CTAP_PERMISSION_LBW             0x10  // LargeBlobWrite
+#define CTAP_PERMISSION_ACFG            0x20  // AuthenticatorConfiguration
+
 typedef struct mse {
     uint8_t Qpt[65];
     uint8_t key_enc[12 + 32];
