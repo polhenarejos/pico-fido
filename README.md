@@ -19,6 +19,10 @@ Pico FIDO has implemented the following features:
 - Support for vendor Config
 - Backup with 24 words
 - Secure lock to protect the device from flash dumpings
+- Permissions support (MC, GA, CM, ACFG)
+- Authenticator configuration
+- minPinLength extension
+- Self attestation
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
