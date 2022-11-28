@@ -544,7 +544,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             permissions = CTAP_PERMISSION_MC | CTAP_PERMISSION_GA;
         paut.permissions = permissions;
         if (rpId.present == true) {
-            memcpy(paut.rp_id_hash, rpId.data, 32);
+            mbedtls_sha256((uint8_t *)rpId.data, rpId.len, paut.rp_id_hash, 0);
             paut.has_rp_id = true;
         }
         uint8_t pinUvAuthToken_enc[32+IV_SIZE];
