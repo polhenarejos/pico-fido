@@ -518,7 +518,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
-        if (memcmp(paddedNewPin, file_get_data(ef_pin)+1, 16) != 0) {
+        if (memcmp(paddedNewPin, file_get_data(ef_pin)+2, 16) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
