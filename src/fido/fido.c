@@ -325,6 +325,19 @@ uint32_t get_sign_counter() {
     return (*caddr) | (*(caddr + 1) << 8) | (*(caddr + 2) << 16) | (*(caddr + 3) << 24);
 }
 
+uint8_t get_opts() {
+    file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
+    if (file_has_data(ef))
+        return *file_get_data(ef);
+    return 0;
+}
+
+void set_opts(uint8_t opts) {
+    file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
+    flash_write_data_to_file(ef, &opts, sizeof(uint8_t));
+    low_flash_available();
+}
+
 typedef struct cmd
 {
   uint8_t ins;

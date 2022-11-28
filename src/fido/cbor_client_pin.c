@@ -59,7 +59,7 @@ void clearUserVerifiedFlag() {
 
 void clearPinUvAuthTokenPermissionsExceptLbw() {
     if (paut.in_use == true)
-        paut.permissions = FIDO2_PERMISSION_LBW;
+        paut.permissions = CTAP_PERMISSION_LBW;
 }
 
 void stopUsingPinUvAuthToken() {

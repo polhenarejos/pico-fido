@@ -63,12 +63,7 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #define FIDO2_AUT_FLAG_AT       0x40
 #define FIDO2_AUT_FLAG_ED       0x80
 
-#define FIDO2_PERMISSION_MC     0x1
-#define FIDO2_PERMISSION_GA     0x2
-#define FIDO2_PERMISSION_CM     0x4
-#define FIDO2_PERMISSION_BE     0x8
-#define FIDO2_PERMISSION_LBW    0x10
-#define FIDO2_PERMISSION_ACFG   0x20
+#define FIDO2_OPT_EA            0x01 // Enterprise Attestation
 
 #define MAX_PIN_RETRIES 8
 extern bool getUserPresentFlagValue();
@@ -78,6 +73,8 @@ extern void clearUserVerifiedFlag();
 extern void clearPinUvAuthTokenPermissionsExceptLbw();
 extern void send_keepalive();
 extern uint32_t get_sign_counter();
+extern uint8_t get_opts();
+extern void set_opts(uint8_t);
 #define MAX_CREDENTIAL_COUNT_IN_LIST 16
 #define MAX_CRED_ID_LENGTH        1024
 #define MAX_RESIDENT_CREDENTIALS  256

@@ -46,7 +46,9 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aaguid, sizeof(aaguid)));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
-    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 6));
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 7));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "ep"));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, get_opts() & FIDO2_OPT_EA));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credMgmt"));
