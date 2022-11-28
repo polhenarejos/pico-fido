@@ -259,7 +259,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 2));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 3));
-        CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, cred.alg));
+        CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -cred.alg));
         CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder2, cred.curve));
         CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 2));
