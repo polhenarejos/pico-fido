@@ -116,6 +116,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
     mbedtls_x509write_crt_set_key_usage(&ctx, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN);
     int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, core1 ? random_gen : random_gen_core0, NULL);
+    mbedtls_pk_free(&key);
     return ret;
 }
 
