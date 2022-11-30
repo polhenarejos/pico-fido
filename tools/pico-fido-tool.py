@@ -27,6 +27,8 @@ from words import words
 from threading import Event
 from typing import Mapping, Any, Optional, Callable
 import struct
+import urllib.request
+import json
 from enum import IntEnum, unique
 
 try:
@@ -48,6 +50,7 @@ try:
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
     from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
     from cryptography.hazmat.primitives import hashes
+    from cryptography import x509
 except:
     print('ERROR: cryptography module not found! Install cryptography package.\nTry with `pip install cryptography`')
     sys.exit(-1)
@@ -62,6 +65,21 @@ elif (platform.system() == 'Darwin'):
 else:
     print('ERROR: platform not supported')
     sys.exit(-1)
+
+def get_pki_data(url, data=None, method='GET'):
+    user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; '
+    'rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
+    method = 'GET'
+    if (data is not None):
+        method = 'POST'
+    req = urllib.request.Request(f"https://www.picokeys.com/pico/pico-fido/{url}/",
+                                method=method,
+                                data=data,
+                                headers={'User-Agent': user_agent, })
+    response = urllib.request.urlopen(req)
+    resp = response.read().decode('utf-8')
+    j = json.loads(resp)
+    return j
 
 class VendorConfig(Config):
 
@@ -179,6 +197,7 @@ class Vendor:
         VENDOR_BACKUP    = 0x01
         VENDOR_MSE       = 0x02
         VENDOR_UNLOCK    = 0x03
+        VENDOR_CSR       = 0x04
 
     @unique
     class PARAM(IntEnum):
@@ -189,6 +208,7 @@ class Vendor:
         ENABLE              = 0x01
         DISABLE             = 0x02
         KEY_AGREEMENT       = 0x01
+        CSR                 = 0x01
 
     class RESP(IntEnum):
         PARAM       = 0x01
@@ -342,6 +362,12 @@ class Vendor:
     def disable_device_aut(self):
         self.vcfg.disable_device_aut()
 
+    def csr(self):
+        return self._call(
+            Vendor.CMD.VENDOR_CSR,
+            Vendor.SUBCMD.CSR,
+        )
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -351,6 +377,10 @@ def parse_args():
     parser_backup = subparser.add_parser('backup', help='Manages the backup of Pico Fido.')
     parser_backup.add_argument('subcommand', choices=['save', 'load'], help='Saves or loads a backup.')
     parser_backup.add_argument('filename', help='File to save or load the backup.')
+
+    parser_attestation = subparser.add_parser('attestation', help='Manages Enterprise Attestation')
+    parser_attestation.add_argument('subcommand', choices=['csr', 'upload'])
+    parser_attestation.add_argument('--filename', help='Uploads the certificate filename to the device as enterprise attestation certificate. If not provided, it will generate an enterprise attestation certificate automatically.')
 
     args = parser.parse_args()
     return args
@@ -369,9 +399,16 @@ def backup(vdr, args):
     elif (args.subcommand == 'load'):
         vdr.backup_load(args.filename)
 
+def attestation(vdr, args):
+    if (args.subcommand == 'csr'):
+        csr = x509.load_der_x509_csr(vdr.csr()[1])
+        data = urllib.parse.urlencode({'csr': csr.public_bytes(Encoding.PEM)}).encode()
+        j = get_pki_data('csr', data=data)
+        cert = x509.load_pem_x509_certificate(j['x509'].encode())
+        print(cert)
 
 def main(args):
-    print('Pico Fido Tool v1.2')
+    print('Pico Fido Tool v1.4')
     print('Author: Pol Henarejos')
     print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
     print('')
@@ -385,6 +422,8 @@ def main(args):
         secure(vdr, args)
     elif (args.command == 'backup'):
         backup(vdr, args)
+    elif (args.command == 'attestation'):
+        attestation(vdr, args)
 
 def run():
     args = parse_args()

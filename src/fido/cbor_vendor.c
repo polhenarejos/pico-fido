@@ -26,6 +26,7 @@
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/hkdf.h"
+#include "mbedtls/x509_csr.h"
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
@@ -225,6 +226,45 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         }
         has_keydev_dec = true;
         goto err;
+    }
+    else if (cmd == CTAP_VENDOR_EA) {
+        if (vendorCmd == 0x01) {
+            uint8_t buffer[1024];
+            mbedtls_ecdsa_context ekey;
+            mbedtls_ecdsa_init(&ekey);
+            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), file_get_size(ef_keydev));
+            if (ret != 0) {
+                mbedtls_ecdsa_free(&ekey);
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            ret = mbedtls_ecp_mul(&ekey.grp, &ekey.Q, &ekey.d, &ekey.grp.G, random_gen, NULL);
+            if (ret != 0) {
+                mbedtls_ecdsa_free(&ekey);
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            pico_unique_board_id_t rpiid;
+            pico_get_unique_board_id(&rpiid);
+            mbedtls_x509write_csr ctx;
+            mbedtls_x509write_csr_init(&ctx);
+            snprintf((char *)buffer, sizeof(buffer), "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %llu", ((uint64_t)rpiid.id[0] << 56) | ((uint64_t)rpiid.id[1] << 48) | ((uint64_t)rpiid.id[2] << 40) | ((uint64_t)rpiid.id[3] << 32) | (rpiid.id[4] << 24) | (rpiid.id[5] << 16) | (rpiid.id[6] << 8) | rpiid.id[7]);
+            mbedtls_x509write_csr_set_subject_name(&ctx, (char *)buffer);
+            mbedtls_pk_context key;
+            mbedtls_pk_init(&key);
+            mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+            key.pk_ctx = &ekey;
+            mbedtls_x509write_csr_set_key(&ctx, &key);
+            mbedtls_x509write_csr_set_md_alg(&ctx, MBEDTLS_MD_SHA256);
+            mbedtls_x509write_csr_set_extension(&ctx, "\x2B\x06\x01\x04\x01\x82\xE5\x1C\x01\x01\x04", 0xB, 0, aaguid, sizeof(aaguid));
+            ret = mbedtls_x509write_csr_der(&ctx, buffer, sizeof(buffer), random_gen, NULL);
+            mbedtls_ecdsa_free(&ekey);
+            if (ret <= 0) {
+                mbedtls_x509write_csr_free(&ctx);
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, buffer + sizeof(buffer) - ret, ret));
+        }
     }
     else
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
