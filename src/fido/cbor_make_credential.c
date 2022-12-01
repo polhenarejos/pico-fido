@@ -393,9 +393,14 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, sig, olen));
     if (self_attestation == false) {
         CborEncoder arrEncoder;
+        file_t *ef_cert = NULL;
+        if (enterpriseAttestation == 2)
+            ef_cert = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
+        if (!file_has_data(ef_cert))
+            ef_cert = ef_certdev;
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "x5c"));
         CBOR_CHECK(cbor_encoder_create_array(&mapEncoder2, &arrEncoder, 1));
-        CBOR_CHECK(cbor_encode_byte_string(&arrEncoder, file_get_data(ef_certdev), file_get_size(ef_certdev)));
+        CBOR_CHECK(cbor_encode_byte_string(&arrEncoder, file_get_data(ef_cert), file_get_size(ef_cert)));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder2, &arrEncoder));
     }
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
