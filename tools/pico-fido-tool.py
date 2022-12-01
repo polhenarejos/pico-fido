@@ -197,7 +197,7 @@ class Vendor:
         VENDOR_BACKUP    = 0x01
         VENDOR_MSE       = 0x02
         VENDOR_UNLOCK    = 0x03
-        VENDOR_CSR       = 0x04
+        VENDOR_EA        = 0x04
 
     @unique
     class PARAM(IntEnum):
@@ -208,7 +208,8 @@ class Vendor:
         ENABLE              = 0x01
         DISABLE             = 0x02
         KEY_AGREEMENT       = 0x01
-        CSR                 = 0x01
+        EA_CSR              = 0x01
+        EA_UPLOAD           = 0x02
 
     class RESP(IntEnum):
         PARAM       = 0x01
@@ -364,8 +365,17 @@ class Vendor:
 
     def csr(self):
         return self._call(
-            Vendor.CMD.VENDOR_CSR,
-            Vendor.SUBCMD.CSR,
+            Vendor.CMD.VENDOR_EA,
+            Vendor.SUBCMD.EA_CSR,
+        )[Vendor.RESP.PARAM]
+
+    def upload_ea(self, der):
+        self._call(
+            Vendor.CMD.VENDOR_EA,
+            Vendor.SUBCMD.EA_UPLOAD,
+            {
+                Vendor.PARAM.PARAM: der
+            }
         )
 
 def parse_args():
@@ -379,7 +389,7 @@ def parse_args():
     parser_backup.add_argument('filename', help='File to save or load the backup.')
 
     parser_attestation = subparser.add_parser('attestation', help='Manages Enterprise Attestation')
-    parser_attestation.add_argument('subcommand', choices=['csr', 'upload'])
+    parser_attestation.add_argument('subcommand', choices=['csr'])
     parser_attestation.add_argument('--filename', help='Uploads the certificate filename to the device as enterprise attestation certificate. If not provided, it will generate an enterprise attestation certificate automatically.')
 
     args = parser.parse_args()
@@ -401,11 +411,19 @@ def backup(vdr, args):
 
 def attestation(vdr, args):
     if (args.subcommand == 'csr'):
-        csr = x509.load_der_x509_csr(vdr.csr()[1])
-        data = urllib.parse.urlencode({'csr': csr.public_bytes(Encoding.PEM)}).encode()
-        j = get_pki_data('csr', data=data)
-        cert = x509.load_pem_x509_certificate(j['x509'].encode())
-        print(cert)
+        if (args.filename is None):
+            csr = x509.load_der_x509_csr(vdr.csr())
+            data = urllib.parse.urlencode({'csr': csr.public_bytes(Encoding.PEM)}).encode()
+            j = get_pki_data('csr', data=data)
+            cert = x509.load_pem_x509_certificate(j['x509'].encode())
+        else:
+            with open(args.filename, 'rb') as f:
+                dataf = f.read()
+                try:
+                    cert = x509.load_der_x509_certificate(dataf)
+                except ValueError:
+                    cert = x509.load_pem_x509_certificate(dataf)
+        vdr.upload_ea(cert.public_bytes(Encoding.DER))
 
 def main(args):
     print('Pico Fido Tool v1.4')
