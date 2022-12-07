@@ -174,7 +174,6 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     CBOR_PARSE_MAP_END(_f2, 3);
                     continue;
                 }
-                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "credBlob", credBlob);
                 CBOR_ADVANCE(2);
             }
@@ -379,8 +378,6 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             extensions.hmac_secret = NULL;
         if (extensions.hmac_secret != NULL)
             l++;
-        if (extensions.credProtect != 0)
-            l++;
         if (credBlob == ptrue)
             l++;
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
@@ -390,10 +387,6 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, selcred->extensions.credBlob.data, selcred->extensions.credBlob.len));
             else
                 CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, NULL, 0));
-        }
-        if (extensions.credProtect != 0) {
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
         }
         if (extensions.hmac_secret != NULL) {
 
