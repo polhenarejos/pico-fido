@@ -26,7 +26,7 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 12));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 13));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
@@ -36,7 +36,8 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credBlob"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "minPinLength"));
@@ -114,6 +115,9 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0E));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, PICO_FIDO_VERSION)); // firmwareVersion
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0F));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 1024)); // maxCredBlobLength
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
