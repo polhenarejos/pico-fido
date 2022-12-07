@@ -117,7 +117,7 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, PICO_FIDO_VERSION)); // firmwareVersion
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0F));
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 1024)); // maxCredBlobLength
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDBLOB_LENGTH)); // maxCredBlobLength
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
