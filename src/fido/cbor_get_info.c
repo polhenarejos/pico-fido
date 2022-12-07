@@ -26,7 +26,7 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 13));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 14));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
@@ -66,6 +66,9 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "setMinPINLength"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_MSG_SIZE));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x06));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));

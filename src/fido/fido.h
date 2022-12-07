@@ -79,6 +79,8 @@ extern void set_opts(uint8_t);
 #define MAX_CRED_ID_LENGTH        1024
 #define MAX_RESIDENT_CREDENTIALS  256
 #define MAX_CREDBLOB_LENGTH       128
+#define MAX_MSG_SIZE              1024
+#define MAX_FRAGMENT_LENGTH       (MAX_MSG_SIZE - 64)
 
 typedef struct known_app {
     const uint8_t *rp_id_hash;
