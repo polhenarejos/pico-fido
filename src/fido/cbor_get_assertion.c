@@ -88,6 +88,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     bool asserted = false;
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = {0}, kay = {0}, salt_enc = {0}, salt_auth = {0};
+    const bool *credBlob = NULL;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -174,6 +175,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     continue;
                 }
                 CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "credBlob", credBlob);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -379,7 +381,16 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             l++;
         if (extensions.credProtect != 0)
             l++;
+        if (credBlob == ptrue)
+            l++;
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
+        if (credBlob == ptrue) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
+            if (selcred->extensions.credBlob.present == true)
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, selcred->extensions.credBlob.data, selcred->extensions.credBlob.len));
+            else
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, NULL, 0));
+        }
         if (extensions.credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
