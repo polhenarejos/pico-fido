@@ -120,6 +120,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "minPinLength", extensions.minPinLength);
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", extensions.credBlob);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -241,6 +242,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         Credential ecred;
         if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || flags & FIDO2_AUT_FLAG_UV))
                     CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
+    }
+
+    if (extensions.largeBlobKey == pfalse || (extensions.largeBlobKey == ptrue && options.rk != ptrue)) {
+        CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
     }
 
     if (options.up == ptrue || options.up == NULL) { //14.1
@@ -384,8 +389,16 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     ret = mbedtls_ecdsa_write_signature(&ekey, MBEDTLS_MD_SHA256, hash, 32, sig, sizeof(sig), &olen, random_gen, NULL);
     mbedtls_ecdsa_free(&ekey);
 
+    uint8_t largeBlobKey[32];
+    if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
+        ret = credential_derive_large_blob_key(cred_id, cred_id_len, largeBlobKey);
+        if (ret != 0) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+    }
+
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 4));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, extensions.largeBlobKey == ptrue && options.rk == ptrue ? 5 : 4));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "packed"));
@@ -414,6 +427,12 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
     CBOR_CHECK(cbor_encode_boolean(&mapEncoder, enterpriseAttestation == 2));
+
+    if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, largeBlobKey, sizeof(largeBlobKey)));
+    }
+    mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 
