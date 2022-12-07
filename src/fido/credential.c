@@ -321,3 +321,17 @@ int credential_derive_chacha_key(uint8_t *outk) {
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"Encryption key", 14, outk);
     return 0;
 }
+
+int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk) {
+    memset(outk, 0, 32);
+    int r = 0;
+    if ((r = load_keydev(outk)) != 0)
+        return r;
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"largeBlobKey", 12, outk);
+    mbedtls_md_hmac(md_info, outk, 32, cred_id, cred_id_len, outk);
+    return 0;
+}
