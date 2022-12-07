@@ -60,6 +60,10 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     if (extensions->present == true) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  CborIndefiniteLength));
+        if (extensions->credBlob.present == true && extensions->credBlob.len < MAX_CREDBLOB_LENGTH) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credBlob"));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, extensions->credBlob.data, extensions->credBlob.len));
+        }
         if (extensions->credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credProtect"));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder2, extensions->credProtect));
@@ -155,6 +159,7 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
                     CBOR_FIELD_GET_KEY_TEXT(2);
                     CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", cred->extensions.hmac_secret);
                     CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
+                    CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
                     CBOR_ADVANCE(2);
                 }
                 CBOR_PARSE_MAP_END(_f1, 2);

@@ -31,6 +31,7 @@ typedef struct CredExtensions {
     const bool *hmac_secret;
     uint64_t credProtect;
     const bool *minPinLength;
+    CborByteString credBlob;
     bool present;
 } CredExtensions;
 
