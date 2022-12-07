@@ -72,6 +72,10 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "hmac-secret"));
             CBOR_CHECK(cbor_encode_boolean(&mapEncoder2, *extensions->hmac_secret));
         }
+        if (extensions->largeBlobKey == ptrue) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "largeBlobKey"));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder2, true));
+        }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
@@ -160,6 +164,7 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
                     CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", cred->extensions.hmac_secret);
                     CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
                     CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
+                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKeys", cred->extensions.largeBlobKey);
                     CBOR_ADVANCE(2);
                 }
                 CBOR_PARSE_MAP_END(_f1, 2);

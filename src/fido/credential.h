@@ -32,6 +32,7 @@ typedef struct CredExtensions {
     uint64_t credProtect;
     const bool *minPinLength;
     CborByteString credBlob;
+    const bool *largeBlobKey;
     bool present;
 } CredExtensions;
 
@@ -63,5 +64,6 @@ extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
 extern int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred);
 extern int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
+extern int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
 
 #endif // _CREDENTIAL_H_
