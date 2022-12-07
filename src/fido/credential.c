@@ -314,7 +314,7 @@ int credential_derive_chacha_key(uint8_t *outk) {
     int r = 0;
     if ((r = load_keydev(outk)) != 0)
         return r;
-    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
 
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
