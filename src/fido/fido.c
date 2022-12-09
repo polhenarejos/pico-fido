@@ -116,7 +116,8 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
     mbedtls_x509write_crt_set_key_usage(&ctx, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN);
     int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, core1 ? random_gen : random_gen_core0, NULL);
-    mbedtls_pk_free(&key);
+    /* pk cannot be freed, as it is freed later */
+    //mbedtls_pk_free(&key);
     return ret;
 }
 
@@ -242,11 +243,15 @@ int scan_files(bool core1) {
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
             int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), file_get_size(ef_keydev));
-            if (ret != 0)
+            if (ret != 0) {
+                mbedtls_ecdsa_free(&key);
                 return ret;
+            }
             ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, core1 ? random_gen : random_gen_core0, NULL);
-            if (ret != 0)
+            if (ret != 0) {
+                mbedtls_ecdsa_free(&key);
                 return ret;
+            }
             ret = x509_create_cert(&key, cert, sizeof(cert), core1);
             mbedtls_ecdsa_free(&key);
             if (ret <= 0)
