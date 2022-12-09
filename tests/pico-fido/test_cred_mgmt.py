@@ -3,25 +3,30 @@ import time
 import random
 from fido2.ctap import CtapError
 from fido2.ctap2 import CredentialManagement
-from fido2.utils import sha256, hmac_sha256
-from fido2.ctap2.pin import PinProtocolV2
+from fido2.utils import sha256
+from fido2.ctap2.pin import PinProtocolV2, ClientPin
 from binascii import hexlify
 from utils import generate_random_user
 
 PIN = "12345678"
 
-
 @pytest.fixture(params=[PIN], scope = 'function')
-def PinToken(request, device, client_pin):
+def client_pin_set(request, device, client_pin):
     #device.reboot()
     device.reset()
     pin = request.param
     client_pin.set_pin(pin)
-    return client_pin.get_pin_token(pin)
+
+@pytest.fixture(params=[PIN], scope = 'function')
+def PinToken(request, device, client_pin):
+    pin = request.param
+    token = client_pin.get_pin_token(pin, permissions=ClientPin.PERMISSION.MAKE_CREDENTIAL | ClientPin.PERMISSION.CREDENTIAL_MGMT)
+    print(f"GET TOKEN: {hexlify(token)}")
+    return token
 
 
 @pytest.fixture(scope = 'function')
-def MC_RK_Res(device, PinToken):
+def MC_RK_Res(device, client_pin_set):
     rp = {"id": "ssh:", "name": "Bate Goiko"}
     device.doMC(rp=rp, rk=True)
 
@@ -98,7 +103,7 @@ def test_get_info(info):
     assert 0x8 in info
     assert info[0x8] > 1
 
-def test_get_metadata(CredMgmt, MC_RK_Res):
+def test_get_metadata_ok(MC_RK_Res, CredMgmt):
     metadata = CredMgmt.get_metadata()
     assert metadata[CredentialManagement.RESULT.EXISTING_CRED_COUNT] == 2
     assert metadata[CredentialManagement.RESULT.MAX_REMAINING_COUNT] >= 48
