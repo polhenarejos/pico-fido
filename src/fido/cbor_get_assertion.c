@@ -85,7 +85,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     Credential creds[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
     size_t allowList_len = 0, creds_len = 0;
     uint8_t *aut_data = NULL;
-    bool asserted = false;
+    bool asserted = false, up = true, uv = false;
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = {0}, kay = {0}, salt_enc = {0}, salt_auth = {0};
     const bool *credBlob = NULL;
@@ -239,6 +239,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
             //else if (options.up == NULL) //5.7
                 //rup = ptrue;
+            if (options.uv != NULL)
+                uv = *options.uv;
+            if (options.up != NULL)
+                up = *options.up;
         }
 
         if (pinUvAuthParam.present == true) { //6.1
@@ -338,7 +342,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
 
-        if (!(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV)) {
+        if (up == false && uv == false) {
             selcred = &creds[0];
         }
         else {
@@ -481,7 +485,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     uint8_t lfields = 3;
     if (selcred->opts.present == true && selcred->opts.rk == ptrue)
         lfields++;
-    if (numberOfCredentials > 1 && next == false && !(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV))
+    if (numberOfCredentials > 1 && next == false && up == false && uv == false)
         lfields++;
     if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue)
         lfields++;
@@ -525,7 +529,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
-    if (numberOfCredentials > 1 && next == false && !(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV)) {
+    if (numberOfCredentials > 1 && next == false && up == false && uv == false) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
     }
