@@ -36,36 +36,38 @@ def CredMgmt(device):
 
 def _test_enumeration(device, rp_map):
     "Enumerate credentials using BFS"
-    res = CredMgmt(device).enumerate_rps()
+    credMgmt = CredMgmt(device)
+    res = credMgmt.enumerate_rps()
     assert len(rp_map.keys()) == len(res)
 
     for rp in res:
-        creds = CredMgmt(device).enumerate_creds(sha256(rp[3]["id"].encode()))
+        creds = credMgmt.enumerate_creds(sha256(rp[3]["id"].encode()))
         assert len(creds) == rp_map[rp[3]["id"]]
 
 
 def _test_enumeration_interleaved(device, rp_map):
     "Enumerate credentials using DFS"
-    first_rp = CredMgmt(device).enumerate_rps_begin()
+    credMgmt = CredMgmt(device)
+    first_rp = credMgmt.enumerate_rps_begin()
     assert len(rp_map.keys()) == first_rp[CredentialManagement.RESULT.TOTAL_RPS]
 
     rk_count = 1
-    first_rk = CredMgmt(device).enumerate_creds_begin(sha256(first_rp[3]["id"].encode()))
+    first_rk = credMgmt.enumerate_creds_begin(sha256(first_rp[3]["id"].encode()))
     for i in range(1, first_rk[CredentialManagement.RESULT.TOTAL_CREDENTIALS]):
-        c = CredMgmt(device).enumerate_creds_next()
+        c = credMgmt.enumerate_creds_next()
         rk_count += 1
 
     assert rk_count == rp_map[first_rp[3]["id"]]
 
     for i in range(1, first_rp[CredentialManagement.RESULT.TOTAL_RPS]):
-        next_rp = CredMgmt(device).enumerate_rps_next()
+        next_rp = credMgmt.enumerate_rps_next()
 
         rk_count = 1
-        first_rk = CredMgmt(device).enumerate_creds_begin(
+        first_rk =credMgmt.enumerate_creds_begin(
             sha256(next_rp[3]["id"].encode())
         )
         for i in range(1, first_rk[CredentialManagement.RESULT.TOTAL_CREDENTIALS]):
-            c = CredMgmt(device).enumerate_creds_next()
+            c = credMgmt.enumerate_creds_next()
             rk_count += 1
 
         assert rk_count == rp_map[next_rp[3]["id"]]
@@ -113,13 +115,14 @@ def test_enumerate_rps(MC_RK_Res, device):
     assert res[1][CredentialManagement.RESULT.RP_ID_HASH] == sha256(b"xakcop.com")
 
 def test_enumarate_creds(MC_RK_Res, device):
-    res = CredMgmt(device).enumerate_creds(sha256(b"ssh:"))
+    credMgmt = CredMgmt(device)
+    res = credMgmt.enumerate_creds(sha256(b"ssh:"))
     assert len(res) == 1
     assert_cred_response_has_all_fields(res[0])
-    res = CredMgmt(device).enumerate_creds(sha256(b"xakcop.com"))
+    res = credMgmt.enumerate_creds(sha256(b"xakcop.com"))
     assert len(res) == 1
     assert_cred_response_has_all_fields(res[0])
-    res = CredMgmt(device).enumerate_creds(sha256(b"missing.com"))
+    res = credMgmt.enumerate_creds(sha256(b"missing.com"))
     assert not res
 
 def test_get_metadata_wrong_pinauth(device, MC_RK_Res):
@@ -135,15 +138,17 @@ def test_rkbegin_wrong_pinauth(device, MC_RK_Res):
     _test_wrong_pinauth(device, cmd)
 
 def test_rpnext_without_rpbegin(device, MC_RK_Res):
-    CredMgmt(device).enumerate_creds_begin(sha256(b"ssh:"))
+    credMgmt = CredMgmt(device)
+    credMgmt.enumerate_creds_begin(sha256(b"ssh:"))
     with pytest.raises(CtapError) as e:
-        CredMgmt(device).enumerate_rps_next()
+        credMgmt.enumerate_rps_next()
     assert e.value.code == CtapError.ERR.NOT_ALLOWED
 
 def test_rknext_without_rkbegin(device, MC_RK_Res):
-    CredMgmt(device).enumerate_rps_begin()
+    credMgmt = CredMgmt(device)
+    credMgmt.enumerate_rps_begin()
     with pytest.raises(CtapError) as e:
-        CredMgmt(device).enumerate_creds_next()
+        credMgmt.enumerate_creds_next()
     assert e.value.code == CtapError.ERR.NOT_ALLOWED
 
 def test_delete(device):
@@ -156,14 +161,15 @@ def test_delete(device):
     auth = device.doGA(rp_id=rp['id'])
 
     # get the ID from enumeration
-    creds = CredMgmt(device).enumerate_creds(reg.auth_data.rp_id_hash)
+    credMgmt = CredMgmt(device)
+    creds = credMgmt.enumerate_creds(reg.auth_data.rp_id_hash)
     for cred in creds:
         if cred[7]["id"] == reg.auth_data.credential_data.credential_id:
             break
 
     # delete it
     cred = {"id": cred[7]["id"], "type": "public-key"}
-    CredMgmt(device).delete_cred(cred)
+    credMgmt.delete_cred(cred)
 
     # make sure it doesn't work
     with pytest.raises(CtapError) as e:
@@ -182,11 +188,12 @@ def test_add_delete(device):
         regs.append(reg)
 
     # Check they all enumerate
-    res = CredMgmt(device).enumerate_creds(regs[1].auth_data.rp_id_hash)
+    credMgmt = CredMgmt(device)
+    res = credMgmt.enumerate_creds(regs[1].auth_data.rp_id_hash)
     assert len(res) == 3
 
     # delete the middle one
-    creds = CredMgmt(device).enumerate_creds(reg.auth_data.rp_id_hash)
+    creds = credMgmt.enumerate_creds(reg.auth_data.rp_id_hash)
     for cred in creds:
         if cred[7]["id"] == regs[1].auth_data.credential_data.credential_id:
             break
@@ -194,10 +201,10 @@ def test_add_delete(device):
     assert cred[7]["id"] == regs[1].auth_data.credential_data.credential_id
 
     cred = {"id": cred[7]["id"], "type": "public-key"}
-    CredMgmt(device).delete_cred(cred)
+    credMgmt.delete_cred(cred)
 
     # Check one less enumerates
-    res = CredMgmt(device).enumerate_creds(regs[0].auth_data.rp_id_hash)
+    res = credMgmt.enumerate_creds(regs[0].auth_data.rp_id_hash)
     assert len(res) == 2
 
 def test_multiple_creds_per_multiple_rps(
@@ -217,12 +224,13 @@ def test_multiple_creds_per_multiple_rps(
         for i in range(0, 3):
             reg = device.doMC(rp=rp, rk=True, user=generate_random_user())
 
-    res = CredMgmt(device).enumerate_rps()
+    credMgmt = CredMgmt(device)
+    res = credMgmt.enumerate_rps()
     assert len(res) == 5
 
     for rp in res:
         if rp[3]["id"][:12] == "new_example_":
-            creds = CredMgmt(device).enumerate_creds(sha256(rp[3]["id"].encode("utf8")))
+            creds = credMgmt.enumerate_creds(sha256(rp[3]["id"].encode("utf8")))
             assert len(creds) == 3
 
 @pytest.mark.parametrize(
@@ -232,8 +240,6 @@ def test_multiple_enumeration(
     device, MC_RK_Res, enumeration_test
 ):
     """ Test enumerate still works after different commands """
-
-    res = CredMgmt(device).enumerate_rps()
 
     expected_enumeration = {"xakcop.com": 1, "ssh:": 1}
 
@@ -254,12 +260,6 @@ def test_multiple_enumeration(
         expected_enumeration[rp["id"]] = rp["count"]
 
     enumeration_test(device, expected_enumeration)
-    enumeration_test(device, expected_enumeration)
-
-    metadata = CredMgmt(device).get_metadata()
-
-    enumeration_test(device, expected_enumeration)
-    enumeration_test(device, expected_enumeration)
 
 @pytest.mark.parametrize(
     "enumeration_test", [_test_enumeration, _test_enumeration_interleaved]
@@ -268,8 +268,6 @@ def test_multiple_enumeration_with_deletions(
     device, MC_RK_Res, enumeration_test
 ):
     """ Create each credential in random order.  Test enumerate still works after randomly deleting each credential"""
-
-    res = CredMgmt(device).enumerate_rps()
 
     expected_enumeration = {"xakcop.com": 1, "ssh:": 1}
 
@@ -304,10 +302,11 @@ def test_multiple_enumeration_with_deletions(
         num = expected_enumeration[rp]
 
         index = 0 if num == 1 else random.randint(0, num - 1)
-        cred = CredMgmt(device).enumerate_creds(sha256(rp.encode("utf8")))[index]
+        credMgmt = CredMgmt(device)
+        cred = credMgmt.enumerate_creds(sha256(rp.encode("utf8")))[index]
 
         # print('Delete %d index (%d total) cred of %s' % (index, expected_enumeration[rp], rp))
-        CredMgmt(device).delete_cred({"id": cred[7]["id"], "type": "public-key"})
+        credMgmt.delete_cred({"id": cred[7]["id"], "type": "public-key"})
 
         expected_enumeration[rp] -= 1
         if expected_enumeration[rp] == 0:
@@ -326,33 +325,3 @@ def _test_wrong_pinauth(device, cmd):
         with pytest.raises(CtapError) as e:
             cmd(credMgmt)
         assert e.value.code == CtapError.ERR.PIN_AUTH_INVALID
-
-    with pytest.raises(CtapError) as e:
-        cmd(credMgmt)
-    assert e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED
-
-    device.reboot()
-    credMgmt = CredMgmtWrongPinAuth(device)
-
-    for i in range(2):
-        time.sleep(0.2)
-        with pytest.raises(CtapError) as e:
-            cmd(credMgmt)
-        assert e.value.code == CtapError.ERR.PIN_AUTH_INVALID
-
-    with pytest.raises(CtapError) as e:
-        cmd(credMgmt)
-    assert e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED
-
-    device.reboot()
-    credMgmt = CredMgmtWrongPinAuth(device)
-
-    for i in range(1):
-        time.sleep(0.2)
-        with pytest.raises(CtapError) as e:
-            cmd(credMgmt)
-        assert e.value.code == CtapError.ERR.PIN_AUTH_INVALID
-
-    with pytest.raises(CtapError) as e:
-        cmd(credMgmt)
-    assert e.value.code == CtapError.ERR.PIN_BLOCKED
