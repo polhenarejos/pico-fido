@@ -76,7 +76,7 @@ def test_get_assertion_allow_list_filtering_and_buffering(device):
         len(rp2_assertions)
     )
 
-    assert counts in [(None, None), (l1, l2)]
+    assert counts in [(1, 1), (l1, l2)]
 
 def test_corrupt_credId(device, MCRes):
     # apply bit flip
