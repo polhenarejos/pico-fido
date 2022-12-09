@@ -21,7 +21,7 @@ def client_pin_set(request, device, client_pin):
 def PinToken(request, device, client_pin):
     pin = request.param
     token = client_pin.get_pin_token(pin, permissions=ClientPin.PERMISSION.MAKE_CREDENTIAL | ClientPin.PERMISSION.CREDENTIAL_MGMT)
-    print(f"GET TOKEN: {hexlify(token)}")
+    print(f"GET TOKEN {hexlify(token)}")
     return token
 
 
@@ -108,16 +108,16 @@ def test_get_metadata_ok(MC_RK_Res, CredMgmt):
     assert metadata[CredentialManagement.RESULT.EXISTING_CRED_COUNT] == 2
     assert metadata[CredentialManagement.RESULT.MAX_REMAINING_COUNT] >= 48
 
-def test_enumerate_rps(CredMgmt, MC_RK_Res):
+def test_enumerate_rps(MC_RK_Res, CredMgmt):
     res = CredMgmt.enumerate_rps()
     assert len(res) == 2
-    assert res[0][CredentialManagement.RESULT.RP]["id"] == b"ssh:"
+    assert res[0][CredentialManagement.RESULT.RP]["id"] == "ssh:"
     assert res[0][CredentialManagement.RESULT.RP_ID_HASH] == sha256(b"ssh:")
     # Solo doesn't store rpId with the exception of "ssh:"
-    assert res[1][CredentialManagement.RESULT.RP]["id"] == b"xakcop.com"
+    assert res[1][CredentialManagement.RESULT.RP]["id"] == "xakcop.com"
     assert res[1][CredentialManagement.RESULT.RP_ID_HASH] == sha256(b"xakcop.com")
 
-def test_enumarate_creds(CredMgmt, MC_RK_Res):
+def test_enumarate_creds(MC_RK_Res, CredMgmt):
     res = CredMgmt.enumerate_creds(sha256(b"ssh:"))
     assert len(res) == 1
     assert_cred_response_has_all_fields(res[0])
@@ -139,13 +139,13 @@ def test_rkbegin_wrong_pinauth(device, MC_RK_Res, PinToken):
     cmd = lambda credMgmt: credMgmt.enumerate_creds_begin(sha256(b"ssh:"))
     _test_wrong_pinauth(device, cmd, PinToken)
 
-def test_rpnext_without_rpbegin(device, CredMgmt, MC_RK_Res):
+def test_rpnext_without_rpbegin(device, MC_RK_Res, CredMgmt):
     CredMgmt.enumerate_creds_begin(sha256(b"ssh:"))
     with pytest.raises(CtapError) as e:
         CredMgmt.enumerate_rps_next()
     assert e.value.code == CtapError.ERR.NOT_ALLOWED
 
-def test_rknext_without_rkbegin(device, CredMgmt, MC_RK_Res):
+def test_rknext_without_rkbegin(device, MC_RK_Res, CredMgmt):
     CredMgmt.enumerate_rps_begin()
     with pytest.raises(CtapError) as e:
         CredMgmt.enumerate_creds_next()
@@ -206,7 +206,7 @@ def test_add_delete(device, PinToken, CredMgmt):
     assert len(res) == 2
 
 def test_multiple_creds_per_multiple_rps(
-    device, PinToken, CredMgmt, MC_RK_Res
+    device, MC_RK_Res, CredMgmt
 ):
     res = CredMgmt.enumerate_rps()
     assert len(res) == 2
@@ -234,7 +234,7 @@ def test_multiple_creds_per_multiple_rps(
     "enumeration_test", [_test_enumeration, _test_enumeration_interleaved]
 )
 def test_multiple_enumeration(
-    device, PinToken, MC_RK_Res, CredMgmt, enumeration_test
+    device, MC_RK_Res, CredMgmt, enumeration_test
 ):
     """ Test enumerate still works after different commands """
 
@@ -270,7 +270,7 @@ def test_multiple_enumeration(
     "enumeration_test", [_test_enumeration, _test_enumeration_interleaved]
 )
 def test_multiple_enumeration_with_deletions(
-    device, PinToken, MC_RK_Res, CredMgmt, enumeration_test
+    device, MC_RK_Res, CredMgmt, enumeration_test
 ):
     """ Create each credential in random order.  Test enumerate still works after randomly deleting each credential"""
 
