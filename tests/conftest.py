@@ -296,7 +296,7 @@ class Device():
 
     def doGA(self, client_data=Ellipsis, rp_id=Ellipsis, allow_list=None, extensions=None, user_verification=None, event=None, ctap1=False, check_only=False):
         client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
-                    type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
+                    type=CollectedClientData.TYPE.GET, origin=self.__origin, challenge=os.urandom(32)
                 )
         rp_id = rp_id if rp_id is not Ellipsis else self.__rp['id']
         if (ctap1 is True):
