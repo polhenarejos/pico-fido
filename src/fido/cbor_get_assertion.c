@@ -485,7 +485,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     uint8_t lfields = 3;
     if (selcred->opts.present == true && selcred->opts.rk == ptrue)
         lfields++;
-    if (numberOfCredentials > 1 && next == false && up == false && uv == false)
+    if (numberOfCredentials > 1 && next == false)
         lfields++;
     if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue)
         lfields++;
@@ -529,7 +529,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
-    if (numberOfCredentials > 1 && next == false && up == false && uv == false) {
+    if (numberOfCredentials > 1 && next == false) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
     }
