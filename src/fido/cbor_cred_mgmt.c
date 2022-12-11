@@ -302,6 +302,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                 }
                 CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0B));
                 CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, largeBlobKey, sizeof(largeBlobKey)));
+                mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
             }
         }
         credential_free(&cred);
