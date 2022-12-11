@@ -23,6 +23,26 @@ def GACredBlob(device, MCCredBlob):
         verify(MCCredBlob, a, res['req']['client_data'].hash)
     return assertions[0]
 
+@pytest.fixture(scope="function")
+def MCLBK(device):
+    res = device.doMC(
+        rk=True,
+        extensions={'largeBlob':{'support':'required'}}
+        )['res']
+    return res
+
+@pytest.fixture(scope="function")
+def GALBRead(device, MCLBK):
+    res = device.doGA(
+        allow_list=[
+            {"id": MCLBK.attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
+        ],extensions={'largeBlob':{'read': True}}
+        )
+    assertions = res['res'].get_assertions()
+    for a in assertions:
+        verify(MCLBK.attestation_object, a, res['req']['client_data'].hash)
+    return assertions[0]
+
 def test_supports_credblob(info):
     assert info.extensions
     assert 'credBlob' in info.extensions
@@ -67,3 +87,15 @@ def test_wrong_credblob(device, info):
     assert assertions[0].auth_data.extensions
     assert "credBlob" in assertions[0].auth_data.extensions
     assert len(assertions[0].auth_data.extensions['credBlob']) == 0
+
+def test_supports_largeblobs(info):
+    assert info.extensions
+    assert 'largeBlobKey' in info.extensions
+
+def test_get_largeblobkey_mc(MCLBK):
+    assert 'supported' in MCLBK.extension_results
+    assert MCLBK.extension_results['supported'] is True
+
+def test_get_largeblobkey_ga(GALBRead):
+    assert GALBRead.large_blob_key is not None
+
