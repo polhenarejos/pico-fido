@@ -35,6 +35,13 @@ def FidoConfig(device):
     pin_protocol = PinProtocolV2()
     return Config(device.client()._backend.ctap2, pin_protocol, pt)
 
+def test_supports_minpin(info):
+    assert info.extensions
+    assert 'minPinLength' in info.extensions
+    assert info.options
+    assert 'setMinPINLength' in info.options
+    assert info.options['setMinPINLength'] is True
+
 def test_minpin(SetMinPin, MCMinPin):
     assert MCMinPin.auth_data.extensions
     assert "minPinLength" in MCMinPin.auth_data.extensions
