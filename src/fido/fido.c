@@ -290,6 +290,9 @@ int scan_files(bool core1) {
         printf("FATAL ERROR: Auth Token not found in memory!\r\n");
     }
     ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
+    if (!file_has_data(ef_largeblob)) {
+        flash_write_data_to_file(ef_largeblob, (const uint8_t *)"\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
+    }
     low_flash_available();
     return CCID_OK;
 }
