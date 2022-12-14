@@ -6,6 +6,7 @@ import os
 
 PIN='12345678'
 SMALL_BLOB=b"A"*32
+LARGE_BLOB=b"B"*1024
 
 @pytest.fixture(scope="function")
 def MCCredBlob(device):
@@ -41,7 +42,27 @@ def GALBRead(device, MCLBK):
     assertions = res['res'].get_assertions()
     for a in assertions:
         verify(MCLBK.attestation_object, a, res['req']['client_data'].hash)
-    return assertions[0]
+    return res['res']
+
+@pytest.fixture(scope="function")
+def GALBReadLBK(GALBRead):
+    return GALBRead.get_assertions()[0]
+
+@pytest.fixture(scope="function")
+def GALBReadLB(GALBRead):
+    return GALBRead.get_response(0)
+
+@pytest.fixture(scope="function")
+def GALBWrite(device, MCLBK):
+    res = device.doGA(
+        allow_list=[
+            {"id": MCLBK.attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
+        ],extensions={'largeBlob':{'write': LARGE_BLOB}}
+        )
+    assertions = res['res'].get_assertions()
+    for a in assertions:
+        verify(MCLBK.attestation_object, a, res['req']['client_data'].hash)
+    return res['res'].get_response(0)
 
 def test_supports_credblob(info):
     assert info.extensions
@@ -91,11 +112,19 @@ def test_wrong_credblob(device, info):
 def test_supports_largeblobs(info):
     assert info.extensions
     assert 'largeBlobKey' in info.extensions
+    assert 'largeBlobs' in info.options
+    assert info.max_large_blob is None or (info.max_large_blob > 1024)
 
 def test_get_largeblobkey_mc(MCLBK):
     assert 'supported' in MCLBK.extension_results
     assert MCLBK.extension_results['supported'] is True
 
-def test_get_largeblobkey_ga(GALBRead):
-    assert GALBRead.large_blob_key is not None
+def test_get_largeblobkey_ga(GALBReadLBK):
+    assert GALBReadLBK.large_blob_key is not None
 
+def test_get_largeblob_rw(GALBWrite, GALBReadLB):
+    assert 'written' in GALBWrite.extension_results
+    assert GALBWrite.extension_results['written'] is True
+
+    assert 'blob' in GALBReadLB.extension_results
+    assert GALBReadLB.extension_results['blob'] == LARGE_BLOB
