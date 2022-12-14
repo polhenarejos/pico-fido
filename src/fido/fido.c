@@ -289,6 +289,7 @@ int scan_files(bool core1) {
     else {
         printf("FATAL ERROR: Auth Token not found in memory!\r\n");
     }
+    ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     low_flash_available();
     return CCID_OK;
 }
