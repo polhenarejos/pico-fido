@@ -40,7 +40,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
     CBOR_PARSE_MAP_START(map, 1) {
         uint64_t val_u = 0;
         CBOR_FIELD_GET_UINT(val_u, 1);
-        if (val_c <= 1 && val_c != val_u)
+        if (val_c <= 0 && val_c != val_u)
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (val_u < val_c)
             CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
