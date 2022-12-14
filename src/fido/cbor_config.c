@@ -95,7 +95,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         else if (val_u == 0x03) {
             CBOR_FIELD_GET_UINT(pinUvAuthProtocol, 1);
         }
-        else if (val_u == 0x04) { // pubKeyCredParams
+        else if (val_u == 0x04) {
             CBOR_FIELD_GET_BYTES(pinUvAuthParam, 1);
         }
     }
@@ -204,12 +204,11 @@ int cbor_config(const uint8_t *data, size_t len) {
         CBOR_FREE_BYTE_STRING(minPinLengthRPIDs[i]);
     }
 
-        if (error != CborNoError)
-        {
-            if (error == CborErrorImproperValue)
-                return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
-            return error;
-        }
+    if (error != CborNoError) {
+        if (error == CborErrorImproperValue)
+            return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        return error;
+    }
     res_APDU_size = resp_size;
     return 0;
 }
