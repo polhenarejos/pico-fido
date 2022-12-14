@@ -66,7 +66,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    if (offset == 0)
+    if (offset == UINT64_MAX)
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     if (get == 0 && set.present == false)
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
