@@ -114,6 +114,7 @@ typedef struct {
 #define CTAP_GET_NEXT_ASSERTION  0x08
 #define CTAP_CREDENTIAL_MGMT     0x0A
 #define CTAP_SELECTION           0x0B
+#define CTAP_LARGE_BLOBS         0x0C
 #define CTAP_CONFIG              0x0D
 
 #define CTAP_CONFIG_AUT_ENABLE      0x03e43f56b34285e2
