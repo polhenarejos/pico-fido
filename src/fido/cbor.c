@@ -70,7 +70,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
         else if (data[0] == CTAP_CONFIG)
             return cbor_config(data + 1, len - 1);
         else if (data[0] == CTAP_LARGE_BLOBS)
-            return cbor_config(data + 1, len - 1);
+            return cbor_large_blobs(data + 1, len - 1);
     }
     else if (cmd == CTAP_VENDOR_CBOR) {
         return cbor_vendor(data, len);
