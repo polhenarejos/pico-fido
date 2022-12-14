@@ -26,7 +26,7 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 14));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 15));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
@@ -106,6 +106,9 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
     CBOR_CHECK(cbor_encoder_close_container(&arrayEncoder, &mapEncoder2));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0B));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_LARGE_BLOB_SIZE)); // maxSerializedLargeBlobArray
 
     file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
