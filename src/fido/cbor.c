@@ -64,7 +64,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
             return cbor_get_next_assertion(data + 1, len - 1);
         else if (data[0] == CTAP_SELECTION)
             return cbor_selection();
-        else if (data[0] == CTAP_CREDENTIAL_MGMT)
+        else if (data[0] == CTAP_CREDENTIAL_MGMT || data[0] == 0x41)
             return cbor_cred_mgmt(data + 1, len - 1);
         else if (data[0] == CTAP_CONFIG)
             return cbor_config(data + 1, len - 1);

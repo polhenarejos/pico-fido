@@ -116,6 +116,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
     mbedtls_x509write_crt_set_key_usage(&ctx, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN);
     int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, core1 ? random_gen : random_gen_core0, NULL);
+    mbedtls_pk_free(&key);
     return ret;
 }
 
@@ -323,6 +324,19 @@ bool check_user_presence() {
 uint32_t get_sign_counter() {
     uint8_t *caddr = file_get_data(ef_counter);
     return (*caddr) | (*(caddr + 1) << 8) | (*(caddr + 2) << 16) | (*(caddr + 3) << 24);
+}
+
+uint8_t get_opts() {
+    file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
+    if (file_has_data(ef))
+        return *file_get_data(ef);
+    return 0;
+}
+
+void set_opts(uint8_t opts) {
+    file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
+    flash_write_data_to_file(ef, &opts, sizeof(uint8_t));
+    low_flash_available();
 }
 
 typedef struct cmd

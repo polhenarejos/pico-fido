@@ -188,6 +188,10 @@ int cbor_config(const uint8_t *data, size_t len) {
         low_flash_available();
         goto err; //No return
     }
+    else if (subcommand == 0x01) {
+        set_opts(get_opts() | FIDO2_OPT_EA);
+        goto err;
+    }
     else
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));

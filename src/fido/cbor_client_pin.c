@@ -59,7 +59,7 @@ void clearUserVerifiedFlag() {
 
 void clearPinUvAuthTokenPermissionsExceptLbw() {
     if (paut.in_use == true)
-        paut.permissions = FIDO2_PERMISSION_LBW;
+        paut.permissions = CTAP_PERMISSION_LBW;
 }
 
 void stopUsingPinUvAuthToken() {
@@ -518,7 +518,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
-        if (memcmp(paddedNewPin, file_get_data(ef_pin)+1, 16) != 0) {
+        if (memcmp(paddedNewPin, file_get_data(ef_pin)+2, 16) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
@@ -544,7 +544,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             permissions = CTAP_PERMISSION_MC | CTAP_PERMISSION_GA;
         paut.permissions = permissions;
         if (rpId.present == true) {
-            memcpy(paut.rp_id_hash, rpId.data, 32);
+            mbedtls_sha256((uint8_t *)rpId.data, rpId.len, paut.rp_id_hash, 0);
             paut.has_rp_id = true;
         }
         uint8_t pinUvAuthToken_enc[32+IV_SIZE];

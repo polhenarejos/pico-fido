@@ -207,6 +207,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
     }
     if (enterpriseAttestation > 0) {
+        if (!(get_opts() & FIDO2_OPT_EA)) {
+            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
         if (enterpriseAttestation != 1 && enterpriseAttestation != 2) { //9.2.1
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
@@ -259,14 +262,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &options, &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
-    mbedtls_ecdsa_context ekey;
-    mbedtls_ecdsa_init(&ekey);
-    int ret = fido_load_key(curve, cred_id, &ekey);
-    if (ret != 0) {
-        mbedtls_ecdsa_free(&ekey);
-        CBOR_ERROR(CTAP1_ERR_OTHER);
-    }
-
     if (getUserVerifiedFlagValue())
         flags |= FIDO2_AUT_FLAG_UV;
     size_t ext_len = 0;
@@ -315,9 +310,18 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         flags |= FIDO2_AUT_FLAG_ED;
     }
     uint8_t pkey[66];
-    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(ekey.grp.id);
-    if (cinfo == NULL)
+    mbedtls_ecdsa_context ekey;
+    mbedtls_ecdsa_init(&ekey);
+    int ret = fido_load_key(curve, cred_id, &ekey);
+    if (ret != 0) {
+        mbedtls_ecdsa_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
+    const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(ekey.grp.id);
+    if (cinfo == NULL) {
+        mbedtls_ecdsa_free(&ekey);
+        CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
     size_t olen = 0;
     uint32_t ctr = get_sign_counter();
     uint8_t cbor_buf[1024];
@@ -354,15 +358,17 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     memcpy(pa, cred_id, cred_id_len); pa += cred_id_len;
     memcpy(pa, cbor_buf, rs); pa += rs;
     memcpy(pa, ext, ext_len); pa += ext_len;
-    if (pa-aut_data != aut_data_len)
+    if (pa-aut_data != aut_data_len) {
+        mbedtls_ecdsa_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
+    }
 
     memcpy(pa, clientDataHash.data, clientDataHash.len);
     uint8_t hash[32], sig[MBEDTLS_ECDSA_MAX_LEN];
     ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), aut_data, aut_data_len+clientDataHash.len, hash);
 
     bool self_attestation = true;
-    if (ka && ka->use_self_attestation == pfalse) {
+    if (enterpriseAttestation == 2 || (ka && ka->use_self_attestation == pfalse)) {
         mbedtls_ecdsa_free(&ekey);
         mbedtls_ecdsa_init(&ekey);
         ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), 32);
@@ -372,7 +378,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     mbedtls_ecdsa_free(&ekey);
 
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 4));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "packed"));
@@ -387,13 +393,20 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, sig, olen));
     if (self_attestation == false) {
         CborEncoder arrEncoder;
+        file_t *ef_cert = NULL;
+        if (enterpriseAttestation == 2)
+            ef_cert = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
+        if (!file_has_data(ef_cert))
+            ef_cert = ef_certdev;
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "x5c"));
         CBOR_CHECK(cbor_encoder_create_array(&mapEncoder2, &arrEncoder, 1));
-        CBOR_CHECK(cbor_encode_byte_string(&arrEncoder, file_get_data(ef_certdev), file_get_size(ef_certdev)));
+        CBOR_CHECK(cbor_encode_byte_string(&arrEncoder, file_get_data(ef_cert), file_get_size(ef_cert)));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder2, &arrEncoder));
     }
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
 
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
+    CBOR_CHECK(cbor_encode_boolean(&mapEncoder, enterpriseAttestation == 2));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 
