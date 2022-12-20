@@ -67,6 +67,8 @@ target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_large_blobs.c
         )
 set(HSM_DRIVER "hid")
+set(USB_ITF_HID 1)
+set(USB_ITF_CCID 1)
 include(pico-hsm-sdk/pico_hsm_sdk_import.cmake)
 
 target_include_directories(pico_fido PUBLIC

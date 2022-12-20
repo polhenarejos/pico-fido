@@ -49,7 +49,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len == 0)
         return CTAP1_ERR_INVALID_LEN;
     DEBUG_DATA(data+1,len-1);
-    driver_prepare_response();
+    driver_prepare_response_hid();
     if (cmd == CTAPHID_CBOR) {
         if (data[0] == CTAP_MAKE_CREDENTIAL)
             return cbor_make_credential(data + 1, len - 1);
@@ -89,7 +89,6 @@ void cbor_thread() {
 
 	        break;
 	    }
-
         apdu.sw = cbor_parse(cmd, cbor_data, cbor_len);
         if (apdu.sw == 0)
             DEBUG_DATA(res_APDU + 1, res_APDU_size);
