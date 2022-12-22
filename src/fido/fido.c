@@ -30,6 +30,7 @@
 #include "mbedtls/hkdf.h"
 #include "pk_wrap.h"
 #include "crypto_utils.h"
+#include "ccid.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -47,18 +48,24 @@ const uint8_t fido_aid[] = {
     0xA0, 0x00, 0x00, 0x06, 0x47, 0x2F, 0x00, 0x01
 };
 
-app_t *fido_select(app_t *a) {
-    a->aid = fido_aid;
-    a->process_apdu = fido_process_apdu;
-    a->unload = fido_unload;
-    current_app = a;
-    //init_fido(false);
-    return a;
+const uint8_t atr_fido[] = {
+    23,
+    0x3b, 0xfd, 0x13, 0x00, 0x00, 0x81, 0x31, 0xfe, 0x15, 0x80, 0x73, 0xc0, 0x21, 0xc0, 0x57, 0x59, 0x75, 0x62, 0x69, 0x4b, 0x65, 0x79, 0x40
+};
+
+app_t *fido_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
+    if (!memcmp(aid, fido_aid+1, MIN(aid_len,fido_aid[0]))) {
+        a->aid = fido_aid;
+        a->process_apdu = fido_process_apdu;
+        a->unload = fido_unload;
+        return a;
+    }
+    return NULL;
 }
 
 void __attribute__ ((constructor)) fido_ctor() {
+    ccid_atr = atr_fido;
     register_app(fido_select);
-    //fido_select(&apps[0]);
 }
 
 int fido_unload() {
@@ -347,12 +354,6 @@ void set_opts(uint8_t opts) {
     flash_write_data_to_file(ef, &opts, sizeof(uint8_t));
     low_flash_available();
 }
-
-typedef struct cmd
-{
-  uint8_t ins;
-  int (*cmd_handler)();
-} cmd_t;
 
 extern int cmd_register();
 extern int cmd_authenticate();
