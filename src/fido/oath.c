@@ -336,17 +336,20 @@ int cmd_calculate_all() {
             memcpy(res_APDU+res_APDU_size, name, name_len); res_APDU_size += name_len;
             if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
                 res_APDU[res_APDU_size++] = TAG_NO_RESPONSE;
-                res_APDU[res_APDU_size++] = 0;
+                res_APDU[res_APDU_size++] = 1;
+                res_APDU[res_APDU_size++] = key[1];
             }
             else if (asn1_find_tag(ef_data, ef_len, TAG_PROPERTY, &prop_len, &prop) == true && (prop[0] & PROP_TOUCH)) {
                 res_APDU[res_APDU_size++] = TAG_TOUCH_RESPONSE;
-                res_APDU[res_APDU_size++] = 0;
+                res_APDU[res_APDU_size++] = 1;
+                res_APDU[res_APDU_size++] = key[1];
             }
             else {
                 res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
                 int ret = calculate_oath(P2(apdu), key, key_len, chal, chal_len);
                 if (ret != CCID_OK) {
-                    res_APDU[res_APDU_size++] = 0;
+                    res_APDU[res_APDU_size++] = 1;
+                    res_APDU[res_APDU_size++] = key[1];
                 }
             }
         }
