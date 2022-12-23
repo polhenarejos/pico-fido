@@ -196,6 +196,8 @@ int cmd_reset() {
 int cmd_list() {
     size_t name_len = 0, key_len = 0;
     uint8_t *name = NULL, *key = NULL;
+    if (validated == false)
+        return SW_SECURITY_STATUS_NOT_SATISFIED();
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
         if (file_has_data(ef)) {
@@ -205,10 +207,47 @@ int cmd_list() {
                 res_APDU[res_APDU_size++] = TAG_NAME_LIST;
                 res_APDU[res_APDU_size++] = name_len + 1;
                 res_APDU[res_APDU_size++] = key[0];
-                memcpy(res_APDU+res_APDU_size, name, name_len);
+                memcpy(res_APDU+res_APDU_size, name, name_len); res_APDU_size += name_len;
             }
         }
     }
+    return SW_OK();
+}
+
+int cmd_validate() {
+    size_t chal_len = 0, resp_len = 0, key_len = 0;
+    uint8_t *chal = NULL, *resp = NULL, *key = NULL;
+    if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false)
+        return SW_INCORRECT_PARAMS();
+    if (asn1_find_tag(apdu.data, apdu.nc, TAG_RESPONSE, &resp_len, &resp) == false)
+        return SW_INCORRECT_PARAMS();
+    file_t *ef = search_dynamic_file(EF_OATH_CODE);
+    if (file_has_data(ef) == false) {
+        validated = true;
+        return SW_DATA_INVALID();
+    }
+    key = file_get_data(ef);
+    key_len = file_get_size(ef);
+    const mbedtls_md_info_t *md_info = NULL;
+    if ((key[0] & ALG_MASK) == ALG_HMAC_SHA1)
+        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
+    else if ((key[0] & ALG_MASK) == ALG_HMAC_SHA256)
+        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    else if ((key[0] & ALG_MASK) == ALG_HMAC_SHA512)
+        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    uint8_t hmac[64];
+    int ret = mbedtls_md_hmac(md_info, key+1, key_len-1, challenge, sizeof(challenge), hmac);
+    if (ret != 0)
+        return SW_EXEC_ERROR();
+    if (memcmp(hmac, resp, resp_len) != 0)
+        return SW_DATA_INVALID();
+    ret = mbedtls_md_hmac(md_info, key+1, key_len-1, chal, chal_len, hmac);
+    if (ret != 0)
+        return SW_EXEC_ERROR();
+    validated = true;
+    res_APDU[res_APDU_size++] = TAG_RESPONSE;
+    res_APDU[res_APDU_size++] = mbedtls_md_get_size(md_info);
+    memcpy(res_APDU+res_APDU_size, hmac, mbedtls_md_get_size(md_info)); res_APDU_size += mbedtls_md_get_size(md_info);
     return SW_OK();
 }
 
@@ -228,6 +267,7 @@ static const cmd_t cmds[] = {
     { INS_SET_CODE, cmd_set_code },
     { INS_RESET, cmd_reset },
     { INS_LIST, cmd_list },
+    { INS_VALIDATE, cmd_validate },
     { 0x00, 0x0}
 };
 
