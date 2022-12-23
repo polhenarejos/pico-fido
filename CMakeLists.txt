@@ -65,6 +65,7 @@ target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_config.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_vendor.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_large_blobs.c
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/oath.c
         )
 set(HSM_DRIVER "hid")
 set(USB_ITF_HID 1)
