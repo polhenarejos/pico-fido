@@ -121,22 +121,42 @@ int cmd_put() {
     return SW_FILE_FULL();
 }
 
+file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
+    size_t ef_tag_len = 0;
+    uint8_t *ef_tag_data = NULL;
+    for (int i = 0; i < MAX_OATH_CRED; i++) {
+        file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
+        if (file_has_data(ef) && asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_NAME, &ef_tag_len, &ef_tag_data) == true && ef_tag_len == name_len && memcmp(ef_tag_data, name, name_len) == 0) {
+            return ef;
+        }
+    }
+    return NULL;
+}
+
 int cmd_delete() {
-    size_t tag_len = 0, ef_tag_len = 0;
-    uint8_t *tag_data = NULL, *ef_tag_data = NULL;
+    size_t tag_len = 0;
+    uint8_t *tag_data = NULL;
     if (validated == false)
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     if (asn1_find_tag(apdu.data, apdu.nc, TAG_NAME, &tag_len, &tag_data) == true) {
-        for (int i = 0; i < MAX_OATH_CRED; i++) {
-            file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
-            if (file_has_data(ef) && asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_NAME, &ef_tag_len, &ef_tag_data) == true && ef_tag_len == tag_len && memcmp(ef_tag_data, tag_data, tag_len) == 0) {
-                delete_file(ef);
-                return SW_OK();
-            }
+        file_t *ef = find_oath_cred(tag_data, tag_len);
+        if (ef) {
+            delete_file(ef);
+            return SW_OK();
         }
         return SW_DATA_INVALID();
     }
     return SW_INCORRECT_PARAMS();
+}
+
+const mbedtls_md_info_t *get_oath_md_info(uint8_t alg) {
+    if ((alg & ALG_MASK) == ALG_HMAC_SHA1)
+        return mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
+    else if ((alg & ALG_MASK) == ALG_HMAC_SHA256)
+        return mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    else if ((alg & ALG_MASK) == ALG_HMAC_SHA512)
+        return mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    return NULL;
 }
 
 int cmd_set_code() {
@@ -160,13 +180,10 @@ int cmd_set_code() {
         return SW_INCORRECT_PARAMS();
     if (asn1_find_tag(apdu.data, apdu.nc, TAG_RESPONSE, &resp_len, &resp) == false)
         return SW_INCORRECT_PARAMS();
-    const mbedtls_md_info_t *md_info = NULL;
-    if ((key[0] & ALG_MASK) == ALG_HMAC_SHA1)
-        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
-    else if ((key[0] & ALG_MASK) == ALG_HMAC_SHA256)
-        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    else if ((key[0] & ALG_MASK) == ALG_HMAC_SHA512)
-        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+
+    const mbedtls_md_info_t *md_info = get_oath_md_info(key[0]);
+    if (md_info == NULL)
+        return SW_INCORRECT_PARAMS();
     uint8_t hmac[64];
     int r = mbedtls_md_hmac(md_info, key+1, key_len-1, chal, chal_len, hmac);
     if (r != 0)
@@ -228,13 +245,9 @@ int cmd_validate() {
     }
     key = file_get_data(ef);
     key_len = file_get_size(ef);
-    const mbedtls_md_info_t *md_info = NULL;
-    if ((key[0] & ALG_MASK) == ALG_HMAC_SHA1)
-        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
-    else if ((key[0] & ALG_MASK) == ALG_HMAC_SHA256)
-        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    else if ((key[0] & ALG_MASK) == ALG_HMAC_SHA512)
-        md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    const mbedtls_md_info_t *md_info = get_oath_md_info(key[0]);
+    if (md_info == NULL)
+        return SW_INCORRECT_PARAMS();
     uint8_t hmac[64];
     int ret = mbedtls_md_hmac(md_info, key+1, key_len-1, challenge, sizeof(challenge), hmac);
     if (ret != 0)
@@ -248,6 +261,96 @@ int cmd_validate() {
     res_APDU[res_APDU_size++] = TAG_RESPONSE;
     res_APDU[res_APDU_size++] = mbedtls_md_get_size(md_info);
     memcpy(res_APDU+res_APDU_size, hmac, mbedtls_md_get_size(md_info)); res_APDU_size += mbedtls_md_get_size(md_info);
+    return SW_OK();
+}
+
+int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const uint8_t *chal, size_t chal_len) {
+    const mbedtls_md_info_t *md_info = get_oath_md_info(key[0]);
+    if (md_info == NULL)
+        return SW_INCORRECT_PARAMS();
+    uint8_t hmac[64];
+    int r = mbedtls_md_hmac(md_info, key+1, key_len-1, chal, chal_len, hmac);
+    size_t hmac_size = mbedtls_md_get_size(md_info);
+    if (r != 0)
+        return CCID_EXEC_ERROR;
+    if (truncate == 0x01) {
+        res_APDU[res_APDU_size++] = 4+1;
+        res_APDU[res_APDU_size++] = key[1];
+        uint8_t offset = hmac[hmac_size-1] & 0x0f;
+        res_APDU[res_APDU_size++] = hmac[offset] & 0x7f;
+        res_APDU[res_APDU_size++] = hmac[offset+1];
+        res_APDU[res_APDU_size++] = hmac[offset+2];
+        res_APDU[res_APDU_size++] = hmac[offset+3];
+    }
+    else {
+        res_APDU[res_APDU_size++] = hmac_size+1;
+        res_APDU[res_APDU_size++] = key[1];
+        memcpy(res_APDU+res_APDU_size, hmac, hmac_size); res_APDU_size += hmac_size;
+    }
+    return CCID_OK;
+}
+
+int cmd_calculate() {
+    size_t chal_len = 0, name_len = 0, key_len = 0;
+    uint8_t *chal = NULL, *name = NULL, *key = NULL;
+    if (P2(apdu) != 0x0 && P2(apdu) != 0x1)
+        return SW_INCORRECT_P1P2();
+    if (validated == false)
+        return SW_SECURITY_STATUS_NOT_SATISFIED();
+    if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false)
+        return SW_INCORRECT_PARAMS();
+    if (asn1_find_tag(apdu.data, apdu.nc, TAG_NAME, &name_len, &name) == false)
+        return SW_INCORRECT_PARAMS();
+    file_t *ef = find_oath_cred(name, name_len);
+    if (file_has_data(ef) == false)
+        return SW_DATA_INVALID();
+
+    if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_KEY, &key_len, &key) == false)
+        return SW_INCORRECT_PARAMS();
+    res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
+
+    int ret = calculate_oath(P2(apdu), key, key_len, chal, chal_len);
+    if (ret != CCID_OK)
+        return SW_EXEC_ERROR();
+    return SW_OK();
+}
+
+int cmd_calculate_all() {
+    size_t chal_len = 0, name_len = 0, key_len = 0, prop_len = 0;
+    uint8_t *chal = NULL, *name = NULL, *key = NULL, *prop = NULL;
+    if (P2(apdu) != 0x0 && P2(apdu) != 0x1)
+        return SW_INCORRECT_P1P2();
+    if (validated == false)
+        return SW_SECURITY_STATUS_NOT_SATISFIED();
+    if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false)
+        return SW_INCORRECT_PARAMS();
+    for (int i = 0; i < MAX_OATH_CRED; i++) {
+        file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
+        if (file_has_data(ef)) {
+            const uint8_t *ef_data = file_get_data(ef);
+            size_t ef_len = file_get_size(ef);
+            if (asn1_find_tag(ef_data, ef_len, TAG_NAME, &name_len, &name) == false || asn1_find_tag(ef_data, ef_len, TAG_KEY, &key_len, &key) == false)
+                continue;
+            res_APDU[res_APDU_size++] = TAG_NAME;
+            res_APDU[res_APDU_size++] = name_len;
+            memcpy(res_APDU+res_APDU_size, name, name_len); res_APDU_size += name_len;
+            if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+                res_APDU[res_APDU_size++] = TAG_NO_RESPONSE;
+                res_APDU[res_APDU_size++] = 0;
+            }
+            else if (asn1_find_tag(ef_data, ef_len, TAG_PROPERTY, &prop_len, &prop) == true && (prop[0] & PROP_TOUCH)) {
+                res_APDU[res_APDU_size++] = TAG_TOUCH_RESPONSE;
+                res_APDU[res_APDU_size++] = 0;
+            }
+            else {
+                res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
+                int ret = calculate_oath(P2(apdu), key, key_len, chal, chal_len);
+                if (ret != CCID_OK) {
+                    res_APDU[res_APDU_size++] = 0;
+                }
+            }
+        }
+    }
     return SW_OK();
 }
 
@@ -268,6 +371,8 @@ static const cmd_t cmds[] = {
     { INS_RESET, cmd_reset },
     { INS_LIST, cmd_list },
     { INS_VALIDATE, cmd_validate },
+    { INS_CALCULATE, cmd_calculate },
+    { INS_CALC_ALL, cmd_calculate_all },
     { 0x00, 0x0}
 };
 
