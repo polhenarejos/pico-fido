@@ -30,12 +30,12 @@
 #define SHA256_DIGEST_LENGTH (32)
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
-extern int scan_files(bool);
+extern int scan_files();
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecdsa_context *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *);
 extern bool wait_button_pressed();
 extern CTAPHID_FRAME *ctap_req, *ctap_resp;
-extern void init_fido(bool);
+extern void init_fido();
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);
 extern int load_keydev(uint8_t *key);

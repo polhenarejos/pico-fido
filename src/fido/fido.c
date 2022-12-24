@@ -34,7 +34,6 @@
 #include <math.h>
 #include <stdio.h>
 
-void init_fido(bool);
 int fido_process_apdu();
 int fido_unload();
 
@@ -100,7 +99,7 @@ int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key)
     return derive_key(NULL, false, key_path, mbedtls_curve, key);
 }
 
-int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size, bool core1) {
+int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size) {
     mbedtls_x509write_cert ctx;
     mbedtls_x509write_crt_init(&ctx);
     mbedtls_x509write_crt_set_version(&ctx, MBEDTLS_X509_CRT_VERSION_3);
@@ -109,7 +108,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_mpi serial;
     mbedtls_mpi_init(&serial);
-    mbedtls_mpi_fill_random(&serial, 32, core1 ? random_gen : random_gen_core0, NULL);
+    mbedtls_mpi_fill_random(&serial, 32, random_gen, NULL);
     mbedtls_x509write_crt_set_serial(&ctx, &serial);
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
@@ -122,7 +121,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_subject_key_identifier(&ctx);
     mbedtls_x509write_crt_set_authority_key_identifier(&ctx);
     mbedtls_x509write_crt_set_key_usage(&ctx, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN);
-    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, core1 ? random_gen : random_gen_core0, NULL);
+    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_gen, NULL);
     /* pk cannot be freed, as it is freed later */
     //mbedtls_pk_free(&key);
     return ret;
@@ -214,7 +213,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     return r;
 }
 
-int scan_files(bool core1) {
+int scan_files() {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
     if (ef_keydev) {
@@ -223,7 +222,7 @@ int scan_files(bool core1) {
             mbedtls_ecdsa_context ecdsa;
             mbedtls_ecdsa_init(&ecdsa);
             uint8_t index = 0;
-            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, core1 ? random_gen : random_gen_core0, &index);
+            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, random_gen, &index);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ecdsa);
                 return ret;
@@ -254,12 +253,12 @@ int scan_files(bool core1) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
             }
-            ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, core1 ? random_gen : random_gen_core0, NULL);
+            ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, random_gen, NULL);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
             }
-            ret = x509_create_cert(&key, cert, sizeof(cert), core1);
+            ret = x509_create_cert(&key, cert, sizeof(cert));
             mbedtls_ecdsa_free(&key);
             if (ret <= 0)
                 return ret;
@@ -284,10 +283,7 @@ int scan_files(bool core1) {
     if (ef_authtoken) {
         if (!file_has_data(ef_authtoken)) {
             uint8_t t[32];
-            if (core1)
-                random_gen(NULL, t, sizeof(t));
-            else
-                random_gen_core0(NULL, t, sizeof(t));
+            random_gen(NULL, t, sizeof(t));
             flash_write_data_to_file(ef_authtoken, t, sizeof(t));
         }
         paut.data = file_get_data(ef_authtoken);
@@ -304,13 +300,13 @@ int scan_files(bool core1) {
     return CCID_OK;
 }
 
-void scan_all(bool core1) {
+void scan_all() {
     scan_flash();
-    scan_files(core1);
+    scan_files();
 }
 
-void init_fido(bool core1) {
-    scan_all(core1);
+void init_fido() {
+    scan_all();
 }
 
 bool wait_button_pressed() {

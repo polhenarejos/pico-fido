@@ -33,6 +33,6 @@ int cbor_reset() {
     if (wait_button_pressed() == true)
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     initialize_flash(true);
-    init_fido(true);
+    init_fido();
     return 0;
 }
