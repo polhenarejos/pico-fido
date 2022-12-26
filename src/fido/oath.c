@@ -106,12 +106,26 @@ int oath_unload() {
     return CCID_OK;
 }
 
+file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
+    size_t ef_tag_len = 0;
+    uint8_t *ef_tag_data = NULL;
+    for (int i = 0; i < MAX_OATH_CRED; i++) {
+        file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
+        if (file_has_data(ef) && asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_NAME, &ef_tag_len, &ef_tag_data) == true && ef_tag_len == name_len && memcmp(ef_tag_data, name, name_len) == 0) {
+            return ef;
+        }
+    }
+    return NULL;
+}
+
 int cmd_put() {
     if (validated == false)
         return SW_SECURITY_STATUS_NOT_SATISFIED();
-    size_t key_len = 0, imf_len = 0;
-    uint8_t *key = NULL, *imf;
+    size_t key_len = 0, imf_len = 0, name_len = 0;
+    uint8_t *key = NULL, *imf = NULL, *name = NULL;
     if (asn1_find_tag(apdu.data, apdu.nc, TAG_KEY, &key_len, &key) == false)
+        return SW_INCORRECT_PARAMS();
+    if (asn1_find_tag(apdu.data, apdu.nc, TAG_NAME, &name_len, &name) == false)
         return SW_INCORRECT_PARAMS();
     if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
         if (asn1_find_tag(apdu.data, apdu.nc, TAG_IMF, &imf_len, &imf) == false) {
@@ -128,29 +142,26 @@ int cmd_put() {
 
         }
     }
-    for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
-        if (!file_has_data(ef)) {
-            ef = file_new(EF_OATH_CRED + i);
-            flash_write_data_to_file(ef, apdu.data, apdu.nc);
-            low_flash_available();
-            return SW_OK();
-        }
+    file_t *ef = find_oath_cred(name, name_len);
+    if (file_has_data(ef)) {
+        flash_write_data_to_file(ef, apdu.data, apdu.nc);
+        low_flash_available();
     }
-    return SW_FILE_FULL();
+    else {
+        for (int i = 0; i < MAX_OATH_CRED; i++) {
+            file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
+            if (!file_has_data(ef)) {
+                ef = file_new(EF_OATH_CRED + i);
+                flash_write_data_to_file(ef, apdu.data, apdu.nc);
+                low_flash_available();
+                return SW_OK();
+            }
+        }
+        return SW_FILE_FULL();
+    }
+    return SW_OK();
 }
 
-file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
-    size_t ef_tag_len = 0;
-    uint8_t *ef_tag_data = NULL;
-    for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
-        if (file_has_data(ef) && asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_NAME, &ef_tag_len, &ef_tag_data) == true && ef_tag_len == name_len && memcmp(ef_tag_data, name, name_len) == 0) {
-            return ef;
-        }
-    }
-    return NULL;
-}
 
 int cmd_delete() {
     size_t tag_len = 0;
