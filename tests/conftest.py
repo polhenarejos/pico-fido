@@ -438,5 +438,5 @@ def select_oath(ccid_card):
 
 @pytest.fixture(scope="class")
 def reset_oath(select_oath):
-    send_apdu(select_oath, 0x04, p1=0, p2=0)
+    send_apdu(select_oath, 0x04, p1=0xde, p2=0xad)
     return select_oath
