@@ -1,3 +1,23 @@
+"""
+/*
+ * This file is part of the Pico Fido distribution (https://github.com/polhenarejos/pico-fido).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+"""
+
+
 from fido2.webauthn import AttestedCredentialData
 import random
 import string
@@ -5,6 +25,58 @@ import secrets
 import math
 from threading import Event, Timer
 from numbers import Number
+
+import sys
+try:
+    from smartcard.CardType import AnyCardType
+    from smartcard.CardRequest import CardRequest
+    from smartcard.Exceptions import CardRequestTimeoutException, CardConnectionException
+except ModuleNotFoundError:
+    print('ERROR: smarctard module not found! Install pyscard package.\nTry with `pip install pyscard`')
+    sys.exit(-1)
+
+class APDUResponse(Exception):
+    def __init__(self, sw1, sw2):
+        self.sw1 = sw1
+        self.sw2 = sw2
+        super().__init__(f'SW:{sw1:02X}{sw2:02X}')
+
+def send_apdu(card, command, p1, p2, data=None, ne=None):
+    lc = []
+    dataf = []
+    if (data):
+        lc = [0x00] + list(len(data).to_bytes(2, 'big'))
+        dataf = data
+    if (ne is None):
+        le = [0x00, 0x00]
+    else:
+        le = list(ne.to_bytes(2, 'big'))
+    if (isinstance(command, list) and len(command) > 1):
+        apdu = command
+    else:
+        apdu = [0x00, command]
+
+    apdu = apdu + [p1, p2] + lc + dataf + le
+    try:
+        response, sw1, sw2 = card.connection.transmit(apdu)
+    except CardConnectionException:
+        card.connection.reconnect()
+        response, sw1, sw2 = card.connection.transmit(apdu)
+    if (sw1 != 0x90):
+        if (sw1 == 0x6A and sw2 == 0x82):
+            response, sw1, sw2 = card.connection.transmit([0x00, 0xA4, 0x04, 0x00, 0xB, 0xE8, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x81, 0xC3, 0x1F, 0x02, 0x01, 0x0])
+            if (sw1 == 0x90):
+                response, sw1, sw2 = card.connection.transmit(apdu)
+                if (sw1 == 0x90):
+                    return response
+        elif (sw1 == 0x69 and sw2 == 0x82):
+            response, sw1, sw2 = card.connection.transmit([0x00, 0x20, 0x00, 0x81, len(pin)] + list(pin.encode()) + [0x0])
+            if (sw1 == 0x90):
+                response, sw1, sw2 = card.connection.transmit(apdu)
+                if (sw1 == 0x90):
+                    return response
+        raise APDUResponse(sw1, sw2)
+    return response
 
 
 def verify(MC, GA, client_data_hash):
