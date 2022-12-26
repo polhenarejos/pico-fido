@@ -150,3 +150,41 @@ def test_bothoath(reset_oath):
     resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
     exp = [TAG_T_RESPONSE, 5, digits, 0x17, 0xfa, 0x2d, 0x40]
     assert(resp == exp)
+
+def test_imf_overwrite(reset_oath):
+    key = list(bytes(b'kaka'))
+    imf = [0xff, 0x00, 0xff, 0xff]
+    name = list(bytes(b'kaka'))
+
+    data = [TAG_NAME, len(name)] + name + [TAG_KEY, len(key)+2, ALG_SHA1 | TYPE_HOTP, 6] + key + [TAG_IMF, len(imf)] + imf
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+    data = [TAG_NAME, len(name)] + name + [TAG_CHALLENGE]
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
+    exp = [TAG_T_RESPONSE, 5, 6, 0x45, 0xd9, 0x0f, 0x25]
+    assert(exp == resp)
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
+    exp = [TAG_T_RESPONSE, 5, 6, 0x1b, 0xc5, 0x4a, 0x85]
+    assert(exp == resp)
+
+    data = [TAG_NAME, len(name)] + name + [TAG_KEY, len(key)+2, ALG_SHA1 | TYPE_HOTP, 6] + key
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+    data = [TAG_NAME, len(name)] + name + [TAG_CHALLENGE]
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
+    exp = [TAG_T_RESPONSE, 5, 6, 0x16, 0x53, 0x24, 0xdb]
+    assert(exp == resp)
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
+    exp = [TAG_T_RESPONSE, 5, 6, 0x53, 0xed, 0x5e, 0xb2]
+    assert(exp == resp)
+
+def test_imf_more(reset_oath):
+    key = [0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30,
+				0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30]
+    imf = [0, 0, 0, 1]
+    name = list(bytes(b'kaka'))
+
+    data = [TAG_NAME, len(name)] + name + [TAG_KEY, len(key)+2, ALG_SHA1 | TYPE_HOTP, 6] + key + [TAG_IMF, len(imf)] + imf
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+    data = [TAG_NAME, len(name)] + name + [TAG_CHALLENGE]
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
+    exp = [TAG_T_RESPONSE, 5, 6, 0x41, 0x39, 0x7e, 0xea]
+    assert(exp == resp)
