@@ -81,12 +81,12 @@ app_t *oath_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
         a->unload = oath_unload;
         res_APDU_size = 0;
         res_APDU[res_APDU_size++] = TAG_VERSION;
-        res_APDU[res_APDU_size++] = 2;
+        res_APDU[res_APDU_size++] = 3;
         res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
         res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
+        res_APDU[res_APDU_size++] = 0;
         res_APDU[res_APDU_size++] = TAG_NAME;
-        res_APDU[res_APDU_size++] = 9;
-        memcpy(res_APDU+res_APDU_size, (const uint8_t *)"Pico Fido", 9); res_APDU_size += 9;
+        res_APDU[res_APDU_size++] = 8;
         pico_get_unique_board_id((pico_unique_board_id_t *)(res_APDU+res_APDU_size)); res_APDU_size += 8;
         if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
             res_APDU[res_APDU_size++] = TAG_CHALLENGE;
