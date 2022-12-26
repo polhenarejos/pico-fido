@@ -269,7 +269,7 @@ int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const u
     if (md_info == NULL)
         return SW_INCORRECT_PARAMS();
     uint8_t hmac[64];
-    int r = mbedtls_md_hmac(md_info, key+1, key_len-1, chal, chal_len, hmac);
+    int r = mbedtls_md_hmac(md_info, key+2, key_len-2, chal, chal_len, hmac);
     size_t hmac_size = mbedtls_md_get_size(md_info);
     if (r != 0)
         return CCID_EXEC_ERROR;
