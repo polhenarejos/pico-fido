@@ -19,6 +19,7 @@
 
 import pytest
 from utils import *
+import hmac, hashlib
 
 INS_PUT = 0x01
 INS_DELETE = 0x02
@@ -88,3 +89,43 @@ def test_life(reset_oath):
     resp = list_apdu(reset_oath)
     assert(len(resp) == 0)
 
+def test_overwrite(reset_oath):
+    data = data_name + data_key
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=list(data))
+    assert(len(resp) == 0)
+    resp = list_apdu(reset_oath)
+    exp = [TAG_NAME_LIST, 5, 0x21] + name_kaka
+    assert(resp == exp)
+
+    data = data_name + [TAG_CHALLENGE, 0x8] + list(bytes(b'\xff'*8))
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=0, data=data)
+    exp = [TAG_RESPONSE, 0x15, 0x06, 0x79, 0x3e, 0x1b, 0xbd, 0xbf, 0xa7, 0x75, 0xa8, 0x63,0xcc, 0x80, 0x02, 0xce, 0xe4, 0xbd, 0x6c, 0xd7, 0xce, 0xb8, 0xcd]
+    assert(resp == exp)
+
+    resp = list_apdu(reset_oath)
+    exp = [TAG_NAME_LIST, 5, 0x21] + name_kaka
+    assert(resp == exp)
+
+    data = data_name + [TAG_CHALLENGE, 0x8] + list(bytes(b'\xff\x00'*4))
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=0, data=data)
+    exp = [TAG_RESPONSE, 0x15, 0x06, 0x3b, 0x0e, 0x3c, 0x63, 0x1c, 0x01, 0x67, 0xb0, 0x93, 0xa5, 0xec, 0xb9, 0x09, 0x7d, 0x0b, 0x8e, 0x9a, 0xcc, 0x2f, 0x7f]
+    assert(resp == exp)
+
+def test_auth(reset_oath):
+    key = list(bytes(b'kaka blahonga'))
+    chal = [1,2,3,4,5,6,7,8]
+    resp = [0x0c, 0x42, 0x8e, 0x9c, 0xba, 0xa3, 0xb3, 0xab, 0x18, 0x53, 0xd8, 0x79, 0xb9, 0xd2, 0x26, 0xf7, 0xce, 0xcc, 0x4a, 0x7a]
+    data = [TAG_KEY, len(key)+1, ALG_SHA1 | TYPE_TOTP] + key + [TAG_CHALLENGE, len(chal)] + chal + [TAG_RESPONSE, len(resp)] + resp
+    resp = send_apdu(reset_oath, INS_SET_CODE, p1=0, p2=0, data=data)
+
+    reset_oath.connection.reconnect()
+    aid = [0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01, 0x01]
+    resp = send_apdu(reset_oath, 0xA4, 0x04, 0x00, aid)
+    assert(resp[15] == TAG_CHALLENGE)
+    assert(resp[16] == 8)
+    resp2 = hmac.digest(bytes(key), bytes(resp[17:17+8]), 'sha1')
+    data = [TAG_RESPONSE, len(resp2)] + list(resp2) + [TAG_CHALLENGE, len(chal)] + chal
+    resp = send_apdu(reset_oath, INS_VALIDATE, p1=0, p2=0, data=data)
+    assert(resp[0] == TAG_RESPONSE)
+    assert(resp[1] == 20)
+    assert(resp[2:] == list(hmac.digest(bytes(key), bytes(chal), 'sha1')))
