@@ -63,18 +63,6 @@ def send_apdu(card, command, p1, p2, data=None, ne=None):
         card.connection.reconnect()
         response, sw1, sw2 = card.connection.transmit(apdu)
     if (sw1 != 0x90):
-        if (sw1 == 0x6A and sw2 == 0x82):
-            response, sw1, sw2 = card.connection.transmit([0x00, 0xA4, 0x04, 0x00, 0xB, 0xE8, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x81, 0xC3, 0x1F, 0x02, 0x01, 0x0])
-            if (sw1 == 0x90):
-                response, sw1, sw2 = card.connection.transmit(apdu)
-                if (sw1 == 0x90):
-                    return response
-        elif (sw1 == 0x69 and sw2 == 0x82):
-            response, sw1, sw2 = card.connection.transmit([0x00, 0x20, 0x00, 0x81, len(pin)] + list(pin.encode()) + [0x0])
-            if (sw1 == 0x90):
-                response, sw1, sw2 = card.connection.transmit(apdu)
-                if (sw1 == 0x90):
-                    return response
         raise APDUResponse(sw1, sw2)
     return response
 
