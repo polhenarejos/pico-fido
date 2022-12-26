@@ -109,13 +109,24 @@ int oath_unload() {
 int cmd_put() {
     if (validated == false)
         return SW_SECURITY_STATUS_NOT_SATISFIED();
-    size_t key_len = 0;
-    uint8_t *key = NULL;
+    size_t key_len = 0, imf_len = 0;
+    uint8_t *key = NULL, *imf;
     if (asn1_find_tag(apdu.data, apdu.nc, TAG_KEY, &key_len, &key) == false)
         return SW_INCORRECT_PARAMS();
-    if (((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) &&  asn1_find_tag(apdu.data, apdu.nc, TAG_IMF, NULL, NULL) == false) {
-        memcpy(apdu.data + apdu.nc, "\x7a\x08\x00\x00\x00\x00\x00\x00\x00\x00", 10);
-        apdu.nc += 10;
+    if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+        if (asn1_find_tag(apdu.data, apdu.nc, TAG_IMF, &imf_len, &imf) == false) {
+            memcpy(apdu.data + apdu.nc, "\x7a\x08\x00\x00\x00\x00\x00\x00\x00\x00", 10);
+            apdu.nc += 10;
+        }
+        else { //prepend zero-valued bytes
+            if (imf_len < 8) {
+                memmove(imf+(8-imf_len), imf, imf_len);
+                memset(imf, 0, 8-imf_len);
+                *(imf-1) = 8;
+                apdu.nc += (8-imf_len);
+            }
+
+        }
     }
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
