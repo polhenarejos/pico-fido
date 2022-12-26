@@ -1,3 +1,23 @@
+"""
+/*
+ * This file is part of the Pico Fido distribution (https://github.com/polhenarejos/pico-fido).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+"""
+
+
 from http import client
 from fido2.hid import CtapHidDevice
 from fido2.client import Fido2Client, WindowsClient, UserInteraction, ClientError, _Ctap1ClientBackend
@@ -393,3 +413,30 @@ def AuthRes(device, RegRes, *args):
 @pytest.fixture(scope="class")
 def client_pin(resetdevice):
     return ClientPin(resetdevice.client()._backend.ctap2)
+
+@pytest.fixture(scope="class")
+def ccid_card():
+    cardtype = AnyCardType()
+    try:
+        # request card insertion
+        cardrequest = CardRequest(timeout=10, cardType=cardtype)
+        card = cardrequest.waitforcard()
+
+        # connect to the card and perform a few transmits
+        card.connection.connect()
+        return card
+
+    except CardRequestTimeoutException:
+        print('time-out: no card inserted during last 10s')
+    return None
+
+@pytest.fixture(scope="class")
+def select_oath(ccid_card):
+    aid = [0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01, 0x01]
+    resp = send_apdu(ccid_card, 0xA4, 0x04, 0x00, aid)
+    return ccid_card
+
+@pytest.fixture(scope="class")
+def reset_oath(select_oath):
+    send_apdu(select_oath, 0x04, p1=0, p2=0)
+    return select_oath
