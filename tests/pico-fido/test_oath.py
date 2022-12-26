@@ -126,9 +126,8 @@ def test_auth(reset_oath):
     resp2 = hmac.digest(bytes(key), bytes(resp[17:17+8]), 'sha1')
     data = [TAG_RESPONSE, len(resp2)] + list(resp2) + [TAG_CHALLENGE, len(chal)] + chal
     resp = send_apdu(reset_oath, INS_VALIDATE, p1=0, p2=0, data=data)
-    assert(resp[0] == TAG_RESPONSE)
-    assert(resp[1] == 20)
-    assert(resp[2:] == list(hmac.digest(bytes(key), bytes(chal), 'sha1')))
+    exp = [TAG_RESPONSE, 20] + list(hmac.digest(bytes(key), bytes(chal), 'sha1'))
+    assert(exp == resp)
 
 def test_bothoath(reset_oath):
     digits = 6
@@ -215,3 +214,40 @@ def test_delete(reset_oath):
     resp = list_apdu(reset_oath)
     exp = [TAG_NAME_LIST, len(thirdname)+1, type] + thirdname + [TAG_NAME_LIST, len(secondname)+1, type] + secondname
     assert(exp == resp)
+
+def test_noauth(reset_oath):
+    key = list(bytes(b'kaka blahonga'))
+    chal = [1,2,3,4,5,6,7,8]
+    resp = [0x0c, 0x42, 0x8e, 0x9c, 0xba, 0xa3, 0xb3, 0xab, 0x18, 0x53, 0xd8, 0x79, 0xb9, 0xd2, 0x26, 0xf7, 0xce, 0xcc, 0x4a, 0x7a]
+    data = [TAG_KEY, len(key)+1, ALG_SHA1 | TYPE_TOTP] + key + [TAG_CHALLENGE, len(chal)] + chal + [TAG_RESPONSE, len(resp)] + resp
+    resp = send_apdu(reset_oath, INS_SET_CODE, p1=0, p2=0, data=data)
+
+    reset_oath.connection.reconnect()
+    with pytest.raises(APDUResponse) as e:
+        resp = list_apdu(reset_oath)
+    assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
+
+    with pytest.raises(APDUResponse) as e:
+        resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=None)
+    assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
+
+    with pytest.raises(APDUResponse) as e:
+        resp = send_apdu(reset_oath, INS_DELETE, p1=0, p2=0, data=None)
+    assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
+
+    with pytest.raises(APDUResponse) as e:
+        resp = send_apdu(reset_oath, INS_SET_CODE, p1=0, p2=0, data=None)
+    assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
+
+    with pytest.raises(APDUResponse) as e:
+        resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=0, data=None)
+    assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
+
+    with pytest.raises(APDUResponse) as e:
+        resp = send_apdu(reset_oath, INS_CALC_ALL, p1=0, p2=0, data=None)
+    assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
+
+    with pytest.raises(APDUResponse) as e:
+        resp = send_apdu(reset_oath, INS_RESET, p1=0, p2=0, data=None)
+    assert([e.value.sw1, e.value.sw2] == [0x6A, 0x86])
+    resp = send_apdu(reset_oath, INS_RESET, p1=0xde, p2=0xad, data=None)
