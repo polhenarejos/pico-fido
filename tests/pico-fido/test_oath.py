@@ -119,6 +119,10 @@ def test_auth(reset_oath):
     resp = send_apdu(reset_oath, INS_SET_CODE, p1=0, p2=0, data=data)
 
     reset_oath.connection.reconnect()
+    with pytest.raises(APDUResponse) as e:
+        resp = list_apdu(reset_oath)
+    assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
+
     aid = [0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01, 0x01]
     resp = send_apdu(reset_oath, 0xA4, 0x04, 0x00, aid)
     assert(resp[15] == TAG_CHALLENGE)
@@ -128,6 +132,7 @@ def test_auth(reset_oath):
     resp = send_apdu(reset_oath, INS_VALIDATE, p1=0, p2=0, data=data)
     exp = [TAG_RESPONSE, 20] + list(hmac.digest(bytes(key), bytes(chal), 'sha1'))
     assert(exp == resp)
+    resp = list_apdu(reset_oath)
 
 def test_bothoath(reset_oath):
     digits = 6
