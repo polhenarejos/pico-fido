@@ -109,6 +109,14 @@ int oath_unload() {
 int cmd_put() {
     if (validated == false)
         return SW_SECURITY_STATUS_NOT_SATISFIED();
+    size_t key_len = 0;
+    uint8_t *key = NULL;
+    if (asn1_find_tag(apdu.data, apdu.nc, TAG_KEY, &key_len, &key) == false)
+        return SW_INCORRECT_PARAMS();
+    if (((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) &&  asn1_find_tag(apdu.data, apdu.nc, TAG_IMF, NULL, NULL) == false) {
+        memcpy(apdu.data + apdu.nc, "\x7a\x08\x00\x00\x00\x00\x00\x00\x00\x00", 10);
+        apdu.nc += 10;
+    }
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
         if (!file_has_data(ef)) {
@@ -307,11 +315,36 @@ int cmd_calculate() {
 
     if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_KEY, &key_len, &key) == false)
         return SW_INCORRECT_PARAMS();
+
+    if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+        if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_IMF, &chal_len, &chal) == false)
+        return SW_INCORRECT_PARAMS();
+    }
+
     res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
 
     int ret = calculate_oath(P2(apdu), key, key_len, chal, chal_len);
     if (ret != CCID_OK)
         return SW_EXEC_ERROR();
+    if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+        uint64_t v = ((uint64_t)chal[0] << 56) | ((uint64_t)chal[1] << 48) | ((uint64_t)chal[2] << 40) | ((uint64_t)chal[3] << 32) | ((uint64_t)chal[4] << 24) | ((uint64_t)chal[5] << 16) | ((uint64_t)chal[6] << 8) | (uint64_t)chal[7];
+        size_t ef_size = file_get_size(ef);
+        v++;
+        uint8_t *tmp = (uint8_t *)calloc(1, ef_size);
+        memcpy(tmp, file_get_data(ef), ef_size);
+        asn1_find_tag(tmp, ef_size, TAG_IMF, &chal_len, &chal);
+        chal[0] = v >> 56;
+        chal[1] = v >> 48;
+        chal[2] = v >> 40;
+        chal[3] = v >> 32;
+        chal[4] = v >> 24;
+        chal[5] = v >> 16;
+        chal[6] = v >> 8;
+        chal[7] = v & 0xff;
+        flash_write_data_to_file(ef, tmp, ef_size);
+        low_flash_available();
+        free(tmp);
+    }
     return SW_OK();
 }
 
