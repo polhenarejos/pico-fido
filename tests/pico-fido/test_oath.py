@@ -129,3 +129,24 @@ def test_auth(reset_oath):
     assert(resp[0] == TAG_RESPONSE)
     assert(resp[1] == 20)
     assert(resp[2:] == list(hmac.digest(bytes(key), bytes(chal), 'sha1')))
+
+def test_bothoath(reset_oath):
+    digits = 6
+    tname = list(bytes(b'totp'))
+    data = [TAG_NAME, len(tname)] + tname + [TAG_KEY, 9, TYPE_TOTP | ALG_SHA1, digits] + list(bytes(b'foo bar'))
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+    data[2] = ord('h')
+    data[8] = TYPE_HOTP | ALG_SHA1
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+
+    hname = tname[:]
+    hname[0] = ord('h')
+    data = [TAG_CHALLENGE, 8, 0, 0, 0, 0, 0x02, 0xbc, 0xad, 0xc8]
+    resp = send_apdu(reset_oath, INS_CALC_ALL, p1=0, p2=1, data=data)
+    exp = [TAG_NAME, len(tname)] + tname + [TAG_T_RESPONSE, 5, digits, 0x3d, 0xc6, 0xbf, 0x3d] + [TAG_NAME, len(hname)] + hname + [TAG_NO_RESPONSE, 0x01, digits]
+    assert(exp == resp)
+
+    data = [TAG_NAME, len(hname)] + hname + [TAG_CHALLENGE]
+    resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
+    exp = [TAG_T_RESPONSE, 5, digits, 0x17, 0xfa, 0x2d, 0x40]
+    assert(resp == exp)
