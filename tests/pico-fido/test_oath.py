@@ -188,3 +188,30 @@ def test_imf_more(reset_oath):
     resp = send_apdu(reset_oath, INS_CALCULATE, p1=0, p2=1, data=data)
     exp = [TAG_T_RESPONSE, 5, 6, 0x41, 0x39, 0x7e, 0xea]
     assert(exp == resp)
+
+def test_delete(reset_oath):
+    key = list(bytes(b'blahonga!'))
+    firstname = list(bytes(b'one'))
+    secondname = list(bytes(b'two'))
+    thirdname = list(bytes(b'three'))
+    type = ALG_SHA1 | TYPE_TOTP
+
+    data = [TAG_NAME, len(firstname)] + firstname + [TAG_KEY, len(key)+2, type, 6] + key
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+    data = [TAG_NAME, len(secondname)] + secondname + [TAG_KEY, len(key)+2, type, 6] + key
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+    resp = list_apdu(reset_oath)
+    exp = [TAG_NAME_LIST, len(firstname)+1, type] + firstname + [TAG_NAME_LIST, len(secondname)+1, type] + secondname
+    assert(exp == resp)
+
+    data = [TAG_NAME, len(firstname)] + firstname
+    resp = send_apdu(reset_oath, INS_DELETE, p1=0, p2=0, data=data)
+    resp = list_apdu(reset_oath)
+    exp = [TAG_NAME_LIST, len(secondname)+1, type] + secondname
+    assert(exp == resp)
+
+    data = [TAG_NAME, len(thirdname)] + thirdname + [TAG_KEY, len(key)+2, type, 6] + key
+    resp = send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+    resp = list_apdu(reset_oath)
+    exp = [TAG_NAME_LIST, len(thirdname)+1, type] + thirdname + [TAG_NAME_LIST, len(secondname)+1, type] + secondname
+    assert(exp == resp)
