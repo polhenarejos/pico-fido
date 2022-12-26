@@ -229,6 +229,8 @@ int cmd_set_code() {
 }
 
 int cmd_reset() {
+    if (P1(apdu) != 0xde || P2(apdu) != 0xad)
+        return SW_INCORRECT_P1P2();
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
         if (file_has_data(ef)) {
