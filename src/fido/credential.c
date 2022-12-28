@@ -123,7 +123,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
 
 int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred) {
     int ret = 0;
-    CborError error;
+    CborError error = CborNoError;
     uint8_t *copy_cred_id = (uint8_t *)calloc(1, cred_id_len);
     memcpy(copy_cred_id, cred_id, cred_id_len);
     ret = credential_verify(copy_cred_id, cred_id_len, rp_id_hash);
