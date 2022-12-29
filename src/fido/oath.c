@@ -30,7 +30,9 @@
 #include "mbedtls/hkdf.h"
 #include "pk_wrap.h"
 #include "crypto_utils.h"
+#ifdef ITF_CCID
 #include "ccid.h"
+#endif
 #include "version.h"
 #include "asn1.h"
 #include <stdio.h>
