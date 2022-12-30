@@ -30,7 +30,7 @@
 #include "mbedtls/hkdf.h"
 #include "pk_wrap.h"
 #include "crypto_utils.h"
-#ifdef ITF_CCID
+#ifdef USB_ITF_CCID
 #include "ccid.h"
 #endif
 #include <math.h>
@@ -65,7 +65,7 @@ app_t *fido_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
 }
 
 void __attribute__ ((constructor)) fido_ctor() {
-#ifdef ITF_CCID
+#ifdef USB_ITF_CCID
     ccid_atr = atr_fido;
 #endif
     register_app(fido_select);
