@@ -15,13 +15,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdlib.h>
 #include "pico/stdlib.h"
-#include "ctap2_cbor.h"
 #include "ctap.h"
-#include "ctap_hid.h"
 #include "fido.h"
-#include "hsm.h"
 #include "usb.h"
 #include "apdu.h"
 

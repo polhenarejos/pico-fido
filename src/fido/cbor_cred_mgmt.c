@@ -15,10 +15,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
-#include "bsp/board.h"
 #include "cbor_make_credential.h"
 #include "files.h"
 #include "apdu.h"

@@ -15,17 +15,15 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
-#include "ctap2_cbor.h"
 #include "cbor_make_credential.h"
+#include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
 #include "files.h"
-#include "random.h"
-#include "hsm.h"
-#include <math.h>
 #include "apdu.h"
 #include "credential.h"
+#include "mbedtls/sha256.h"
+#include "random.h"
 
 int cbor_make_credential(const uint8_t *data, size_t len) {
     CborParser parser;

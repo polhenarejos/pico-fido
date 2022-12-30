@@ -15,7 +15,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
@@ -24,7 +23,6 @@
 #include "ctap.h"
 #include "random.h"
 #include "files.h"
-#include "file.h"
 #include "hsm.h"
 
 int credential_derive_chacha_key(uint8_t *outk);

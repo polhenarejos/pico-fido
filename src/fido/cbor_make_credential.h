@@ -18,13 +18,7 @@
 #ifndef _CBOR_MAKE_CREDENTIAL_H_
 #define _CBOR_MAKE_CREDENTIAL_H_
 
-#include "common.h"
-#include "mbedtls/chachapoly.h"
-#include <stdlib.h>
-#include "pico/stdlib.h"
 #include "ctap2_cbor.h"
-#include "random.h"
-#include "mbedtls/sha256.h"
 
 typedef struct PublicKeyCredentialEntity
 {

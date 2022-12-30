@@ -15,7 +15,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"

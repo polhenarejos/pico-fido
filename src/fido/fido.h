@@ -18,7 +18,6 @@
 #ifndef _FIDO_H_
 #define _FIDO_H_
 
-#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "common.h"
 #include "mbedtls/ecdsa.h"

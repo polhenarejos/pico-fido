@@ -18,9 +18,6 @@
 #ifndef _CTAP2_CBOR_H_
 #define _CTAP2_CBOR_H_
 
-#include <stdlib.h>
-#include "pico/stdlib.h"
-#include <stdio.h>
 #include "cbor.h"
 
 extern uint8_t *driver_prepare_response();

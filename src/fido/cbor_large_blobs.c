@@ -20,7 +20,6 @@
 #include "ctap.h"
 #include "files.h"
 #include "apdu.h"
-#include "version.h"
 #include "hsm.h"
 #include "mbedtls/sha256.h"
 

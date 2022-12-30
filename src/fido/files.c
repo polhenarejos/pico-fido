@@ -15,7 +15,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "file.h"
 #include "files.h"
 
 file_t file_entries[] = {

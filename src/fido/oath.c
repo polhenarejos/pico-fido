@@ -15,27 +15,13 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
 #include "fido.h"
 #include "hsm.h"
 #include "apdu.h"
-#include "ctap.h"
 #include "files.h"
-#include "file.h"
-#include "usb.h"
 #include "random.h"
-#include "bsp/board.h"
-#include "mbedtls/ecdsa.h"
-#include "mbedtls/x509_crt.h"
-#include "mbedtls/hkdf.h"
-#include "pk_wrap.h"
-#include "crypto_utils.h"
-#ifdef USB_ITF_CCID
-#include "ccid.h"
-#endif
 #include "version.h"
 #include "asn1.h"
-#include <stdio.h>
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8

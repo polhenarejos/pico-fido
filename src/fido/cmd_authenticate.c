@@ -19,7 +19,6 @@
 #include "hsm.h"
 #include "apdu.h"
 #include "ctap.h"
-#include "mbedtls/ecdsa.h"
 #include "random.h"
 #include "files.h"
 #include "credential.h"

@@ -17,17 +17,16 @@
 
 #include "cbor.h"
 #include "ctap.h"
-#include "ctap2_cbor.h"
 #include "bsp/board.h"
 #include "fido.h"
 #include "files.h"
-#include "random.h"
 #include "crypto_utils.h"
 #include "hsm.h"
 #include "apdu.h"
 #include "cbor_make_credential.h"
 #include "credential.h"
-#include <math.h>
+#include "mbedtls/sha256.h"
+#include "random.h"
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
 
