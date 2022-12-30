@@ -31,20 +31,31 @@ add_executable(pico_fido)
 option(ENABLE_UP_BUTTON "Enable/disable user presence button" ON)
 if(ENABLE_UP_BUTTON)
     add_definitions(-DENABLE_UP_BUTTON=1)
-    message("Enabling user presence with button")
+    message(STATUS "User presence with button: \t enabled")
 else()
     add_definitions(-DENABLE_UP_BUTTON=0)
-    message("Disabling user presence with button")
+    message(STATUS "User presence with button: \t disabled")
 endif(ENABLE_UP_BUTTON)
 
 option(ENABLE_POWER_ON_RESET "Enable/disable power cycle on reset" ON)
 if(ENABLE_POWER_ON_RESET)
     add_definitions(-DENABLE_POWER_ON_RESET=1)
-    message("Enabling power cycle on reset")
+    message(STATUS "Power cycle on reset: \t enabled")
 else()
     add_definitions(-DENABLE_POWER_ON_RESET=0)
-    message("Disabling power cycle on reset")
+    message(STATUS "Power cycle on reset: \t disabled")
 endif(ENABLE_POWER_ON_RESET)
+
+option(ENABLE_OATH_APP "Enable/disable OATH application" ON)
+if(ENABLE_OATH_APP)
+    add_definitions(-DENABLE_OATH_APP=1)
+    message(STATUS "OATH Application: \t\t enabled")
+    set(USB_ITF_CCID 1)
+else()
+    add_definitions(-DENABLE_OATH_APP=0)
+    message(STATUS "OATH Application: \t\t disabled")
+    set(USB_ITF_CCID 0)
+endif(ENABLE_OATH_APP)
 
 target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
@@ -65,11 +76,14 @@ target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_config.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_vendor.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_large_blobs.c
+        )
+if (${ENABLE_OATH_APP})
+target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/oath.c
         )
-set(HSM_DRIVER "hid")
+endif()
+
 set(USB_ITF_HID 1)
-set(USB_ITF_CCID 1)
 include(pico-hsm-sdk/pico_hsm_sdk_import.cmake)
 
 target_include_directories(pico_fido PUBLIC
