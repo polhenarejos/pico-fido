@@ -34,6 +34,8 @@
 #define EF_LARGEBLOB    0x1101 // Large Blob Array
 #define EF_OATH_CRED    0xBA00 // OATH Creds at 0xBA00 - 0xBAFE
 #define EF_OATH_CODE    0xBAFF
+#define EF_OTP_SLOT1    0xBB00
+#define EF_OTP_SLOT2    0xBB01
 
 extern file_t *ef_keydev;
 extern file_t *ef_certdev;

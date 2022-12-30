@@ -50,12 +50,25 @@ option(ENABLE_OATH_APP "Enable/disable OATH application" ON)
 if(ENABLE_OATH_APP)
     add_definitions(-DENABLE_OATH_APP=1)
     message(STATUS "OATH Application: \t\t enabled")
-    set(USB_ITF_CCID 1)
 else()
     add_definitions(-DENABLE_OATH_APP=0)
     message(STATUS "OATH Application: \t\t disabled")
-    set(USB_ITF_CCID 0)
 endif(ENABLE_OATH_APP)
+
+option(ENABLE_OTP_APP "Enable/disable OTP application" ON)
+if(ENABLE_OTP_APP)
+    add_definitions(-DENABLE_OTP_APP=1)
+    message(STATUS "OTP Application: \t\t enabled")
+else()
+    add_definitions(-DENABLE_OTP_APP=0)
+    message(STATUS "OTP Application: \t\t disabled")
+endif(ENABLE_OTP_APP)
+
+if(ENABLE_OTP_APP OR ENABLE_OATH_APP)
+    set(USB_ITF_CCID 1)
+else()
+    set(USB_ITF_CCID 0)
+endif()
 
 target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
@@ -80,6 +93,11 @@ target_sources(pico_fido PUBLIC
 if (${ENABLE_OATH_APP})
 target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/oath.c
+        )
+endif()
+if (${ENABLE_OTP_APP})
+target_sources(pico_fido PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/otp.c
         )
 endif()
 
