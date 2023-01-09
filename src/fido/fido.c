@@ -24,8 +24,11 @@
 #include "random.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/hkdf.h"
-#ifdef USB_ITF_CCID
-#include "ccid.h"
+#if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
+#include "ccid/ccid.h"
+#endif
+#ifndef ENABLE_EMULATION
+#include "bsp/board.h"
 #endif
 #include <math.h>
 
@@ -58,7 +61,7 @@ app_t *fido_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
 }
 
 void __attribute__ ((constructor)) fido_ctor() {
-#ifdef USB_ITF_CCID
+#if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
     ccid_atr = atr_fido;
 #endif
     register_app(fido_select);
@@ -308,11 +311,13 @@ void init_fido() {
 
 bool wait_button_pressed() {
     uint32_t val = EV_PRESS_BUTTON;
+#ifndef ENABLE_EMULATION
 #if defined(ENABLE_UP_BUTTON) && ENABLE_UP_BUTTON==1
     queue_try_add(&card_to_usb_q, &val);
     do {
         queue_remove_blocking(&usb_to_card_q, &val);
     } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT);
+#endif
 #endif
     return (val == EV_BUTTON_TIMEOUT);
 }

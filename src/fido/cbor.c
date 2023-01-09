@@ -15,7 +15,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef ENABLE_EMULATION
 #include "pico/stdlib.h"
+#endif
+#include "hid/ctap_hid.h"
 #include "ctap.h"
 #include "fido.h"
 #include "usb.h"
@@ -45,7 +48,9 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len == 0)
         return CTAP1_ERR_INVALID_LEN;
     DEBUG_DATA(data+1,len-1);
+#ifndef ENABLE_EMULATION
     driver_prepare_response_hid();
+#endif
     if (cmd == CTAPHID_CBOR) {
         if (data[0] == CTAP_MAKE_CREDENTIAL)
             return cbor_make_credential(data + 1, len - 1);
@@ -74,6 +79,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     return CTAP2_ERR_INVALID_CBOR;
 }
 
+#ifndef ENABLE_EMULATION
 void cbor_thread() {
 
     card_init_core1();
@@ -90,10 +96,12 @@ void cbor_thread() {
             DEBUG_DATA(res_APDU + 1, res_APDU_size);
 
         finished_data_size = res_APDU_size+1;
+
         uint32_t flag = EV_EXEC_FINISHED;
         queue_add_blocking(&card_to_usb_q, &flag);
     }
 }
+#endif
 
 int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     cbor_data = data;

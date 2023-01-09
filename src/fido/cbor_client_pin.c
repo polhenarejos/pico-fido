@@ -23,7 +23,10 @@
 #include "cbor.h"
 #include "ctap.h"
 #include "ctap2_cbor.h"
+#ifndef ENABLE_EMULATION
 #include "bsp/board.h"
+#endif
+#include "hid/ctap_hid.h"
 #include "fido.h"
 #include "files.h"
 #include "random.h"

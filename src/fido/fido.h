@@ -18,10 +18,16 @@
 #ifndef _FIDO_H_
 #define _FIDO_H_
 
+#ifndef ENABLE_EMULATION
 #include "pico/stdlib.h"
+#endif
 #include "common.h"
 #include "mbedtls/ecdsa.h"
+#ifndef ENABLE_EMULATION
 #include "ctap_hid.h"
+#else
+#include <stdbool.h>
+#endif
 
 #define CTAP_PUBKEY_LEN (65)
 #define KEY_PATH_LEN (32)
@@ -33,7 +39,6 @@ extern int scan_files();
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecdsa_context *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *);
 extern bool wait_button_pressed();
-extern CTAPHID_FRAME *ctap_req, *ctap_resp;
 extern void init_fido();
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);

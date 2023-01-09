@@ -17,6 +17,7 @@
 
 #include "fido.h"
 #include "ctap.h"
+#include "hid/ctap_hid.h"
 #include "cbor_make_credential.h"
 #include "files.h"
 #include "apdu.h"

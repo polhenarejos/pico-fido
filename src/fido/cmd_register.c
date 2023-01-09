@@ -21,6 +21,7 @@
 #include "ctap.h"
 #include "random.h"
 #include "files.h"
+#include "hid/ctap_hid.h"
 
 const uint8_t *bogus_firefox = (const uint8_t *)"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 const uint8_t *bogus_chrome = (const uint8_t *)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -38,7 +39,11 @@ int cmd_register() {
     if (wait_button_pressed() == true)
         return SW_CONDITIONS_NOT_SATISFIED();
     if (memcmp(req->appId, bogus_firefox, CTAP_APPID_SIZE) == 0 || memcmp(req->appId, bogus_chrome, CTAP_APPID_SIZE) == 0)
+#ifndef ENABLE_EMULATION
         return ctap_error(CTAP1_ERR_CHANNEL_BUSY);
+#else
+        return SW_DATA_INVALID();
+#endif
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
     int ret = derive_key(req->appId, true, resp->keyHandleCertSig, MBEDTLS_ECP_DP_SECP256R1, &key);

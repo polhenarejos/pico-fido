@@ -16,6 +16,7 @@
  */
 
 #include "ctap2_cbor.h"
+#include "hid/ctap_hid.h"
 #include "fido.h"
 #include "ctap.h"
 #include "files.h"

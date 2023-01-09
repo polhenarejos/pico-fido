@@ -18,7 +18,10 @@
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
+#ifndef ENABLE_EMULATION
 #include "bsp/board.h"
+#endif
+#include "hid/ctap_hid.h"
 #include "fido.h"
 #include "ctap.h"
 #include "random.h"

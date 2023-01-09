@@ -36,7 +36,7 @@
 #define CONFIG_LED_INV      0x10
 #define CONFIG_STATUS_MASK  0x1f
 
-static uint8_t config_seq[2] = {1};
+static uint8_t config_seq = {1};
 
 typedef struct otp_config {
     uint8_t fixed_data[FIXED_SIZE];
@@ -52,13 +52,14 @@ typedef struct otp_config {
 } __attribute__((packed)) otp_config_t;
 
 static const size_t otp_config_size = sizeof(otp_config_t);
+uint16_t otp_status();
 
 int otp_process_apdu();
 int otp_unload();
 
 const uint8_t otp_aid[] = {
     7,
-    0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01
+    0xa0, 0x00, 0x00, 0x05, 0x27, 0x20, 0x01
 };
 
 app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
@@ -66,6 +67,12 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
         a->aid = otp_aid;
         a->process_apdu = otp_process_apdu;
         a->unload = otp_unload;
+        if (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) || file_has_data(search_dynamic_file(EF_OTP_SLOT2)))
+            config_seq = 1;
+        else
+            config_seq = 0;
+        otp_status();
+        apdu.ne = res_APDU_size;
         return a;
     }
     return NULL;
@@ -79,13 +86,13 @@ int otp_unload() {
     return CCID_OK;
 }
 
-uint16_t otp_status(uint8_t slot) {
+uint16_t otp_status() {
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
     res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = config_seq[slot];
+    res_APDU[res_APDU_size++] = config_seq;
     res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = (CONFIG2_TOUCH | CONFIG1_TOUCH) | (config_seq[0] > 0 ? CONFIG1_VALID : 0x00) | (config_seq[1] > 0 ? CONFIG2_VALID : 0x00);
+    res_APDU[res_APDU_size++] = (CONFIG2_TOUCH | CONFIG1_TOUCH) | (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID : 0x00) | (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID : 0x00);
     return SW_OK();
 }
 
@@ -99,7 +106,6 @@ int cmd_otp() {
             return SW_WRONG_LENGTH();
         if (apdu.data[48] != 0 || apdu.data[49] != 0)
             return SW_WRONG_DATA();
-        uint8_t slot = p1 == 0x01 ? 0 : 1;
         file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *)file_get_data(ef);
@@ -110,14 +116,21 @@ int cmd_otp() {
             if (apdu.data[c] != 0) {
                 flash_write_data_to_file(ef, apdu.data, otp_config_size);
                 low_flash_available();
-                config_seq[slot]++;
-                return otp_status(slot);
+                config_seq++;
+                return otp_status();
             }
         }
         // Delete slot
         delete_file(ef);
-        config_seq[slot] = 0;
-        return otp_status(slot);
+        if (!file_has_data(search_dynamic_file(EF_OTP_SLOT1)) && !file_has_data(search_dynamic_file(EF_OTP_SLOT2)))
+            config_seq = 0;
+        return otp_status();
+    }
+    else if (p1 == 0x10) {
+#ifndef ENABLE_EMULATION
+        pico_get_unique_board_id_string((char *)res_APDU, 4);
+#endif
+        res_APDU_size = 4;
     }
     return SW_OK();
 }

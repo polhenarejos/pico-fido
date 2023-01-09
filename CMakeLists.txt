@@ -17,14 +17,20 @@
 
 cmake_minimum_required(VERSION 3.13)
 
+if(ENABLE_EMULATION)
+else()
 include(pico_sdk_import.cmake)
+endif()
 
 project(pico_fido C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+if(ENABLE_EMULATION)
+else()
 pico_sdk_init()
+endif()
 
 add_executable(pico_fido)
 
@@ -70,7 +76,7 @@ else()
     set(USB_ITF_CCID 0)
 endif()
 
-target_sources(pico_fido PUBLIC
+set(SOURCES ${SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_register.c
@@ -91,12 +97,12 @@ target_sources(pico_fido PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_large_blobs.c
         )
 if (${ENABLE_OATH_APP})
-target_sources(pico_fido PUBLIC
+set(SOURCES ${SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/oath.c
         )
 endif()
 if (${ENABLE_OTP_APP})
-target_sources(pico_fido PUBLIC
+set(SOURCES ${SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/otp.c
         )
 endif()
@@ -104,9 +110,12 @@ endif()
 set(USB_ITF_HID 1)
 include(pico-hsm-sdk/pico_hsm_sdk_import.cmake)
 
-target_include_directories(pico_fido PUBLIC
+set(INCLUDES ${INCLUDES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido
         )
+
+target_sources(pico_fido PUBLIC ${SOURCES})
+target_include_directories(pico_fido PUBLIC ${INCLUDES})
 
 target_compile_options(pico_fido PUBLIC
     -Wall
@@ -119,6 +128,16 @@ if (${COMPILER_COLON} GREATER_EQUAL 0)
         )
 endif()
 
-pico_add_extra_outputs(pico_fido)
+if(ENABLE_EMULATION)
 
+target_compile_options(pico_fido PUBLIC
+        -fdata-sections
+        -ffunction-sections
+        )
+        target_link_options(pico_fido PUBLIC
+        -Wl,-dead_strip
+        )
+else()
+pico_add_extra_outputs(pico_fido)
 target_link_libraries(pico_fido PRIVATE pico_hsm_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id hardware_rtc tinyusb_device tinyusb_board)
+endif()

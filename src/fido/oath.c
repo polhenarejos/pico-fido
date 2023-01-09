@@ -75,12 +75,17 @@ app_t *oath_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
         res_APDU[res_APDU_size++] = 0;
         res_APDU[res_APDU_size++] = TAG_NAME;
         res_APDU[res_APDU_size++] = 8;
+#ifndef ENABLE_EMULATION
         pico_get_unique_board_id((pico_unique_board_id_t *)(res_APDU+res_APDU_size)); res_APDU_size += 8;
+#else
+        memset(res_APDU+res_APDU_size,0,8); res_APDU_size += 8;
+#endif
         if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
             res_APDU[res_APDU_size++] = TAG_CHALLENGE;
             res_APDU[res_APDU_size++] = sizeof(challenge);
             memcpy(res_APDU+res_APDU_size, challenge, sizeof(challenge)); res_APDU_size += sizeof(challenge);
         }
+        apdu.ne = res_APDU_size;
         return a;
     }
     return NULL;
@@ -248,6 +253,7 @@ int cmd_list() {
             }
         }
     }
+    apdu.ne = res_APDU_size;
     return SW_OK();
 }
 
@@ -281,6 +287,7 @@ int cmd_validate() {
     res_APDU[res_APDU_size++] = TAG_RESPONSE;
     res_APDU[res_APDU_size++] = mbedtls_md_get_size(md_info);
     memcpy(res_APDU+res_APDU_size, hmac, mbedtls_md_get_size(md_info)); res_APDU_size += mbedtls_md_get_size(md_info);
+    apdu.ne = res_APDU_size;
     return SW_OK();
 }
 
@@ -307,6 +314,7 @@ int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const u
         res_APDU[res_APDU_size++] = key[1];
         memcpy(res_APDU+res_APDU_size, hmac, hmac_size); res_APDU_size += hmac_size;
     }
+    apdu.ne = res_APDU_size;
     return CCID_OK;
 }
 
@@ -357,6 +365,7 @@ int cmd_calculate() {
         low_flash_available();
         free(tmp);
     }
+    apdu.ne = res_APDU_size;
     return SW_OK();
 }
 
@@ -399,6 +408,11 @@ int cmd_calculate_all() {
             }
         }
     }
+    apdu.ne = res_APDU_size;
+    return SW_OK();
+}
+
+int cmd_send_remaining() {
     return SW_OK();
 }
 
@@ -421,6 +435,7 @@ static const cmd_t cmds[] = {
     { INS_VALIDATE, cmd_validate },
     { INS_CALCULATE, cmd_calculate },
     { INS_CALC_ALL, cmd_calculate_all },
+    { INS_SEND_REMAINING, cmd_send_remaining },
     { 0x00, 0x0}
 };
 

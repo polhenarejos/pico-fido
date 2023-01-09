@@ -18,6 +18,7 @@
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
+#include "hid/ctap_hid.h"
 #include "files.h"
 #include "apdu.h"
 #include "hsm.h"
@@ -241,8 +242,14 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
+#ifndef ENABLE_EMULATION
             pico_unique_board_id_t rpiid;
             pico_get_unique_board_id(&rpiid);
+#else
+            struct {
+                uint8_t id[8];
+            } rpiid = {0};
+#endif
             mbedtls_x509write_csr ctx;
             mbedtls_x509write_csr_init(&ctx);
             snprintf((char *)buffer, sizeof(buffer), "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %llu", ((uint64_t)rpiid.id[0] << 56) | ((uint64_t)rpiid.id[1] << 48) | ((uint64_t)rpiid.id[2] << 40) | ((uint64_t)rpiid.id[3] << 32) | (rpiid.id[4] << 24) | (rpiid.id[5] << 16) | (rpiid.id[6] << 8) | rpiid.id[7]);
