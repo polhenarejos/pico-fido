@@ -29,6 +29,7 @@ file_t file_entries[] = {
     {.fid = EF_AUTHTOKEN,  .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = {0xff}},   // AUTH TOKEN
     {.fid = EF_MINPINLEN,  .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = {0xff}},   // MIN PIN LENGTH
     {.fid = EF_OPTS,  .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = {0xff}},   // Global options
+    {.fid = EF_LARGEBLOB,  .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = {0xff}},   // Large Blob
     { .fid = 0x0000, .parent = 0xff, .name = NULL, .type = FILE_TYPE_UNKNOWN, .data = NULL, .ef_structure = 0, .acl = {0} } //end
 };
 
@@ -40,3 +41,4 @@ file_t *ef_counter = NULL;
 file_t *ef_pin = NULL;
 file_t *ef_authtoken = NULL;
 file_t *ef_keydev_enc = NULL;
+file_t *ef_largeblob = NULL;

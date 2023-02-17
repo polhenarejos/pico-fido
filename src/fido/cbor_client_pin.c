@@ -31,7 +31,6 @@
 #include "hsm.h"
 #include "apdu.h"
 
-uint8_t permissions_rp_id = 0, permission_set = 0;
 uint32_t usage_timer = 0, initial_usage_time_limit = 0;
 uint32_t max_usage_time_period  = 600*1000;
 bool needs_power_cycle = false;
@@ -63,11 +62,11 @@ void clearPinUvAuthTokenPermissionsExceptLbw() {
 }
 
 void stopUsingPinUvAuthToken() {
-    permissions_rp_id = 0;
     paut.permissions = 0;
     usage_timer = 0;
     paut.in_use = false;
     memset(paut.rp_id_hash, 0, sizeof(paut.rp_id_hash));
+    paut.has_rp_id = false;
     initial_usage_time_limit = 0;
     paut.user_present = paut.user_verified = false;
     user_present_time_limit = 0;
@@ -486,7 +485,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (subcommand == 0x9) {
             if (permissions == 0)
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            if ((permissions & CTAP_PERMISSION_BE) || (permissions & CTAP_PERMISSION_LBW)) // Not supported yet
+            if ((permissions & CTAP_PERMISSION_BE)) // Not supported yet
                 CBOR_ERROR(CTAP2_ERR_UNAUTHORIZED_PERMISSION);
 
         }
@@ -547,7 +546,9 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_sha256((uint8_t *)rpId.data, rpId.len, paut.rp_id_hash, 0);
             paut.has_rp_id = true;
         }
-        uint8_t pinUvAuthToken_enc[32+IV_SIZE];
+        else
+            paut.has_rp_id = false;
+        uint8_t pinUvAuthToken_enc[32 + IV_SIZE];
         encrypt(pinUvAuthProtocol, sharedSecret, paut.data, 32, pinUvAuthToken_enc);
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));

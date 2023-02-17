@@ -19,10 +19,14 @@ Pico FIDO has implemented the following features:
 - Support for vendor Config
 - Backup with 24 words
 - Secure lock to protect the device from flash dumpings
-- Permissions support (MC, GA, CM, ACFG)
+- Permissions support (MC, GA, CM, ACFG, LBW)
 - Authenticator configuration
 - minPinLength extension
 - Self attestation
+- Enterprise attestation
+- credBlobs extension
+- largeBlobKey extension
+- largeBlobs support (2048 bytes máx.)
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
@@ -33,10 +37,6 @@ If the Pico is stolen the contents of private and secret keys can be read.
 
 ## Download
 Please, go to the [Release page](https://github.com/polhenarejos/pico-fido/releases "Release page") and download the UF2 file for your board.
-
-Note that UF2 files are shiped with a dummy VID/PID to avoid license issues (FEFF:FCFD). If you are planning to use it with OpenSC or similar, you should modify Info.plist of CCID driver to add these VID/PID or use the VID/PID patcher as follows: `./pico-fido-patch-vidpid.sh VID:PID input_fido_file.uf2 output_fido_file.uf2`
-
-You can use whatever VID/PID, but remember that you are not authorized to distribute the binary with a VID/PID that you do not own.
 
 ## Build
 Before building, ensure you have installed the toolchain for the Pico and the Pico SDK is properly located in your drive.
@@ -51,6 +51,8 @@ Before building, ensure you have installed the toolchain for the Pico and the Pi
 Note that PICO_BOARD, USB_VID and USB_PID are optional. If not provided, pico board and VID/PID FEFF:FCFD will be used.
 
 After make ends, the binary file pico_fido.uf2 will be generated. Put your pico board into loading mode, by pushing BOOTSEL button while pluging on, and copy the UF2 to the new fresh usb mass storage Pico device. Once copied, the pico mass storage will be disconnected automatically and the pico board will reset with the new firmware. A blinking led will indicate the device is ready to work.
+
+**Remark:** Pico Fido uses HID interface and thus, VID/PID values are irrelevant in terms of operativity. You can safely use any arbitrary value or the default ones.
 
 ## Led blink
 Pico FIDO uses the led to indicate the current status. Four states are available:

@@ -85,9 +85,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     Credential creds[MAX_CREDENTIAL_COUNT_IN_LIST] = {0};
     size_t allowList_len = 0, creds_len = 0;
     uint8_t *aut_data = NULL;
-    bool asserted = false;
+    bool asserted = false, up = true, uv = false;
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = {0}, kay = {0}, salt_enc = {0}, salt_auth = {0};
+    const bool *credBlob = NULL;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -173,7 +174,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     CBOR_PARSE_MAP_END(_f2, 3);
                     continue;
                 }
-                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "credBlob", credBlob);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -237,6 +239,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
             //else if (options.up == NULL) //5.7
                 //rup = ptrue;
+            if (options.uv != NULL)
+                uv = *options.uv;
+            if (options.up != NULL)
+                up = *options.up;
         }
 
         if (pinUvAuthParam.present == true) { //6.1
@@ -332,7 +338,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             clearPinUvAuthTokenPermissionsExceptLbw();
         }
 
-        if (!(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV)) {
+        if (extensions.largeBlobKey == pfalse) {
+            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+        }
+
+        if (up == false && uv == false) {
             selcred = &creds[0];
         }
         else {
@@ -368,6 +378,14 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
     }
 
+    uint8_t largeBlobKey[32];
+    if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
+        ret = credential_derive_large_blob_key(selcred->id.data, selcred->id.len, largeBlobKey);
+        if (ret != 0) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+    }
+
     size_t ext_len = 0;
     uint8_t ext [512];
     if (extensions.present == true) {
@@ -377,12 +395,15 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             extensions.hmac_secret = NULL;
         if (extensions.hmac_secret != NULL)
             l++;
-        if (extensions.credProtect != 0)
+        if (credBlob == ptrue)
             l++;
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
-        if (extensions.credProtect != 0) {
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
+        if (credBlob == ptrue) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
+            if (selcred->extensions.credBlob.present == true)
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, selcred->extensions.credBlob.data, selcred->extensions.credBlob.len));
+            else
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, NULL, 0));
         }
         if (extensions.hmac_secret != NULL) {
 
@@ -464,7 +485,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     uint8_t lfields = 3;
     if (selcred->opts.present == true && selcred->opts.rk == ptrue)
         lfields++;
-    if (numberOfCredentials > 1 && next == false && !(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV))
+    if (numberOfCredentials > 1 && next == false)
+        lfields++;
+    if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue)
         lfields++;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
@@ -506,10 +529,15 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
-    if (numberOfCredentials > 1 && next == false && !(flags & FIDO2_AUT_FLAG_UP) && !(flags & FIDO2_AUT_FLAG_UV)) {
+    if (numberOfCredentials > 1 && next == false) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
     }
+    if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, largeBlobKey, sizeof(largeBlobKey)));
+    }
+    mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     ctr++;

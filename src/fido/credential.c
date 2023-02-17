@@ -60,6 +60,10 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     if (extensions->present == true) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  CborIndefiniteLength));
+        if (extensions->credBlob.present == true && extensions->credBlob.len < MAX_CREDBLOB_LENGTH) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credBlob"));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, extensions->credBlob.data, extensions->credBlob.len));
+        }
         if (extensions->credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credProtect"));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder2, extensions->credProtect));
@@ -67,6 +71,10 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
         if (extensions->hmac_secret != NULL) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "hmac-secret"));
             CBOR_CHECK(cbor_encode_boolean(&mapEncoder2, *extensions->hmac_secret));
+        }
+        if (extensions->largeBlobKey == ptrue) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "largeBlobKey"));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder2, true));
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
@@ -155,6 +163,8 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
                     CBOR_FIELD_GET_KEY_TEXT(2);
                     CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", cred->extensions.hmac_secret);
                     CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
+                    CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
+                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", cred->extensions.largeBlobKey);
                     CBOR_ADVANCE(2);
                 }
                 CBOR_PARSE_MAP_END(_f1, 2);
@@ -309,10 +319,24 @@ int credential_derive_chacha_key(uint8_t *outk) {
     int r = 0;
     if ((r = load_keydev(outk)) != 0)
         return r;
-    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
 
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"Encryption key", 14, outk);
+    return 0;
+}
+
+int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk) {
+    memset(outk, 0, 32);
+    int r = 0;
+    if ((r = load_keydev(outk)) != 0)
+        return r;
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"largeBlobKey", 12, outk);
+    mbedtls_md_hmac(md_info, outk, 32, cred_id, cred_id_len, outk);
     return 0;
 }

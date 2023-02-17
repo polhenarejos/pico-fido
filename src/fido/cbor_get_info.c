@@ -26,7 +26,7 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 12));
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 15));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
@@ -36,9 +36,11 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 5));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credBlob"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobKey"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "minPinLength"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
@@ -46,7 +48,7 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aaguid, sizeof(aaguid)));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
-    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 7));
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 8));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "ep"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, get_opts() & FIDO2_OPT_EA));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
@@ -60,11 +62,16 @@ int cbor_get_info() {
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     else
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, false));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobs"));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "pinUvAuthToken"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "setMinPINLength"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_MSG_SIZE));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x06));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
@@ -100,6 +107,9 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&arrayEncoder, &mapEncoder2));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0B));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_LARGE_BLOB_SIZE)); // maxSerializedLargeBlobArray
+
     file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
     if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1)
@@ -114,6 +124,9 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0E));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, PICO_FIDO_VERSION)); // firmwareVersion
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0F));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDBLOB_LENGTH)); // maxCredBlobLength
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
