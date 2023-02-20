@@ -25,6 +25,7 @@
 #include "credential.h"
 #include "mbedtls/sha256.h"
 #include "random.h"
+#include "hsm.h"
 
 int cbor_make_credential(const uint8_t *data, size_t len) {
     CborParser parser;
@@ -439,6 +440,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (credential_store(cred_id, cred_id_len, rp_id_hash) != 0)
             CBOR_ERROR(CTAP2_ERR_KEY_STORE_FULL);
     }
+    ctr++;
+    flash_write_data_to_file(ef_counter, (uint8_t *)&ctr, sizeof(ctr));
+    low_flash_available();
     err:
         CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
