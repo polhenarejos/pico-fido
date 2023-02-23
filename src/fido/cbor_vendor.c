@@ -252,7 +252,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
 #endif
             mbedtls_x509write_csr ctx;
             mbedtls_x509write_csr_init(&ctx);
-            snprintf((char *)buffer, sizeof(buffer), "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %llu", ((uint64_t)rpiid.id[0] << 56) | ((uint64_t)rpiid.id[1] << 48) | ((uint64_t)rpiid.id[2] << 40) | ((uint64_t)rpiid.id[3] << 32) | (rpiid.id[4] << 24) | (rpiid.id[5] << 16) | (rpiid.id[6] << 8) | rpiid.id[7]);
+            snprintf((char *)buffer, sizeof(buffer), "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %02x%02x%02x%02x%02x%02x%02x%02x", rpiid.id[0], rpiid.id[1], rpiid.id[2], rpiid.id[3], rpiid.id[4], rpiid.id[5], rpiid.id[6], rpiid.id[7]);
             mbedtls_x509write_csr_set_subject_name(&ctx, (char *)buffer);
             mbedtls_pk_context key;
             mbedtls_pk_init(&key);
