@@ -134,9 +134,16 @@ target_compile_options(pico_fido PUBLIC
         -fdata-sections
         -ffunction-sections
         )
+        if(APPLE)
         target_link_options(pico_fido PUBLIC
-        -Wl,-dead_strip
-        )
+                -Wl,-dead_strip
+                )
+        else()
+        target_link_options(pico_fido PUBLIC
+                -Wl,--gc-sections
+                )
+        target_link_libraries(pico_fido PRIVATE m)
+        endif (APPLE)
 else()
 pico_add_extra_outputs(pico_fido)
 target_link_libraries(pico_fido PRIVATE pico_hsm_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id hardware_rtc tinyusb_device tinyusb_board)
