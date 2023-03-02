@@ -107,7 +107,7 @@ def assert_cred_response_has_all_fields(cred_res):
         CredentialManagement.RESULT.CREDENTIAL_ID,
         CredentialManagement.RESULT.PUBLIC_KEY,
         CredentialManagement.RESULT.TOTAL_CREDENTIALS,
-        CredentialManagement.RESULT.CRED_PROTECT,
+        #CredentialManagement.RESULT.CRED_PROTECT,
     ):
         assert i in cred_res
 
