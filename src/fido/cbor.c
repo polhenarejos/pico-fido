@@ -40,17 +40,15 @@ int cbor_large_blobs(const uint8_t *data, size_t len);
 
 const uint8_t aaguid[16] = {0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45}; // First 16 bytes of SHA256("Pico FIDO2")
 
-static const uint8_t *cbor_data = NULL;
-static size_t cbor_len = 0;
-static uint8_t cmd = 0;
+const uint8_t *cbor_data = NULL;
+size_t cbor_len = 0;
+uint8_t cmd = 0;
 
 int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len == 0)
         return CTAP1_ERR_INVALID_LEN;
     DEBUG_DATA(data+1,len-1);
-#ifndef ENABLE_EMULATION
     driver_prepare_response_hid();
-#endif
     if (cmd == CTAPHID_CBOR) {
         if (data[0] == CTAP_MAKE_CREDENTIAL)
             return cbor_make_credential(data + 1, len - 1);
