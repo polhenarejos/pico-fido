@@ -32,6 +32,8 @@ import sys
 import pytest
 import os
 import struct
+from inputimeout import inputimeout
+
 
 DEFAULT_PIN='12345678'
 
@@ -179,7 +181,11 @@ class Device():
 
     def reboot(self):
         print("Please reboot authenticator and hit enter")
-        input()
+        try:
+            inputimeout(prompt='>>', timeout=5)
+        except Exception:
+            pass
+
         self.__set_client(self.__origin, self.__user_interaction, self.__uv)
         self.__set_server(rp=self.__rp, attestation=self.__attestation)
 
@@ -355,20 +361,20 @@ def device():
     dev = Device()
     return dev
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def info(device):
     return device.client()._backend.info
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def MCRes(device, *args):
     return device.doMC(*args)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def resetdevice(device):
     device.reset()
     return device
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def GARes(device, MCRes, *args):
     res = device.doGA(allow_list=[
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
@@ -379,11 +385,11 @@ def GARes(device, MCRes, *args):
         verify(MCRes['res'].attestation_object, a, res['req']['client_data'].hash)
     return res
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def MCRes_DC(device, *args):
     return device.doMC(rk=True, *args)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def GARes_DC(device, MCRes_DC, *args):
     res = device.GA(allow_list=[
             {"id": MCRes_DC['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
@@ -400,7 +406,7 @@ def RegRes(resetdevice, *args):
     return res
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def AuthRes(device, RegRes, *args):
     res = device.doGA(ctap1=True, allow_list=[
             {"id": RegRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
