@@ -221,7 +221,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
 
         cred_counter++;
 
-        uint8_t l = 4;
+        uint8_t l = 3;
         if (subcommand == 0x04)
             l++;
         if (cred.extensions.present == true) {
