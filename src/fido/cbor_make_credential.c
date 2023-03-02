@@ -157,6 +157,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
 
     for (int i = 0; i < pubKeyCredParams_len; i++) {
+        if (pubKeyCredParams[i].type.present == false)
+            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0)
             continue;
         if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256)
