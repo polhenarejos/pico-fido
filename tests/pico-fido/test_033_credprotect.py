@@ -126,10 +126,7 @@ def test_credprotect_optional_and_list_works_no_uv(device, MCCredProtectOptional
     res1 = device.doGA(allow_list=allow_list)['res'].get_assertions()[0]
     assert res1.number_of_credentials in (None, 2)
 
-    results = [res1]
-    if res1.number_of_credentials == 2:
-        res2 = device.GNA()['res']
-        results.append(res2)
+    results = device.doGA(allow_list=allow_list)['res'].get_assertions()
 
     # the required credProtect is not returned.
     for res in results:

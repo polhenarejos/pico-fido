@@ -34,9 +34,9 @@ def test_lockout(device, resetdevice, client_pin):
     pin_token = client_pin.get_pin_token(pin)
 
     for i in range(1, 10):
-        err = CtapError.ERR.PIN_INVALID
-        if i in (3, 6):
-            err = CtapError.ERR.PIN_AUTH_BLOCKED
+        err = [CtapError.ERR.PIN_INVALID]
+        if 3 <= i <= 7:
+            err = [CtapError.ERR.PIN_AUTH_BLOCKED]
         elif i >= 8:
             err = [CtapError.ERR.PIN_BLOCKED, CtapError.ERR.PIN_INVALID]
 

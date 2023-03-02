@@ -180,5 +180,6 @@ def test_exclude_list_excluded(device):
 
     assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
 
-def test_unknown_option(resetdevice):
-    resetdevice.MC(options={"unknown": False})
+def test_unknown_option(device):
+    device.reset()
+    device.MC(options={"unknown": False})
