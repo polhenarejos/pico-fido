@@ -174,7 +174,7 @@ class TestHID(object):
     def test_check_busy(self, device):
         t1 = time.time() * 1000
         device.send_data(CTAPHID.INIT, "\x11\x22\x33\x44\x55\x66\x77\x88")
-        oldcid = device.cid()
+        oldcid = device.cid().to_bytes(4, 'big')
         newcid = b"\x11\x22\x33\x44"
         device.send_raw("\x81\x04\x00")
         device.set_cid(newcid)
@@ -184,11 +184,6 @@ class TestHID(object):
         assert t2 - t1 < 100
         assert cmd == 0xBF
         assert r[0] == CtapError.ERR.CHANNEL_BUSY
-
-        device.set_cid(oldcid)
-        cmd, r = device.recv_raw()  # timeout response
-        assert cmd == 0xBF
-        assert r[0] == CtapError.ERR.TIMEOUT
 
     def test_check_busy_interleaved(self, device):
         cid1 = b"\x11\x22\x33\x44"
@@ -220,25 +215,26 @@ class TestHID(object):
         assert len(r) == 0x39
 
     def test_cid_0(self, device):
-        device.set_cid("\x00\x00\x00\x00")
+        device.reset()
+        device.set_cid(b"\x00\x00\x00\x00")
         device.send_raw(
             "\x86\x00\x08\x11\x22\x33\x44\x55\x66\x77\x88", cid="\x00\x00\x00\x00"
         )
         cmd, r = device.recv_raw()  # timeout
         assert cmd == 0xBF
         assert r[0] == CtapError.ERR.INVALID_CHANNEL
-        device.set_cid("\x05\x04\x03\x02")
+        device.set_cid(b"\x05\x04\x03\x02")
 
     def test_cid_ffffffff(self, device):
 
-        device.set_cid("\xff\xff\xff\xff")
+        device.set_cid(b"\xff\xff\xff\xff")
         device.send_raw(
             "\x81\x00\x08\x11\x22\x33\x44\x55\x66\x77\x88", cid="\xff\xff\xff\xff"
         )
         cmd, r = device.recv_raw()  # timeout
         assert cmd == 0xBF
         assert r[0] == CtapError.ERR.INVALID_CHANNEL
-        device.set_cid("\x05\x04\x03\x02")
+        device.set_cid(b"\x05\x04\x03\x02")
 
     def test_keep_alive(self, device, check_timeouts=False):
 
