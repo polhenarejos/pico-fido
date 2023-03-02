@@ -45,9 +45,10 @@ size_t cbor_len = 0;
 uint8_t cmd = 0;
 
 int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
-    if (len == 0)
+    if (len == 0 && cmd == CTAPHID_CBOR)
         return CTAP1_ERR_INVALID_LEN;
-    DEBUG_DATA(data+1,len-1);
+    if (len > 0)
+        DEBUG_DATA(data+1,len-1);
     driver_prepare_response_hid();
     if (cmd == CTAPHID_CBOR) {
         if (data[0] == CTAP_MAKE_CREDENTIAL)
@@ -74,7 +75,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     else if (cmd == CTAP_VENDOR_CBOR) {
         return cbor_vendor(data, len);
     }
-    return CTAP2_ERR_INVALID_CBOR;
+    return CTAP1_ERR_INVALID_CMD;
 }
 
 #ifndef ENABLE_EMULATION
