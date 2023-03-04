@@ -1,4 +1,3 @@
-
 /*
  * This file is part of the Pico FIDO distribution (https://github.com/polhenarejos/pico-fido).
  * Copyright (c) 2022 Pol Henarejos.
@@ -20,7 +19,8 @@
 #include "ctap.h"
 
 int cbor_selection() {
-    if (wait_button_pressed() == true)
+    if (wait_button_pressed() == true) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
+    }
     return CTAP2_OK;
 }

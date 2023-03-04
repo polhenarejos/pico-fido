@@ -1,4 +1,3 @@
-
 /*
  * This file is part of the Pico FIDO distribution (https://github.com/polhenarejos/pico-fido).
  * Copyright (c) 2022 Pol Henarejos.
@@ -27,12 +26,14 @@ extern void scan_all();
 
 int cbor_reset() {
 #ifndef ENABLE_EMULATION
-#if defined(ENABLE_POWER_ON_RESET) && ENABLE_POWER_ON_RESET==1
-    if (board_millis() > 10000)
+#if defined(ENABLE_POWER_ON_RESET) && ENABLE_POWER_ON_RESET == 1
+    if (board_millis() > 10000) {
         return CTAP2_ERR_NOT_ALLOWED;
+    }
 #endif
-    if (wait_button_pressed() == true)
+    if (wait_button_pressed() == true) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
+    }
 #endif
     initialize_flash(true);
     init_fido();

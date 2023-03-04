@@ -46,9 +46,9 @@ extern const bool _btrue, _bfalse;
         if (x)       \
         {            \
             free(x); \
-            x = NULL;\
+            x = NULL; \
         }            \
-    } while(0)
+    } while (0)
 
 #define CBOR_ERROR(e) \
     do                \
@@ -56,7 +56,7 @@ extern const bool _btrue, _bfalse;
         error = e;    \
         printf("Cbor ERROR [%s:%d]: %d\n", __FILE__, __LINE__, e); \
         goto err;     \
-    } while(0)
+    } while (0)
 
 #define CBOR_ASSERT(c)                      \
     do                                      \
@@ -67,7 +67,7 @@ extern const bool _btrue, _bfalse;
             printf("Cbor ASSERT [%s:%d]: %s\n", __FILE__, __LINE__, #c); \
             goto err;                       \
         }                                   \
-    } while(0)
+    } while (0)
 
 #define PINUVAUTHTOKEN_MC           0x1
 #define PINUVAUTHTOKEN_GA           0x2
@@ -94,20 +94,20 @@ typedef struct CborCharString {
     do                           \
     {                            \
         if ((v).nofree != true) \
-            CBOR_FREE((v).data);  \
+        CBOR_FREE((v).data);  \
         else \
-            (v).data = NULL; \
+        (v).data = NULL; \
         (v).len = 0; \
         (v).present = false; \
-    } while(0)
+    } while (0)
 
-#define CBOR_PARSE_MAP_START(_p,_n)                   \
+#define CBOR_PARSE_MAP_START(_p, _n)                   \
     CBOR_ASSERT(cbor_value_is_map(&(_p)) == true); \
     CborValue _f##_n; \
     CBOR_CHECK(cbor_value_enter_container(&(_p), &(_f##_n))); \
     while (cbor_value_at_end(&(_f##_n)) == false)
 
-#define CBOR_PARSE_ARRAY_START(_p,_n)                   \
+#define CBOR_PARSE_ARRAY_START(_p, _n)                   \
     CBOR_ASSERT(cbor_value_is_array(&(_p)) == true); \
     CborValue _f##_n; \
     CBOR_CHECK(cbor_value_enter_container(&(_p), &(_f##_n))); \
@@ -118,14 +118,14 @@ typedef struct CborCharString {
         CBOR_ASSERT(cbor_value_is_unsigned_integer(&(_f##_n)) == true); \
         CBOR_CHECK(cbor_value_get_uint64(&(_f##_n), &(v))); \
         CBOR_CHECK(cbor_value_advance_fixed(&(_f##_n))); \
-    } while(0)
+    } while (0)
 
 #define CBOR_FIELD_GET_INT(v, _n) \
     do { \
         CBOR_ASSERT(cbor_value_is_integer(&(_f##_n)) == true); \
         CBOR_CHECK(cbor_value_get_int64(&(_f##_n), &(v))); \
         CBOR_CHECK(cbor_value_advance_fixed(&(_f##_n))); \
-    } while(0)
+    } while (0)
 
 #define CBOR_FIELD_GET_BYTES(v, _n) \
     do { \
@@ -148,7 +148,7 @@ typedef struct CborCharString {
         CBOR_CHECK(cbor_value_get_boolean(&(_f##_n), &val)); \
         v = (val == true ? ptrue : pfalse); \
         CBOR_CHECK(cbor_value_advance_fixed(&(_f##_n))); \
-    } while(0)
+    } while (0)
 
 #define CBOR_FIELD_GET_KEY_TEXT(_n) \
     CBOR_ASSERT(cbor_value_is_text_string(&(_f##_n)) == true); \
@@ -174,26 +174,26 @@ typedef struct CborCharString {
 
 #define CBOR_FIELD_KEY_TEXT_VAL_INT(_n, _t, _v) \
     if (strcmp(_fd##_n, _t) == 0) { \
-        CBOR_FIELD_GET_INT(_v, _n);\
+        CBOR_FIELD_GET_INT(_v, _n); \
         continue; \
     }
 
 #define CBOR_FIELD_KEY_TEXT_VAL_UINT(_n, _t, _v) \
     if (strcmp(_fd##_n, _t) == 0) { \
-        CBOR_FIELD_GET_UINT(_v, _n);\
+        CBOR_FIELD_GET_UINT(_v, _n); \
         continue; \
     }
 
 #define CBOR_FIELD_KEY_TEXT_VAL_BOOL(_n, _t, _v) \
     if (strcmp(_fd##_n, _t) == 0) { \
-        CBOR_FIELD_GET_BOOL(_v, _n);\
+        CBOR_FIELD_GET_BOOL(_v, _n); \
         continue; \
     }
 
-#define CBOR_PARSE_MAP_END(_p,_n)  \
+#define CBOR_PARSE_MAP_END(_p, _n)  \
     CBOR_CHECK(cbor_value_leave_container(&(_p), &(_f##_n)))
 
-#define CBOR_PARSE_ARRAY_END(_p,_n)  CBOR_PARSE_MAP_END(_p, _n)
+#define CBOR_PARSE_ARRAY_END(_p, _n)  CBOR_PARSE_MAP_END(_p, _n)
 
 #define CBOR_ADVANCE(_n) CBOR_CHECK(cbor_value_advance(&_f##_n));
 
@@ -202,39 +202,39 @@ typedef struct CborCharString {
         if ((v).data && (v).len > 0) { \
             CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
             CBOR_CHECK(cbor_encode_byte_string(&(p), (v).data, (v).len)); \
-        } } while(0)
+        } } while (0)
 
 #define CBOR_APPEND_KEY_UINT_VAL_STRING(p, k, v) \
     do { \
         if ((v).data && (v).len > 0) { \
             CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
             CBOR_CHECK(cbor_encode_text_stringz(&(p), (v).data)); \
-        } } while(0)
+        } } while (0)
 
 
 #define CBOR_APPEND_KEY_UINT_VAL_UINT(p, k, v) \
     do { \
-            CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
-            CBOR_CHECK(cbor_encode_uint(&(p), (v))); \
-    } while(0)
+        CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
+        CBOR_CHECK(cbor_encode_uint(&(p), (v))); \
+    } while (0)
 
 #define CBOR_APPEND_KEY_UINT_VAL_INT(p, k, v) \
     do { \
-            CBOR_CHECK(cbor_encode_int(&(p), (k))); \
-            CBOR_CHECK(cbor_encode_int(&(p), (v))); \
-    } while(0)
+        CBOR_CHECK(cbor_encode_int(&(p), (k))); \
+        CBOR_CHECK(cbor_encode_int(&(p), (v))); \
+    } while (0)
 
 #define CBOR_APPEND_KEY_UINT_VAL_BOOL(p, k, v) \
     do { \
-            CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
-            CBOR_CHECK(cbor_encode_boolean(&(p), (v))); \
-     } while(0)
+        CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
+        CBOR_CHECK(cbor_encode_boolean(&(p), (v))); \
+    } while (0)
 
 #define CBOR_APPEND_KEY_UINT_VAL_PBOOL(p, k, v) \
     do { \
-        if (v != NULL) {\
+        if (v != NULL) { \
             CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
             CBOR_CHECK(cbor_encode_boolean(&(p), v == ptrue ? true : false)); \
-     } } while(0)
+        } } while (0)
 
 #endif //_CTAP2_CBOR_H_

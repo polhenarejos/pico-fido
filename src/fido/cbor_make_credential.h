@@ -20,19 +20,16 @@
 
 #include "ctap2_cbor.h"
 
-typedef struct PublicKeyCredentialEntity
-{
+typedef struct PublicKeyCredentialEntity {
     CborCharString name;
 } PublicKeyCredentialEntity;
 
-typedef struct PublicKeyCredentialRpEntity
-{
+typedef struct PublicKeyCredentialRpEntity {
     PublicKeyCredentialEntity parent;
     CborCharString id;
 } PublicKeyCredentialRpEntity;
 
-typedef struct PublicKeyCredentialUserEntity
-{
+typedef struct PublicKeyCredentialUserEntity {
     PublicKeyCredentialEntity parent;
     CborByteString id;
     CborCharString displayName;

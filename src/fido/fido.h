@@ -36,15 +36,27 @@
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
 extern int scan_files();
-extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecdsa_context *key);
+extern int derive_key(const uint8_t *app_id,
+                      bool new_key,
+                      uint8_t *key_handle,
+                      int,
+                      mbedtls_ecdsa_context *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *);
 extern bool wait_button_pressed();
 extern void init_fido();
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);
 extern int load_keydev(uint8_t *key);
-extern int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, size_t in_len, uint8_t *out);
-extern int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, size_t in_len, uint8_t *out);
+extern int encrypt(uint8_t protocol,
+                   const uint8_t *key,
+                   const uint8_t *in,
+                   size_t in_len,
+                   uint8_t *out);
+extern int decrypt(uint8_t protocol,
+                   const uint8_t *key,
+                   const uint8_t *in,
+                   size_t in_len,
+                   uint8_t *out);
 extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret);
 
 #define FIDO2_ALG_ES256     -7 //ECDSA-SHA256 P256
@@ -96,7 +108,7 @@ typedef struct known_app {
 
 extern const known_app_t *find_app_by_rp_id_hash(const uint8_t *rp_id_hash);
 
-#define TRANSPORT_TIME_LIMIT (30*1000) //USB
+#define TRANSPORT_TIME_LIMIT (30 * 1000) //USB
 
 bool check_user_presence();
 
@@ -114,6 +126,10 @@ typedef struct pinUvAuthToken {
 extern uint32_t user_present_time_limit;
 
 extern pinUvAuthToken_t paut;
-extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign);
+extern int verify(uint8_t protocol,
+                  const uint8_t *key,
+                  const uint8_t *data,
+                  size_t len,
+                  uint8_t *sign);
 
 #endif //_FIDO_H

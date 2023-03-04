@@ -24,4 +24,3 @@
 #define PICO_FIDO_VERSION_MINOR (PICO_FIDO_VERSION & 0xff)
 
 #endif
-

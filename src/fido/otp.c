@@ -23,11 +23,11 @@
 #include "version.h"
 #include "asn1.h"
 
-#define	FIXED_SIZE		    16
-#define	KEY_SIZE		    16
-#define	UID_SIZE		    6
-#define	KEY_SIZE_OATH		20
-#define	ACC_CODE_SIZE		6
+#define FIXED_SIZE          16
+#define KEY_SIZE            16
+#define UID_SIZE            6
+#define KEY_SIZE_OATH       20
+#define ACC_CODE_SIZE       6
 
 #define CONFIG1_VALID       0x01
 #define CONFIG2_VALID       0x02
@@ -36,7 +36,7 @@
 #define CONFIG_LED_INV      0x10
 #define CONFIG_STATUS_MASK  0x1f
 
-static uint8_t config_seq = {1};
+static uint8_t config_seq = { 1 };
 
 typedef struct otp_config {
     uint8_t fixed_data[FIXED_SIZE];
@@ -63,14 +63,17 @@ const uint8_t otp_aid[] = {
 };
 
 app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, otp_aid+1, MIN(aid_len,otp_aid[0]))) {
+    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0]))) {
         a->aid = otp_aid;
         a->process_apdu = otp_process_apdu;
         a->unload = otp_unload;
-        if (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) || file_has_data(search_dynamic_file(EF_OTP_SLOT2)))
+        if (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ||
+            file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
             config_seq = 1;
-        else
+        }
+        else {
             config_seq = 0;
+        }
         otp_status();
         apdu.ne = res_APDU_size;
         return a;
@@ -78,7 +81,7 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
     return NULL;
 }
 
-void __attribute__ ((constructor)) otp_ctor() {
+void __attribute__((constructor)) otp_ctor() {
     register_app(otp_select);
 }
 
@@ -92,7 +95,11 @@ uint16_t otp_status() {
     res_APDU[res_APDU_size++] = 0;
     res_APDU[res_APDU_size++] = config_seq;
     res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = (CONFIG2_TOUCH | CONFIG1_TOUCH) | (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID : 0x00) | (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID : 0x00);
+    res_APDU[res_APDU_size++] = (CONFIG2_TOUCH | CONFIG1_TOUCH) |
+                                (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID :
+                                 0x00) |
+                                (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID :
+                                 0x00);
     return SW_OK();
 }
 
@@ -102,15 +109,18 @@ int cmd_otp() {
         return SW_INCORRECT_P1P2();
     }
     if (p1 == 0x01 || p1 == 0x03) { // Configure slot
-        if (apdu.nc != otp_config_size+ACC_CODE_SIZE)
+        if (apdu.nc != otp_config_size + ACC_CODE_SIZE) {
             return SW_WRONG_LENGTH();
-        if (apdu.data[48] != 0 || apdu.data[49] != 0)
+        }
+        if (apdu.data[48] != 0 || apdu.data[49] != 0) {
             return SW_WRONG_DATA();
+        }
         file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
-            otp_config_t *otpc = (otp_config_t *)file_get_data(ef);
-            if (memcmp(otpc->acc_code, apdu.data+otp_config_size, ACC_CODE_SIZE) != 0)
+            otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
+            if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
                 return SW_SECURITY_STATUS_NOT_SATISFIED();
+            }
         }
         for (int c = 0; c < otp_config_size; c++) {
             if (apdu.data[c] != 0) {
@@ -122,13 +132,15 @@ int cmd_otp() {
         }
         // Delete slot
         delete_file(ef);
-        if (!file_has_data(search_dynamic_file(EF_OTP_SLOT1)) && !file_has_data(search_dynamic_file(EF_OTP_SLOT2)))
+        if (!file_has_data(search_dynamic_file(EF_OTP_SLOT1)) &&
+            !file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
             config_seq = 0;
+        }
         return otp_status();
     }
     else if (p1 == 0x10) {
 #ifndef ENABLE_EMULATION
-        pico_get_unique_board_id_string((char *)res_APDU, 4);
+        pico_get_unique_board_id_string((char *) res_APDU, 4);
 #endif
         res_APDU_size = 4;
     }
@@ -147,14 +159,14 @@ int cmd_otp() {
 
 static const cmd_t cmds[] = {
     { INS_OTP, cmd_otp },
-    { 0x00, 0x0}
+    { 0x00, 0x0 }
 };
 
 int otp_process_apdu() {
-    if (CLA(apdu) != 0x00)
+    if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
-    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++)
-    {
+    }
+    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
         if (cmd->ins == INS(apdu)) {
             int r = cmd->cmd_handler();
             return r;

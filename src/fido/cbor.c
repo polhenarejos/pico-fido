@@ -38,39 +38,52 @@ int cbor_config(const uint8_t *data, size_t len);
 int cbor_vendor(const uint8_t *data, size_t len);
 int cbor_large_blobs(const uint8_t *data, size_t len);
 
-const uint8_t aaguid[16] = {0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45}; // First 16 bytes of SHA256("Pico FIDO2")
+const uint8_t aaguid[16] =
+{ 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45 };                          // First 16 bytes of SHA256("Pico FIDO2")
 
 const uint8_t *cbor_data = NULL;
 size_t cbor_len = 0;
 uint8_t cmd = 0;
 
 int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
-    if (len == 0 && cmd == CTAPHID_CBOR)
+    if (len == 0 && cmd == CTAPHID_CBOR) {
         return CTAP1_ERR_INVALID_LEN;
-    if (len > 0)
-        DEBUG_DATA(data+1,len-1);
+    }
+    if (len > 0) {
+        DEBUG_DATA(data + 1, len - 1);
+    }
     driver_prepare_response_hid();
     if (cmd == CTAPHID_CBOR) {
-        if (data[0] == CTAP_MAKE_CREDENTIAL)
+        if (data[0] == CTAP_MAKE_CREDENTIAL) {
             return cbor_make_credential(data + 1, len - 1);
-        if (data[0] == CTAP_GET_INFO)
+        }
+        if (data[0] == CTAP_GET_INFO) {
             return cbor_get_info();
-        else if (data[0] == CTAP_RESET)
+        }
+        else if (data[0] == CTAP_RESET) {
             return cbor_reset();
-        else if (data[0] == CTAP_CLIENT_PIN)
+        }
+        else if (data[0] == CTAP_CLIENT_PIN) {
             return cbor_client_pin(data + 1, len - 1);
-        else if (data[0] == CTAP_GET_ASSERTION)
+        }
+        else if (data[0] == CTAP_GET_ASSERTION) {
             return cbor_get_assertion(data + 1, len - 1, false);
-        else if (data[0] == CTAP_GET_NEXT_ASSERTION)
+        }
+        else if (data[0] == CTAP_GET_NEXT_ASSERTION) {
             return cbor_get_next_assertion(data + 1, len - 1);
-        else if (data[0] == CTAP_SELECTION)
+        }
+        else if (data[0] == CTAP_SELECTION) {
             return cbor_selection();
-        else if (data[0] == CTAP_CREDENTIAL_MGMT || data[0] == 0x41)
+        }
+        else if (data[0] == CTAP_CREDENTIAL_MGMT || data[0] == 0x41) {
             return cbor_cred_mgmt(data + 1, len - 1);
-        else if (data[0] == CTAP_CONFIG)
+        }
+        else if (data[0] == CTAP_CONFIG) {
             return cbor_config(data + 1, len - 1);
-        else if (data[0] == CTAP_LARGE_BLOBS)
+        }
+        else if (data[0] == CTAP_LARGE_BLOBS) {
             return cbor_large_blobs(data + 1, len - 1);
+        }
     }
     else if (cmd == CTAP_VENDOR_CBOR) {
         return cbor_vendor(data, len);
@@ -88,13 +101,14 @@ void cbor_thread() {
 
         if (m == EV_EXIT) {
 
-	        break;
-	    }
+            break;
+        }
         apdu.sw = cbor_parse(cmd, cbor_data, cbor_len);
-        if (apdu.sw == 0)
+        if (apdu.sw == 0) {
             DEBUG_DATA(res_APDU + 1, res_APDU_size);
+        }
 
-        finished_data_size = res_APDU_size+1;
+        finished_data_size = res_APDU_size + 1;
 
         uint32_t flag = EV_EXEC_FINISHED;
         queue_add_blocking(&card_to_usb_q, &flag);
