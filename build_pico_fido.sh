@@ -40,6 +40,8 @@ for board in adafruit_feather_rp2040 \
     sparkfun_thingplus \
     vgaboard \
     waveshare_rp2040_lcd_0.96 \
+    waveshare_rp2040_lcd_1.28 \
+    waveshare_rp2040_one \
     waveshare_rp2040_plus_4mb \
     waveshare_rp2040_plus_16mb \
     waveshare_rp2040_zero \
