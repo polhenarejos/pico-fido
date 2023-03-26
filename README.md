@@ -27,6 +27,8 @@ Pico FIDO has implemented the following features:
 - credBlobs extension
 - largeBlobKey extension
 - largeBlobs support (2048 bytes máx.)
+- OATH (based on YKOATH protocol specification)
+- TOTP / HOTP
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
