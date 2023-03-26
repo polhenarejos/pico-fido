@@ -24,7 +24,9 @@ typedef unsigned short    uint16_t;
 typedef unsigned int      uint32_t;
 typedef unsigned long int uint64_t;
 #else
+#include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #endif
 
 #ifdef __cplusplus

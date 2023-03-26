@@ -1,4 +1,3 @@
-
 /*
  * This file is part of the Pico FIDO distribution (https://github.com/polhenarejos/pico-fido).
  * Copyright (c) 2022 Pol Henarejos.
@@ -16,23 +15,27 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "ctap2_cbor.h"
 #include "file.h"
 #include "fido.h"
-#include "apdu.h"
 #include "ctap.h"
+#ifndef ENABLE_EMULATION
 #include "bsp/board.h"
+#endif
 
 extern void scan_all();
 
 int cbor_reset() {
-#if defined(ENABLE_POWER_ON_RESET) && ENABLE_POWER_ON_RESET==1
-    if (board_millis() > 10000)
+#ifndef ENABLE_EMULATION
+#if defined(ENABLE_POWER_ON_RESET) && ENABLE_POWER_ON_RESET == 1
+    if (board_millis() > 10000) {
         return CTAP2_ERR_NOT_ALLOWED;
+    }
 #endif
-    if (wait_button_pressed() == true)
+    if (wait_button_pressed() == true) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
+    }
+#endif
     initialize_flash(true);
-    init_fido(true);
+    init_fido();
     return 0;
 }

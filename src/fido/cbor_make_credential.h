@@ -18,27 +18,18 @@
 #ifndef _CBOR_MAKE_CREDENTIAL_H_
 #define _CBOR_MAKE_CREDENTIAL_H_
 
-#include "common.h"
-#include "mbedtls/chachapoly.h"
-#include <stdlib.h>
-#include "pico/stdlib.h"
 #include "ctap2_cbor.h"
-#include "random.h"
-#include "mbedtls/sha256.h"
 
-typedef struct PublicKeyCredentialEntity
-{
+typedef struct PublicKeyCredentialEntity {
     CborCharString name;
 } PublicKeyCredentialEntity;
 
-typedef struct PublicKeyCredentialRpEntity
-{
+typedef struct PublicKeyCredentialRpEntity {
     PublicKeyCredentialEntity parent;
     CborCharString id;
 } PublicKeyCredentialRpEntity;
 
-typedef struct PublicKeyCredentialUserEntity
-{
+typedef struct PublicKeyCredentialUserEntity {
     PublicKeyCredentialEntity parent;
     CborByteString id;
     CborCharString displayName;

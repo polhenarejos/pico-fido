@@ -1,3 +1,23 @@
+"""
+/*
+ * This file is part of the Pico Fido distribution (https://github.com/polhenarejos/pico-fido).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+"""
+
+
 from http import client
 from fido2.hid import CtapHidDevice
 from fido2.client import Fido2Client, WindowsClient, UserInteraction, ClientError, _Ctap1ClientBackend
@@ -12,6 +32,8 @@ import sys
 import pytest
 import os
 import struct
+from inputimeout import inputimeout
+
 
 DEFAULT_PIN='12345678'
 
@@ -159,7 +181,11 @@ class Device():
 
     def reboot(self):
         print("Please reboot authenticator and hit enter")
-        input()
+        try:
+            inputimeout(prompt='>>', timeout=5)
+        except Exception:
+            pass
+
         self.__set_client(self.__origin, self.__user_interaction, self.__uv)
         self.__set_server(rp=self.__rp, attestation=self.__attestation)
 
@@ -335,20 +361,20 @@ def device():
     dev = Device()
     return dev
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def info(device):
     return device.client()._backend.info
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def MCRes(device, *args):
     return device.doMC(*args)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def resetdevice(device):
     device.reset()
     return device
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def GARes(device, MCRes, *args):
     res = device.doGA(allow_list=[
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
@@ -359,11 +385,11 @@ def GARes(device, MCRes, *args):
         verify(MCRes['res'].attestation_object, a, res['req']['client_data'].hash)
     return res
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def MCRes_DC(device, *args):
     return device.doMC(rk=True, *args)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def GARes_DC(device, MCRes_DC, *args):
     res = device.GA(allow_list=[
             {"id": MCRes_DC['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
@@ -380,7 +406,7 @@ def RegRes(resetdevice, *args):
     return res
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def AuthRes(device, RegRes, *args):
     res = device.doGA(ctap1=True, allow_list=[
             {"id": RegRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
@@ -393,3 +419,30 @@ def AuthRes(device, RegRes, *args):
 @pytest.fixture(scope="class")
 def client_pin(resetdevice):
     return ClientPin(resetdevice.client()._backend.ctap2)
+
+@pytest.fixture(scope="class")
+def ccid_card():
+    cardtype = AnyCardType()
+    try:
+        # request card insertion
+        cardrequest = CardRequest(timeout=10, cardType=cardtype)
+        card = cardrequest.waitforcard()
+
+        # connect to the card and perform a few transmits
+        card.connection.connect()
+        return card
+
+    except CardRequestTimeoutException:
+        print('time-out: no card inserted during last 10s')
+    return None
+
+@pytest.fixture(scope="class")
+def select_oath(ccid_card):
+    aid = [0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01, 0x01]
+    resp = send_apdu(ccid_card, 0xA4, 0x04, 0x00, aid)
+    return ccid_card
+
+@pytest.fixture(scope="class")
+def reset_oath(select_oath):
+    send_apdu(select_oath, 0x04, p1=0xde, p2=0xad)
+    return select_oath

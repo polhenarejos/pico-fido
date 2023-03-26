@@ -17,8 +17,8 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-VERSION_MAJOR="3" #Version of Pico CCID Core
-VERSION_MINOR="4"
+VERSION_MAJOR="4" #Version of Pico CCID Core
+VERSION_MINOR="0"
 
 echo "----------------------------"
 echo "VID/PID patcher for Pico FIDO"

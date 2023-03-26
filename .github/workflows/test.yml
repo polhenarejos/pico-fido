@@ -1,0 +1,36 @@
+# For most projects, this workflow file will not need changing; you simply need
+# to commit it to your repository.
+#
+# You may wish to alter this file to override the set of languages analyzed,
+# or to provide custom queries or build logic.
+#
+# ******** NOTE ********
+# We have attempted to detect the languages in your repository. Please check
+# the `language` matrix defined below to confirm you have the correct set of
+# supported CodeQL languages.
+#
+name: "Emulation and test"
+
+on:
+  push:
+    branches: [ "main", "development" ]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [ "main", "development" ]
+  schedule:
+    - cron: '23 5 * * 4'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build in container
+      run: ./tests/build-in-docker.sh
+    - name: Start emulation and test
+      run: ./tests/run-test-in-docker.sh

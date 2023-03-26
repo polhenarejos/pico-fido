@@ -16,6 +16,7 @@
  */
 
 #include "ctap2_cbor.h"
+#include "hid/ctap_hid.h"
 #include "fido.h"
 #include "ctap.h"
 #include "files.h"
@@ -58,10 +59,12 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "authnrCfg"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "clientPin"));
-    if (file_has_data(ef_pin))
+    if (file_has_data(ef_pin)) {
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
-    else
+    }
+    else {
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, false));
+    }
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobs"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "pinUvAuthToken"));
@@ -112,16 +115,20 @@ int cbor_get_info() {
 
     file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
-    if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1)
+    if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
         CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
-    else
+    }
+    else {
         CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
+    }
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0D));
-    if (file_has_data(ef_minpin))
+    if (file_has_data(ef_minpin)) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, *file_get_data(ef_minpin))); // minPINLength
-    else
+    }
+    else {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 4)); // minPINLength
 
+    }
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0E));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, PICO_FIDO_VERSION)); // firmwareVersion
 
@@ -135,9 +142,10 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    err:
-    if (error != CborNoError)
+err:
+    if (error != CborNoError) {
         return -CTAP2_ERR_INVALID_CBOR;
+    }
     res_APDU_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
     return 0;
 }

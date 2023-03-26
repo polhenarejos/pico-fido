@@ -1,3 +1,23 @@
+"""
+/*
+ * This file is part of the Pico Fido distribution (https://github.com/polhenarejos/pico-fido).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+"""
+
+
 from fido2.client import CtapError
 from fido2.cose import ES256
 import pytest
@@ -160,5 +180,6 @@ def test_exclude_list_excluded(device):
 
     assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
 
-def test_unknown_option(resetdevice):
-    resetdevice.MC(options={"unknown": False})
+def test_unknown_option(device):
+    device.reset()
+    device.MC(options={"unknown": False})

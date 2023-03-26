@@ -15,10 +15,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
+#include "hid/ctap_hid.h"
 #include "files.h"
 #include "apdu.h"
 #include "hsm.h"
@@ -31,13 +31,20 @@
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
 
-mse_t mse = {.init = false};
+mse_t mse = { .init = false };
 
 int mse_decrypt_ct(uint8_t *data, size_t len) {
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, mse.key_enc + 12);
-    int ret = mbedtls_chachapoly_auth_decrypt(&chatx, len - 16, mse.key_enc, mse.Qpt, 65, data + len - 16, data, data);
+    int ret = mbedtls_chachapoly_auth_decrypt(&chatx,
+                                              len - 16,
+                                              mse.key_enc,
+                                              mse.Qpt,
+                                              65,
+                                              data + len - 16,
+                                              data,
+                                              data);
     mbedtls_chachapoly_free(&chatx);
     return ret;
 }
@@ -46,7 +53,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
-    CborByteString pinUvAuthParam = {0}, vendorParam = {0}, kax = {0}, kay = {0};
+    CborByteString pinUvAuthParam = { 0 }, vendorParam = { 0 }, kax = { 0 }, kay = { 0 };
     size_t resp_size = 0;
     uint64_t vendorCmd = 0, pinUvAuthProtocol = 0;
     int64_t kty = 0, alg = 0, crv = 0;
@@ -54,27 +61,32 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
-    CBOR_PARSE_MAP_START(map, 1) {
+    CBOR_PARSE_MAP_START(map, 1)
+    {
         uint64_t val_u = 0;
         CBOR_FIELD_GET_UINT(val_u, 1);
-        if (val_c <= 1 && val_c != val_u)
+        if (val_c <= 1 && val_c != val_u) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-        if (val_u < val_c)
+        }
+        if (val_u < val_c) {
             CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+        }
         val_c = val_u + 1;
         if (val_u == 0x01) {
             CBOR_FIELD_GET_UINT(vendorCmd, 1);
         }
         else if (val_u == 0x02) {
             uint64_t subpara = 0;
-            CBOR_PARSE_MAP_START(_f1, 2) {
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
                 CBOR_FIELD_GET_UINT(subpara, 2);
                 if (subpara == 0x01) {
                     CBOR_FIELD_GET_BYTES(vendorParam, 2);
                 }
                 else if (subpara == 0x02) {
                     int64_t key = 0;
-                    CBOR_PARSE_MAP_START(_f2, 3) {
+                    CBOR_PARSE_MAP_START(_f2, 3)
+                    {
                         CBOR_FIELD_GET_INT(key, 3);
                         if (key == 1) {
                             CBOR_FIELD_GET_INT(kty, 3);
@@ -91,13 +103,15 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                         else if (key == -3) {
                             CBOR_FIELD_GET_BYTES(kay, 3);
                         }
-                        else
+                        else {
                             CBOR_ADVANCE(3);
+                        }
                     }
                     CBOR_PARSE_MAP_END(_f2, 3);
                 }
-                else
+                else {
                     CBOR_ADVANCE(2);
+                }
             }
             CBOR_PARSE_MAP_END(_f1, 2);
         }
@@ -114,17 +128,20 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
 
     if (cmd == CTAP_VENDOR_BACKUP) {
         if (vendorCmd == 0x01) {
-            if (has_keydev_dec == false)
+            if (has_keydev_dec == false) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
 
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
 
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_keydev_enc), file_get_size(ef_keydev_enc)));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_keydev_enc),
+                                               file_get_size(ef_keydev_enc)));
         }
         else if (vendorCmd == 0x02) {
-            if (vendorParam.present == false)
+            if (vendorParam.present == false) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            }
             uint8_t zeros[32];
             memset(zeros, 0, sizeof(zeros));
             flash_write_data_to_file(ef_keydev_enc, vendorParam.data, vendorParam.len);
@@ -139,13 +156,18 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     }
     else if (cmd == CTAP_VENDOR_MSE) {
         if (vendorCmd == 0x01) { // KeyAgreement
-            if (kax.present == false || kay.present == false || alg == 0)
+            if (kax.present == false || kay.present == false || alg == 0) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            }
 
             mbedtls_ecdh_context hkey;
             mbedtls_ecdh_init(&hkey);
             mbedtls_ecdh_setup(&hkey, MBEDTLS_ECP_DP_SECP256R1);
-            int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_gen, NULL);
+            int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp,
+                                              &hkey.ctx.mbed_ecdh.d,
+                                              &hkey.ctx.mbed_ecdh.Q,
+                                              random_gen,
+                                              NULL);
             mbedtls_mpi_lset(&hkey.ctx.mbed_ecdh.Qp.Z, 1);
             if (ret != 0) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -161,19 +183,37 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
 
             uint8_t buf[MBEDTLS_ECP_MAX_BYTES];
             size_t olen = 0;
-            ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.Qp, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, mse.Qpt, sizeof(mse.Qpt));
+            ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp,
+                                                 &hkey.ctx.mbed_ecdh.Qp,
+                                                 MBEDTLS_ECP_PF_UNCOMPRESSED,
+                                                 &olen,
+                                                 mse.Qpt,
+                                                 sizeof(mse.Qpt));
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
 
-            ret = mbedtls_ecdh_calc_secret(&hkey, &olen, buf, MBEDTLS_ECP_MAX_BYTES, random_gen, NULL);
+            ret = mbedtls_ecdh_calc_secret(&hkey,
+                                           &olen,
+                                           buf,
+                                           MBEDTLS_ECP_MAX_BYTES,
+                                           random_gen,
+                                           NULL);
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
                 mbedtls_platform_zeroize(buf, sizeof(buf));
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
-            ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0, buf, olen, mse.Qpt, sizeof(mse.Qpt), mse.key_enc, sizeof(mse.key_enc));
+            ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                               NULL,
+                               0,
+                               buf,
+                               olen,
+                               mse.Qpt,
+                               sizeof(mse.Qpt),
+                               mse.key_enc,
+                               sizeof(mse.key_enc));
             mbedtls_platform_zeroize(buf, sizeof(buf));
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
@@ -203,8 +243,9 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         }
     }
     else if (cmd == CTAP_VENDOR_UNLOCK) {
-        if (mse.init == false)
+        if (mse.init == false) {
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+        }
 
         mbedtls_chachapoly_context chatx;
         int ret = mse_decrypt_ct(vendorParam.data, vendorParam.len);
@@ -212,16 +253,24 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
 
-        if (!file_has_data(ef_keydev_enc))
+        if (!file_has_data(ef_keydev_enc)) {
             CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
+        }
 
         uint8_t *keyenc = file_get_data(ef_keydev_enc);
         size_t keyenc_len = file_get_size(ef_keydev_enc);
         mbedtls_chachapoly_init(&chatx);
         mbedtls_chachapoly_setkey(&chatx, vendorParam.data);
-        ret = mbedtls_chachapoly_auth_decrypt(&chatx, sizeof(keydev_dec), keyenc, NULL, 0, keyenc + keyenc_len - 16, keyenc + 12, keydev_dec);
+        ret = mbedtls_chachapoly_auth_decrypt(&chatx,
+                                              sizeof(keydev_dec),
+                                              keyenc,
+                                              NULL,
+                                              0,
+                                              keyenc + keyenc_len - 16,
+                                              keyenc + 12,
+                                              keydev_dec);
         mbedtls_chachapoly_free(&chatx);
-        if (ret != 0){
+        if (ret != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
         has_keydev_dec = true;
@@ -232,7 +281,10 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             uint8_t buffer[1024];
             mbedtls_ecdsa_context ekey;
             mbedtls_ecdsa_init(&ekey);
-            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), file_get_size(ef_keydev));
+            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1,
+                                           &ekey,
+                                           file_get_data(ef_keydev),
+                                           file_get_size(ef_keydev));
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
@@ -242,19 +294,40 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
+#ifndef ENABLE_EMULATION
             pico_unique_board_id_t rpiid;
             pico_get_unique_board_id(&rpiid);
+#else
+            struct {
+                uint8_t id[8];
+            } rpiid = { 0 };
+#endif
             mbedtls_x509write_csr ctx;
             mbedtls_x509write_csr_init(&ctx);
-            snprintf((char *)buffer, sizeof(buffer), "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %llu", ((uint64_t)rpiid.id[0] << 56) | ((uint64_t)rpiid.id[1] << 48) | ((uint64_t)rpiid.id[2] << 40) | ((uint64_t)rpiid.id[3] << 32) | (rpiid.id[4] << 24) | (rpiid.id[5] << 16) | (rpiid.id[6] << 8) | rpiid.id[7]);
-            mbedtls_x509write_csr_set_subject_name(&ctx, (char *)buffer);
+            snprintf((char *) buffer,
+                     sizeof(buffer),
+                     "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %02x%02x%02x%02x%02x%02x%02x%02x",
+                     rpiid.id[0],
+                     rpiid.id[1],
+                     rpiid.id[2],
+                     rpiid.id[3],
+                     rpiid.id[4],
+                     rpiid.id[5],
+                     rpiid.id[6],
+                     rpiid.id[7]);
+            mbedtls_x509write_csr_set_subject_name(&ctx, (char *) buffer);
             mbedtls_pk_context key;
             mbedtls_pk_init(&key);
             mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
             key.pk_ctx = &ekey;
             mbedtls_x509write_csr_set_key(&ctx, &key);
             mbedtls_x509write_csr_set_md_alg(&ctx, MBEDTLS_MD_SHA256);
-            mbedtls_x509write_csr_set_extension(&ctx, "\x2B\x06\x01\x04\x01\x82\xE5\x1C\x01\x01\x04", 0xB, 0, aaguid, sizeof(aaguid));
+            mbedtls_x509write_csr_set_extension(&ctx,
+                                                "\x2B\x06\x01\x04\x01\x82\xE5\x1C\x01\x01\x04",
+                                                0xB,
+                                                0,
+                                                aaguid,
+                                                sizeof(aaguid));
             ret = mbedtls_x509write_csr_der(&ctx, buffer, sizeof(buffer), random_gen, NULL);
             mbedtls_ecdsa_free(&ekey);
             if (ret <= 0) {
@@ -266,27 +339,31 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, buffer + sizeof(buffer) - ret, ret));
         }
         else if (vendorCmd == 0x02) {
-            if (vendorParam.present == false)
+            if (vendorParam.present == false) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            }
             file_t *ef_ee_ea = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
-            if (ef_ee_ea)
+            if (ef_ee_ea) {
                 flash_write_data_to_file(ef_ee_ea, vendorParam.data, vendorParam.len);
+            }
             low_flash_available();
             goto err;
         }
     }
-    else
+    else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+    }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 
-    err:
+err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(vendorParam);
 
     if (error != CborNoError) {
-        if (error == CborErrorImproperValue)
+        if (error == CborErrorImproperValue) {
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        }
         return error;
     }
     res_APDU_size = resp_size;
@@ -294,9 +371,11 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
 }
 
 int cbor_vendor(const uint8_t *data, size_t len) {
-    if (len == 0)
+    if (len == 0) {
         return CTAP1_ERR_INVALID_LEN;
-    if (data[0] >= CTAP_VENDOR_BACKUP)
+    }
+    if (data[0] >= CTAP_VENDOR_BACKUP) {
         return cbor_vendor_generic(data[0], data + 1, len - 1);
+    }
     return CTAP2_ERR_INVALID_CBOR;
 }

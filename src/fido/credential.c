@@ -15,40 +15,60 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
+#ifndef ENABLE_EMULATION
 #include "bsp/board.h"
+#endif
+#include "hid/ctap_hid.h"
 #include "fido.h"
 #include "ctap.h"
 #include "random.h"
 #include "files.h"
-#include "file.h"
 #include "hsm.h"
 
 int credential_derive_chacha_key(uint8_t *outk);
 
 int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {
-    if (cred_id_len < 4+12+16)
-            return -1;
-    uint8_t key[32], *iv = cred_id + 4, *cipher = cred_id + 4 + 12, *tag = cred_id + cred_id_len - 16;
+    if (cred_id_len < 4 + 12 + 16) {
+        return -1;
+    }
+    uint8_t key[32], *iv = cred_id + 4, *cipher = cred_id + 4 + 12,
+            *tag = cred_id + cred_id_len - 16;
     memset(key, 0, sizeof(key));
     credential_derive_chacha_key(key);
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
-    int ret = mbedtls_chachapoly_auth_decrypt(&chatx, cred_id_len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
+    int ret = mbedtls_chachapoly_auth_decrypt(&chatx,
+                                              cred_id_len - (4 + 12 + 16),
+                                              iv,
+                                              rp_id_hash,
+                                              32,
+                                              tag,
+                                              cipher,
+                                              cipher);
     mbedtls_chachapoly_free(&chatx);
     return ret;
 }
 
-int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredOptions *opts, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, size_t *cred_id_len) {
+int credential_create(CborCharString *rpId,
+                      CborByteString *userId,
+                      CborCharString *userName,
+                      CborCharString *userDisplayName,
+                      CredOptions *opts,
+                      CredExtensions *extensions,
+                      bool use_sign_count,
+                      int alg,
+                      int curve,
+                      uint8_t *cred_id,
+                      size_t *cred_id_len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
     uint8_t rp_id_hash[32];
-    mbedtls_sha256((uint8_t *)rpId->data, rpId->len, rp_id_hash, 0);
-    cbor_encoder_init(&encoder, cred_id+4+12, MAX_CRED_ID_LENGTH-(4+12+16), 0);
+    mbedtls_sha256((uint8_t *) rpId->data, rpId->len, rp_id_hash, 0);
+    cbor_encoder_init(&encoder, cred_id + 4 + 12, MAX_CRED_ID_LENGTH - (4 + 12 + 16), 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,  CborIndefiniteLength));
     CBOR_APPEND_KEY_UINT_VAL_STRING(mapEncoder, 0x01, *rpId);
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
@@ -60,9 +80,11 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     if (extensions->present == true) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  CborIndefiniteLength));
-        if (extensions->credBlob.present == true && extensions->credBlob.len < MAX_CREDBLOB_LENGTH) {
+        if (extensions->credBlob.present == true &&
+            extensions->credBlob.len < MAX_CREDBLOB_LENGTH) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credBlob"));
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, extensions->credBlob.data, extensions->credBlob.len));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, extensions->credBlob.data,
+                                               extensions->credBlob.len));
         }
         if (extensions->credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credProtect"));
@@ -104,7 +126,14 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
-    int ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, rs, iv, rp_id_hash, 32, cred_id + 4 + 12, cred_id + 4 + 12, cred_id + 4 + 12 + rs);
+    int ret = mbedtls_chachapoly_encrypt_and_tag(&chatx,
+                                                 rs,
+                                                 iv,
+                                                 rp_id_hash,
+                                                 32,
+                                                 cred_id + 4 + 12,
+                                                 cred_id + 4 + 12,
+                                                 cred_id + 4 + 12 + rs);
     mbedtls_chachapoly_free(&chatx);
     if (ret != 0) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -112,24 +141,29 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     memcpy(cred_id, CRED_PROTO, 4);
     memcpy(cred_id + 4, iv, 12);
 
-    err:
+err:
     if (error != CborNoError) {
-        if (error == CborErrorImproperValue)
+        if (error == CborErrorImproperValue) {
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        }
         return error;
     }
     return 0;
 }
 
-int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred) {
+int credential_load(const uint8_t *cred_id,
+                    size_t cred_id_len,
+                    const uint8_t *rp_id_hash,
+                    Credential *cred) {
     int ret = 0;
-    CborError error;
-    uint8_t *copy_cred_id = (uint8_t *)calloc(1, cred_id_len);
+    CborError error = CborNoError;
+    uint8_t *copy_cred_id = (uint8_t *) calloc(1, cred_id_len);
     memcpy(copy_cred_id, cred_id, cred_id_len);
     ret = credential_verify(copy_cred_id, cred_id_len, rp_id_hash);
     if (ret != 0) { // U2F?
-        if (cred_id_len != KEY_HANDLE_LEN || verify_key(rp_id_hash, cred_id, NULL) != 0)
+        if (cred_id_len != KEY_HANDLE_LEN || verify_key(rp_id_hash, cred_id, NULL) != 0) {
             CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+        }
     }
     else {
         CborParser parser;
@@ -137,8 +171,10 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
         memset(cred, 0, sizeof(Credential));
         cred->curve = FIDO2_CURVE_P256;
         cred->alg = FIDO2_ALG_ES256;
-        CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser, &map));
-        CBOR_PARSE_MAP_START(map, 1) {
+        CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser,
+                                    &map));
+        CBOR_PARSE_MAP_START(map, 1)
+        {
             uint64_t val_u = 0;
             CBOR_FIELD_GET_UINT(val_u, 1);
             if (val_u == 0x01) {
@@ -194,15 +230,16 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
         }
     }
     cred->id.present = true;
-    cred->id.data = (uint8_t *)calloc(1, cred_id_len);
+    cred->id.data = (uint8_t *) calloc(1, cred_id_len);
     memcpy(cred->id.data, cred_id, cred_id_len);
     cred->id.len = cred_id_len;
     cred->present = true;
-    err:
+err:
     free(copy_cred_id);
     if (error != CborNoError) {
-        if (error == CborErrorImproperValue)
+        if (error == CborErrorImproperValue) {
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        }
         return error;
     }
     return 0;
@@ -221,7 +258,7 @@ void credential_free(Credential *cred) {
 
 int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {
     int sloti = -1;
-    Credential cred = {0};
+    Credential cred = { 0 };
     int ret = 0;
     bool new_record = true;
     ret = credential_load(cred_id, cred_id_len, rp_id_hash, &cred);
@@ -231,20 +268,23 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     }
     for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
         file_t *ef = search_dynamic_file(EF_CRED + i);
-        Credential rcred = {0};
+        Credential rcred = { 0 };
         if (!file_has_data(ef)) {
-            if (sloti == -1)
+            if (sloti == -1) {
                 sloti = i;
+            }
             continue;
         }
-        if (memcmp(file_get_data(ef), rp_id_hash, 32) != 0)
+        if (memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
             continue;
-        ret = credential_load(file_get_data(ef) + 32, file_get_size(ef)-32, rp_id_hash, &rcred);
+        }
+        ret = credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, &rcred);
         if (ret != 0) {
             credential_free(&rcred);
             continue;
         }
-        if (memcmp(rcred.userId.data, cred.userId.data, MIN(rcred.userId.len, cred.userId.len)) == 0) {
+        if (memcmp(rcred.userId.data, cred.userId.data,
+                   MIN(rcred.userId.len, cred.userId.len)) == 0) {
             sloti = i;
             credential_free(&rcred);
             new_record = false;
@@ -252,12 +292,13 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         }
         credential_free(&rcred);
     }
-    if (sloti == -1)
+    if (sloti == -1) {
         return -1;
-    uint8_t *data = (uint8_t *)calloc(1, cred_id_len+32);
+    }
+    uint8_t *data = (uint8_t *) calloc(1, cred_id_len + 32);
     memcpy(data, rp_id_hash, 32);
     memcpy(data + 32, cred_id, cred_id_len);
-    file_t *ef = file_new(EF_CRED+sloti);
+    file_t *ef = file_new(EF_CRED + sloti);
     flash_write_data_to_file(ef, data, cred_id_len + 32);
     free(data);
 
@@ -266,30 +307,32 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             ef = search_dynamic_file(EF_RP + i);
             if (!file_has_data(ef)) {
-                if (sloti == -1)
+                if (sloti == -1) {
                     sloti = i;
+                }
                 continue;
             }
-            if (memcmp(file_get_data(ef)+1, rp_id_hash, 32) == 0) {
+            if (memcmp(file_get_data(ef) + 1, rp_id_hash, 32) == 0) {
                 sloti = i;
                 break;
             }
         }
-        if (sloti == -1)
+        if (sloti == -1) {
             return -1;
+        }
         ef = search_dynamic_file(EF_RP + sloti);
         if (file_has_data(ef)) {
-            data = (uint8_t *)calloc(1, file_get_size(ef));
+            data = (uint8_t *) calloc(1, file_get_size(ef));
             memcpy(data, file_get_data(ef), file_get_size(ef));
             data[0] += 1;
             flash_write_data_to_file(ef, data, file_get_size(ef));
             free(data);
         }
         else {
-            ef = file_new(EF_RP+sloti);
-            data = (uint8_t *)calloc(1, 1 + 32 + cred.rpId.len);
+            ef = file_new(EF_RP + sloti);
+            data = (uint8_t *) calloc(1, 1 + 32 + cred.rpId.len);
             data[0] = 1;
-            memcpy(data+1, rp_id_hash, 32);
+            memcpy(data + 1, rp_id_hash, 32);
             memcpy(data + 1 + 32, cred.rpId.data, cred.rpId.len);
             flash_write_data_to_file(ef, data, 1 + 32 + cred.rpId.len);
             free(data);
@@ -303,13 +346,14 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
 int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk) {
     memset(outk, 0, 64);
     int r = 0;
-    if ((r = load_keydev(outk)) != 0)
+    if ((r = load_keydev(outk)) != 0) {
         return r;
+    }
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
 
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"hmac-secret", 11, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) "SLIP-0022", 9, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) CRED_PROTO, 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) "hmac-secret", 11, outk);
     mbedtls_md_hmac(md_info, outk, 32, cred_id, cred_id_len, outk);
     return 0;
 }
@@ -317,26 +361,28 @@ int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8
 int credential_derive_chacha_key(uint8_t *outk) {
     memset(outk, 0, 32);
     int r = 0;
-    if ((r = load_keydev(outk)) != 0)
+    if ((r = load_keydev(outk)) != 0) {
         return r;
+    }
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
 
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"Encryption key", 14, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) "SLIP-0022", 9, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) CRED_PROTO, 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) "Encryption key", 14, outk);
     return 0;
 }
 
 int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk) {
     memset(outk, 0, 32);
     int r = 0;
-    if ((r = load_keydev(outk)) != 0)
+    if ((r = load_keydev(outk)) != 0) {
         return r;
+    }
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
 
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"SLIP-0022", 9, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)CRED_PROTO, 4, outk);
-    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *)"largeBlobKey", 12, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) "SLIP-0022", 9, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) CRED_PROTO, 4, outk);
+    mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) "largeBlobKey", 12, outk);
     mbedtls_md_hmac(md_info, outk, 32, cred_id, cred_id_len, outk);
     return 0;
 }

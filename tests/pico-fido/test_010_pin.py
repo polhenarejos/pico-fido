@@ -1,3 +1,23 @@
+"""
+/*
+ * This file is part of the Pico Fido distribution (https://github.com/polhenarejos/pico-fido).
+ * Copyright (c) 2022 Pol Henarejos.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+"""
+
+
 import os
 import pytest
 from fido2.ctap import CtapError
@@ -14,9 +34,9 @@ def test_lockout(device, resetdevice, client_pin):
     pin_token = client_pin.get_pin_token(pin)
 
     for i in range(1, 10):
-        err = CtapError.ERR.PIN_INVALID
-        if i in (3, 6):
-            err = CtapError.ERR.PIN_AUTH_BLOCKED
+        err = [CtapError.ERR.PIN_INVALID]
+        if 3 <= i <= 7:
+            err = [CtapError.ERR.PIN_AUTH_BLOCKED]
         elif i >= 8:
             err = [CtapError.ERR.PIN_BLOCKED, CtapError.ERR.PIN_INVALID]
 
