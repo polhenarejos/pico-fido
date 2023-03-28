@@ -81,8 +81,14 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
     return NULL;
 }
 
+int otp_button_pressed(uint8_t slot) {
+    printf("CB PRESSED slot %d\n", slot);
+    return 0;
+}
+
 void __attribute__((constructor)) otp_ctor() {
     register_app(otp_select);
+    button_pressed_cb = otp_button_pressed;
 }
 
 int otp_unload() {
@@ -90,16 +96,17 @@ int otp_unload() {
 }
 
 uint16_t otp_status() {
-    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
-    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
-    res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = config_seq;
-    res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = (CONFIG2_TOUCH | CONFIG1_TOUCH) |
+    res_APDU_size = 0;
+    res_APDU[1] = PICO_FIDO_VERSION_MAJOR;
+    res_APDU[2] = PICO_FIDO_VERSION_MINOR;
+    res_APDU[3] = 0;
+    res_APDU[4] = config_seq;
+    res_APDU[5] = (CONFIG2_TOUCH | CONFIG1_TOUCH) |
                                 (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID :
                                  0x00) |
                                 (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID :
                                  0x00);
+    res_APDU[6] = 0;
     return SW_OK();
 }
 
@@ -109,10 +116,11 @@ int cmd_otp() {
         return SW_INCORRECT_P1P2();
     }
     if (p1 == 0x01 || p1 == 0x03) { // Configure slot
-        if (apdu.nc != otp_config_size + ACC_CODE_SIZE) {
+        /*if (apdu.nc != otp_config_size + ACC_CODE_SIZE) {
             return SW_WRONG_LENGTH();
-        }
-        if (apdu.data[48] != 0 || apdu.data[49] != 0) {
+        }*/
+        otp_config_t *odata = (otp_config_t *)apdu.data;
+        if (odata->rfu[0] != 0 || odata->rfu[1] != 0) {
             return SW_WRONG_DATA();
         }
         file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
