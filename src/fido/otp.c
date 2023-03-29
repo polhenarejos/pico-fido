@@ -156,6 +156,7 @@ int otp_button_pressed(uint8_t slot) {
             imf |= *p++;
         }
         uint8_t chal[8] = {imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff};
+        res_APDU_size = 0;
         int ret = calculate_oath(1, tmp_key, sizeof(tmp_key), chal, sizeof(chal));
         if (ret == CCID_OK) {
             uint32_t base = otp_config->cfg_flags & OATH_HOTP8 ? 1e8 : 1e6;

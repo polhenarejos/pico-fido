@@ -336,7 +336,6 @@ int calculate_oath(uint8_t truncate,
     if (r != 0) {
         return CCID_EXEC_ERROR;
     }
-    res_APDU_size = 0;
     if (truncate == 0x01) {
         res_APDU[res_APDU_size++] = 4 + 1;
         res_APDU[res_APDU_size++] = key[1];
