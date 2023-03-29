@@ -36,6 +36,49 @@
 #define CONFIG_LED_INV      0x10
 #define CONFIG_STATUS_MASK  0x1f
 
+/* EXT Flags */
+#define SERIAL_BTN_VISIBLE  0x01    // Serial number visible at startup (button press)
+#define SERIAL_USB_VISIBLE  0x02    // Serial number visible in USB iSerial field
+#define SERIAL_API_VISIBLE  0x04    // Serial number visible via API call
+#define USE_NUMERIC_KEYPAD  0x08    // Use numeric keypad for digits
+#define FAST_TRIG           0x10    // Use fast trig if only cfg1 set
+#define ALLOW_UPDATE        0x20    // Allow update of existing configuration (selected flags + access code)
+#define DORMANT             0x40    // Dormant config (woken up, flag removed, requires update flag)
+#define LED_INV             0x80    // LED idle state is off rather than on
+
+/* TKT Flags */
+#define TAB_FIRST       0x01    // Send TAB before first part
+#define APPEND_TAB1     0x02    // Send TAB after first part
+#define APPEND_TAB2     0x04    // Send TAB after second part
+#define APPEND_DELAY1   0x08    // Add 0.5s delay after first part
+#define APPEND_DELAY2   0x10    // Add 0.5s delay after second part
+#define APPEND_CR       0x20    // Append CR as final character
+#define OATH_HOTP       0x40    // OATH HOTP mode
+#define CHAL_RESP       0x40    // Challenge-response enabled (both must be set)
+#define PROTECT_CFG2    0x80    // Block update of config 2 unless config 2 is configured and has this bit set
+
+/* CFG Flags */
+#define SEND_REF            0x01    // Send reference string (0..F) before data
+#define PACING_10MS         0x04    // Add 10ms intra-key pacing
+#define PACING_20MS         0x08    // Add 20ms intra-key pacing
+#define STATIC_TICKET       0x20    // Static ticket generation
+// Static
+#define SHORT_TICKET        0x02    // Send truncated ticket (half length)
+#define STRONG_PW1          0x10    // Strong password policy flag #1 (mixed case)
+#define STRONG_PW2          0x40    // Strong password policy flag #2 (subtitute 0..7 to digits)
+#define MAN_UPDATE          0x80    // Allow manual (local) update of static OTP
+// Challenge (no keyboard)
+#define HMAC_LT64           0x04    // Set when HMAC message is less than 64 bytes
+#define CHAL_BTN_TRIG       0x08    // Challenge-response operation requires button press
+#define CHAL_YUBICO         0x20    // Challenge-response enabled - Yubico OTP mode
+#define CHAL_HMAC           0x22    // Challenge-response enabled - HMAC-SHA1
+// OATH
+#define OATH_HOTP8          0x02    // Generate 8 digits HOTP rather than 6 digits
+#define OATH_FIXED_MODHEX1  0x10    // First byte in fixed part sent as modhex
+#define OATH_FIXED_MODHEX2  0x40    // First two bytes in fixed part sent as modhex
+#define OATH_FIXED_MODHEX   0x50    // Fixed part sent as modhex
+#define OATH_FIXED_MASK     0x50    // Mask to get out fixed flags
+
 static uint8_t config_seq = { 1 };
 
 typedef struct otp_config {
@@ -81,8 +124,68 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
     return NULL;
 }
 
+extern int calculate_oath(uint8_t truncate,
+                          const uint8_t *key,
+                          size_t key_len,
+                          const uint8_t *chal,
+                          size_t chal_len);
 int otp_button_pressed(uint8_t slot) {
     printf("CB PRESSED slot %d\n", slot);
+    file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+    const uint8_t *data = file_get_data(ef);
+    otp_config_t *otp_config = (otp_config_t *)data;
+    if (otp_config->tkt_flags & OATH_HOTP) {
+        uint8_t tmp_key[KEY_SIZE + 2];
+        tmp_key[0] = 0x01;
+        memcpy(tmp_key + 2, otp_config->aes_key, KEY_SIZE);
+        uint64_t imf = 0;
+        if (file_get_size(ef) == otp_config_size) {
+            imf = ((otp_config->uid[4] << 8) | otp_config->uid[5]) << 4;
+        }
+        else {
+            const uint8_t *p = data + otp_config_size;
+            imf |= (uint64_t)*p++ << 56;
+            imf |= (uint64_t)*p++ << 48;
+            imf |= (uint64_t)*p++ << 40;
+            imf |= (uint64_t)*p++ << 32;
+            imf |= *p++ << 24;
+            imf |= *p++ << 16;
+            imf |= *p++ << 8;
+            imf |= *p++;
+        }
+        uint8_t chal[8] = {imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff};
+        int ret = calculate_oath(1, tmp_key, sizeof(tmp_key), chal, sizeof(chal));
+        if (ret == CCID_OK) {
+            uint32_t base = otp_config->cfg_flags & OATH_HOTP8 ? 1e8 : 1e6;
+            uint32_t number = (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];
+            number %= base;
+            char number_str[9];
+            if (otp_config->cfg_flags & OATH_HOTP8) {
+                sprintf(number_str, "%08lu", number);
+                add_keyboard_buffer((const uint8_t *)number_str, 8, true);
+            }
+            else {
+                sprintf(number_str, "%06lu", number);
+                add_keyboard_buffer((const uint8_t *)number_str, 6, true);
+            }
+            imf++;
+            uint8_t new_chal[8] = {imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff};
+            uint8_t new_otp_config[otp_config_size + sizeof(new_chal)];
+            memcpy(new_otp_config, otp_config, otp_config_size);
+            memcpy(new_otp_config + otp_config_size, new_chal, sizeof(new_chal));
+            flash_write_data_to_file(ef, new_otp_config, sizeof(new_otp_config));
+            low_flash_available();
+        }
+    }
+    else if (otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET) {
+        if (otp_config->cfg_flags & SHORT_TICKET) {
+            otp_config->fixed_size /= 2;
+        }
+        add_keyboard_buffer(otp_config->fixed_data, otp_config->fixed_size, false);
+    }
+    else {
+
+    }
     return 0;
 }
 
@@ -124,6 +227,7 @@ int cmd_otp() {
             return SW_WRONG_DATA();
         }
         file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+        printf("has data %d\n",file_has_data(ef));
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
             if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
