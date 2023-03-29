@@ -22,6 +22,7 @@
 #include "random.h"
 #include "version.h"
 #include "asn1.h"
+#include "hid/ctap_hid.h"
 
 #define FIXED_SIZE          16
 #define KEY_SIZE            16
@@ -130,6 +131,7 @@ extern int calculate_oath(uint8_t truncate,
                           const uint8_t *chal,
                           size_t chal_len);
 int otp_button_pressed(uint8_t slot) {
+#ifndef ENABLE_EMULATION
     printf("CB PRESSED slot %d\n", slot);
     file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
     const uint8_t *data = file_get_data(ef);
@@ -161,11 +163,11 @@ int otp_button_pressed(uint8_t slot) {
             number %= base;
             char number_str[9];
             if (otp_config->cfg_flags & OATH_HOTP8) {
-                sprintf(number_str, "%08lu", number);
+                sprintf(number_str, "%08lu", (long unsigned int)number);
                 add_keyboard_buffer((const uint8_t *)number_str, 8, true);
             }
             else {
-                sprintf(number_str, "%06lu", number);
+                sprintf(number_str, "%06lu", (long unsigned int)number);
                 add_keyboard_buffer((const uint8_t *)number_str, 6, true);
             }
             imf++;
@@ -192,6 +194,7 @@ int otp_button_pressed(uint8_t slot) {
     else {
 
     }
+#endif
     return 0;
 }
 
