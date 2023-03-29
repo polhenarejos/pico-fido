@@ -176,12 +176,18 @@ int otp_button_pressed(uint8_t slot) {
             flash_write_data_to_file(ef, new_otp_config, sizeof(new_otp_config));
             low_flash_available();
         }
+        if (otp_config->tkt_flags & APPEND_CR) {
+            append_keyboard_buffer((const uint8_t *)"\r", 1);
+        }
     }
     else if (otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET) {
         if (otp_config->cfg_flags & SHORT_TICKET) {
             otp_config->fixed_size /= 2;
         }
         add_keyboard_buffer(otp_config->fixed_data, otp_config->fixed_size, false);
+        if (otp_config->tkt_flags & APPEND_CR) {
+            append_keyboard_buffer((const uint8_t *)"\x28", 1);
+        }
     }
     else {
 
