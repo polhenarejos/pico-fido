@@ -208,7 +208,13 @@ int otp_unload() {
     return CCID_OK;
 }
 
+static bool scanned = false;
+extern void scan_all();
 uint16_t otp_status() {
+    if (scanned == false) {
+        scan_all();
+        scanned = true;
+    }
     res_APDU_size = 0;
     res_APDU[1] = PICO_FIDO_VERSION_MAJOR;
     res_APDU[2] = PICO_FIDO_VERSION_MINOR;
@@ -223,21 +229,22 @@ uint16_t otp_status() {
     return SW_OK();
 }
 
+bool check_crc(const otp_config_t *data) {
+    uint16_t crc = calculate_crc((const uint8_t *)data, otp_config_size);
+    return crc == 0xF0B8;
+}
+
 int cmd_otp() {
     uint8_t p1 = P1(apdu), p2 = P2(apdu);
     if (p2 != 0x00) {
         return SW_INCORRECT_P1P2();
     }
     if (p1 == 0x01 || p1 == 0x03) { // Configure slot
-        /*if (apdu.nc != otp_config_size + ACC_CODE_SIZE) {
-            return SW_WRONG_LENGTH();
-        }*/
         otp_config_t *odata = (otp_config_t *)apdu.data;
-        if (odata->rfu[0] != 0 || odata->rfu[1] != 0) {
+        if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
             return SW_WRONG_DATA();
         }
         file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
-        printf("has data %d\n",file_has_data(ef));
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
             if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
