@@ -23,7 +23,9 @@
 #include "version.h"
 #include "asn1.h"
 #include "hid/ctap_hid.h"
+#ifndef ENABLE_EMULATION
 #include "bsp/board.h"
+#endif
 #include "mbedtls/aes.h"
 
 #define FIXED_SIZE          16
@@ -136,7 +138,6 @@ int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
     return 0;
 }
 static bool scanned = false;
-static uint8_t session_counter[2] = {0};
 extern void scan_all();
 void init_otp() {
     if (scanned == false) {
@@ -165,6 +166,9 @@ extern int calculate_oath(uint8_t truncate,
                           size_t key_len,
                           const uint8_t *chal,
                           size_t chal_len);
+#ifndef ENABLE_EMULATION
+static uint8_t session_counter[2] = {0};
+#endif
 int otp_button_pressed(uint8_t slot) {
     init_otp();
 #ifndef ENABLE_EMULATION
@@ -356,13 +360,31 @@ int cmd_otp() {
 #endif
         res_APDU_size = 4;
     }
-    else if (p1 == 0x30 || p1 == 0x38) {
-        file_t *ef = search_dynamic_file(p1 == 0x30 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+    else if (p1 == 0x30 || p1 == 0x38 || p1 == 0x20 || p1 == 0x28) {
+        file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otp_config = (otp_config_t *)file_get_data(ef);
-            int ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, 8, res_APDU);
-            if (ret == 0) {
-                res_APDU_size = 20;
+            int ret = 0;
+            if (p1 == 0x30 || p1 == 0x38) {
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, 8, res_APDU);
+                if (ret == 0) {
+                    res_APDU_size = 20;
+                }
+            }
+            else if (p1 == 0x20 || p1 == 0x28) {
+                uint8_t challenge[16];
+                memcpy(challenge, apdu.data, 6);
+#ifndef ENABLE_EMULATION
+                pico_get_unique_board_id_string((char *) challenge + 6, 10);
+#endif
+                mbedtls_aes_context ctx;
+                mbedtls_aes_init(&ctx);
+                mbedtls_aes_setkey_enc(&ctx, otp_config->aes_key, 128);
+                ret = mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_ENCRYPT, challenge, res_APDU);
+                mbedtls_aes_free(&ctx);
+                if (ret == 0) {
+                    res_APDU_size = 16;
+                }
             }
         }
     }
