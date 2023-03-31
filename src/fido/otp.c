@@ -23,6 +23,8 @@
 #include "version.h"
 #include "asn1.h"
 #include "hid/ctap_hid.h"
+#include "bsp/board.h"
+#include "mbedtls/aes.h"
 
 #define FIXED_SIZE          16
 #define KEY_SIZE            16
@@ -125,35 +127,69 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
     return NULL;
 }
 
+uint8_t modhex_tab[] = {'c', 'b', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'n', 'r', 't', 'u', 'v'};
+int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
+    for (int l = 0; l < len; l++) {
+        *out++ = modhex_tab[in[l] >> 4];
+        *out++ = modhex_tab[in[l] & 0xf];
+    }
+    return 0;
+}
+static bool scanned = false;
+static uint8_t session_counter[2] = {0};
+extern void scan_all();
+void init_otp() {
+    if (scanned == false) {
+        scan_all();
+        for (int i = 0; i < 2; i++) {
+            file_t *ef = search_dynamic_file(EF_OTP_SLOT1 + i);
+            uint8_t *data = file_get_data(ef);
+            otp_config_t *otp_config = (otp_config_t *)data;
+            if (file_has_data(ef) && !(otp_config->tkt_flags & OATH_HOTP) && !(otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET)) {
+                uint16_t counter = (data[otp_config_size] << 8) | data[otp_config_size + 1];
+                if (++counter <= 0x7fff) {
+                    uint8_t new_data[otp_config_size + 8];
+                    memcpy(new_data, data, sizeof(new_data));
+                    new_data[otp_config_size] = counter >> 8;
+                    new_data[otp_config_size + 1] = counter & 0xff;
+                    flash_write_data_to_file(ef, new_data, sizeof(new_data));
+                }
+            }
+        }
+        scanned = true;
+        low_flash_available();
+    }
+}
 extern int calculate_oath(uint8_t truncate,
                           const uint8_t *key,
                           size_t key_len,
                           const uint8_t *chal,
                           size_t chal_len);
 int otp_button_pressed(uint8_t slot) {
+    init_otp();
 #ifndef ENABLE_EMULATION
-    printf("CB PRESSED slot %d\n", slot);
     file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
     const uint8_t *data = file_get_data(ef);
     otp_config_t *otp_config = (otp_config_t *)data;
+    if (file_has_data(ef) == false) {
+        return 1;
+    }
     if (otp_config->tkt_flags & OATH_HOTP) {
         uint8_t tmp_key[KEY_SIZE + 2];
         tmp_key[0] = 0x01;
         memcpy(tmp_key + 2, otp_config->aes_key, KEY_SIZE);
         uint64_t imf = 0;
-        if (file_get_size(ef) == otp_config_size) {
+        const uint8_t *p = data + otp_config_size;
+        imf |= (uint64_t)*p++ << 56;
+        imf |= (uint64_t)*p++ << 48;
+        imf |= (uint64_t)*p++ << 40;
+        imf |= (uint64_t)*p++ << 32;
+        imf |= *p++ << 24;
+        imf |= *p++ << 16;
+        imf |= *p++ << 8;
+        imf |= *p++;
+        if (imf == 0) {
             imf = ((otp_config->uid[4] << 8) | otp_config->uid[5]) << 4;
-        }
-        else {
-            const uint8_t *p = data + otp_config_size;
-            imf |= (uint64_t)*p++ << 56;
-            imf |= (uint64_t)*p++ << 48;
-            imf |= (uint64_t)*p++ << 40;
-            imf |= (uint64_t)*p++ << 32;
-            imf |= *p++ << 24;
-            imf |= *p++ << 16;
-            imf |= *p++ << 8;
-            imf |= *p++;
         }
         uint8_t chal[8] = {imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff};
         res_APDU_size = 0;
@@ -193,7 +229,55 @@ int otp_button_pressed(uint8_t slot) {
         }
     }
     else {
+        uint8_t otpk[22], *po = otpk;
+        bool update_counter = false;
+        uint16_t counter = (data[otp_config_size] << 8) | data[otp_config_size + 1], crc = 0;
+        uint32_t ts = board_millis() / 1000;
+        if (counter == 0) {
+            update_counter = true;
+            counter = 1;
+        }
+        memcpy(po, otp_config->fixed_data, 6);
+        po += 6;
+        memcpy(po, otp_config->uid, UID_SIZE);
+        po += UID_SIZE;
+        *po++ = session_counter[slot - 1];
+        *po++ = counter & 0xff;
+        *po++ = counter >> 8;
+        ts >>= 3;
+        *po++ = ts & 0xff;
+        *po++ = ts >> 8;
+        *po++ = ts >> 16;
+        random_gen(NULL, po, 2);
+        po += 2;
+        crc = calculate_crc(otpk + 6, 14);
+        *po++ = ~crc & 0xff;
+        *po++ = ~crc >> 8;
+        mbedtls_aes_context ctx;
+        mbedtls_aes_init(&ctx);
+        mbedtls_aes_setkey_enc(&ctx, otp_config->aes_key, 128);
+        mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_ENCRYPT, otpk + 6, otpk + 6);
+        mbedtls_aes_free(&ctx);
+        uint8_t otp_out[44];
+        encode_modhex(otpk, sizeof(otpk), otp_out);
+        add_keyboard_buffer((const uint8_t *)otp_out, sizeof(otp_out), true);
+        if (otp_config->tkt_flags & APPEND_CR) {
+            append_keyboard_buffer((const uint8_t *)"\r", 1);
+        }
 
+        if (++session_counter[slot - 1] == 0) {
+            if (++counter <= 0x7fff) {
+                update_counter = true;
+            }
+        }
+        if (update_counter == true) {
+            uint8_t new_data[otp_config_size + 8];
+            memcpy(new_data, data, sizeof(new_data));
+            new_data[otp_config_size] = counter >> 8;
+            new_data[otp_config_size + 1] = counter & 0xff;
+            flash_write_data_to_file(ef, new_data, sizeof(new_data));
+            low_flash_available();
+        }
     }
 #endif
     return 0;
@@ -208,8 +292,6 @@ int otp_unload() {
     return CCID_OK;
 }
 
-static bool scanned = false;
-extern void scan_all();
 uint16_t otp_status() {
     if (scanned == false) {
         scan_all();
@@ -253,7 +335,8 @@ int cmd_otp() {
         }
         for (int c = 0; c < otp_config_size; c++) {
             if (apdu.data[c] != 0) {
-                flash_write_data_to_file(ef, apdu.data, otp_config_size);
+                memset(apdu.data + otp_config_size, 0, 8); // Add 8 bytes extra
+                flash_write_data_to_file(ef, apdu.data, otp_config_size + 8);
                 low_flash_available();
                 config_seq++;
                 return otp_status();
