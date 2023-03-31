@@ -245,13 +245,13 @@ int otp_button_pressed(uint8_t slot) {
         po += 6;
         memcpy(po, otp_config->uid, UID_SIZE);
         po += UID_SIZE;
-        *po++ = session_counter[slot - 1];
         *po++ = counter & 0xff;
         *po++ = counter >> 8;
         ts >>= 3;
         *po++ = ts & 0xff;
         *po++ = ts >> 8;
         *po++ = ts >> 16;
+        *po++ = session_counter[slot - 1];
         random_gen(NULL, po, 2);
         po += 2;
         crc = calculate_crc(otpk + 6, 14);
