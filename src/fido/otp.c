@@ -411,7 +411,35 @@ int cmd_otp() {
         res_APDU_size = 4;
     }
     else if (p1 == 0x13) {
-
+        res_APDU_size = 0;
+        res_APDU[res_APDU_size++] = 0; // Overall length. Filled later
+        res_APDU[res_APDU_size++] = 0x01;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = 0xFF;
+        res_APDU[res_APDU_size++] = 0x02;
+        res_APDU[res_APDU_size++] = 4;
+#ifndef ENABLE_EMULATION
+        pico_get_unique_board_id_string((char *) res_APDU + res_APDU_size, 4);
+#endif
+        res_APDU_size += 4;
+        res_APDU[res_APDU_size++] = 0x03;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = 0x3F;
+        res_APDU[res_APDU_size++] = 0x04;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = 0x01;
+        res_APDU[res_APDU_size++] = 0x05;
+        res_APDU[res_APDU_size++] = 3;
+        res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
+        res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
+        res_APDU[res_APDU_size++] = 0;
+        res_APDU[res_APDU_size++] = 0x08;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = 0x80;
+        res_APDU[res_APDU_size++] = 0x0A;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = 0x00;
+        res_APDU[0] = res_APDU_size - 1;
     }
     else if (p1 == 0x30 || p1 == 0x38 || p1 == 0x20 || p1 == 0x28) {
         file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
