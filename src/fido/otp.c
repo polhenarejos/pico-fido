@@ -413,6 +413,9 @@ int cmd_otp() {
         file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otp_config = (otp_config_t *)file_get_data(ef);
+            if (!(otp_config->cfg_flags & CHAL_YUBICO && otp_config->tkt_flags & CHAL_RESP)) {
+                return SW_WRONG_DATA();
+            }
             int ret = 0;
             if (p1 == 0x30 || p1 == 0x38) {
                 mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, 8, res_APDU);
