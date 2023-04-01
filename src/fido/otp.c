@@ -126,6 +126,7 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
             config_seq = 0;
         }
         otp_status();
+        res_APDU_size = 7;
         apdu.ne = res_APDU_size;
         return a;
     }
@@ -408,6 +409,9 @@ int cmd_otp() {
         pico_get_unique_board_id_string((char *) res_APDU, 4);
 #endif
         res_APDU_size = 4;
+    }
+    else if (p1 == 0x13) {
+
     }
     else if (p1 == 0x30 || p1 == 0x38 || p1 == 0x20 || p1 == 0x28) {
         file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
