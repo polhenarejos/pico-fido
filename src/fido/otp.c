@@ -126,7 +126,8 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
             config_seq = 0;
         }
         otp_status();
-        res_APDU_size = 7;
+        memmove(res_APDU, res_APDU + 1, 6);
+        res_APDU_size = 6;
         apdu.ne = res_APDU_size;
         return a;
     }
