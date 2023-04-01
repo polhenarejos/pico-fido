@@ -50,6 +50,7 @@
 #define ALLOW_UPDATE        0x20    // Allow update of existing configuration (selected flags + access code)
 #define DORMANT             0x40    // Dormant config (woken up, flag removed, requires update flag)
 #define LED_INV             0x80    // LED idle state is off rather than on
+#define EXTFLAG_UPDATE_MASK (SERIAL_BTN_VISIBLE | SERIAL_USB_VISIBLE | SERIAL_API_VISIBLE | USE_NUMERIC_KEYPAD | FAST_TRIG | ALLOW_UPDATE | DORMANT | LED_INV)
 
 /* TKT Flags */
 #define TAB_FIRST       0x01    // Send TAB before first part
@@ -61,6 +62,7 @@
 #define OATH_HOTP       0x40    // OATH HOTP mode
 #define CHAL_RESP       0x40    // Challenge-response enabled (both must be set)
 #define PROTECT_CFG2    0x80    // Block update of config 2 unless config 2 is configured and has this bit set
+#define TKTFLAG_UPDATE_MASK (TAB_FIRST | APPEND_TAB1 | APPEND_TAB2 | APPEND_DELAY1 | APPEND_DELAY2 | APPEND_CR)
 
 /* CFG Flags */
 #define SEND_REF            0x01    // Send reference string (0..F) before data
@@ -83,6 +85,7 @@
 #define OATH_FIXED_MODHEX2  0x40    // First two bytes in fixed part sent as modhex
 #define OATH_FIXED_MODHEX   0x50    // Fixed part sent as modhex
 #define OATH_FIXED_MASK     0x50    // Mask to get out fixed flags
+#define CFGFLAG_UPDATE_MASK (PACING_10MS | PACING_20MS)
 
 static uint8_t config_seq = { 1 };
 
@@ -353,6 +356,26 @@ int cmd_otp() {
             config_seq = 0;
         }
         return otp_status();
+    }
+    else if (p1 == 0x04 || p1 == 0x05) {
+        otp_config_t *odata = (otp_config_t *)apdu.data;
+        if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
+            return SW_WRONG_DATA();
+        }
+        file_t *ef = file_new(p1 == 0x04 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+        if (file_has_data(ef)) {
+            otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
+            if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
+                return SW_SECURITY_STATUS_NOT_SATISFIED();
+            }
+            memcpy(apdu.data, file_get_data(ef), FIXED_SIZE + UID_SIZE + KEY_SIZE);
+            odata->fixed_size = otpc->fixed_size;
+            odata->ext_flags = (otpc->ext_flags & ~EXTFLAG_UPDATE_MASK) | (odata->ext_flags & EXTFLAG_UPDATE_MASK);
+            odata->tkt_flags = (otpc->tkt_flags & ~TKTFLAG_UPDATE_MASK) | (odata->tkt_flags & TKTFLAG_UPDATE_MASK);
+            odata->cfg_flags = (otpc->cfg_flags & ~CFGFLAG_UPDATE_MASK) | (odata->cfg_flags & CFGFLAG_UPDATE_MASK);
+            flash_write_data_to_file(ef, apdu.data, otp_config_size);
+            low_flash_available();
+        }
     }
     else if (p1 == 0x10) {
 #ifndef ENABLE_EMULATION
