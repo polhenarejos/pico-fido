@@ -23,6 +23,32 @@
 #include "files.h"
 #include "hid/ctap_hid.h"
 
+const uint8_t u2f_aid[] = {
+    7,
+    0xA0, 0x00, 0x00, 0x05, 0x27, 0x10, 0x02
+};
+
+int u2f_unload();
+int u2f_process_apdu();
+
+app_t *u2f_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
+    if (!memcmp(aid, u2f_aid + 1, MIN(aid_len, u2f_aid[0]))) {
+        a->aid = u2f_aid;
+        a->process_apdu = u2f_process_apdu;
+        a->unload = u2f_unload;
+        return a;
+    }
+    return NULL;
+}
+
+void __attribute__((constructor)) u2f_ctor() {
+    register_app(u2f_select);
+}
+
+int u2f_unload() {
+    return CCID_OK;
+}
+
 const uint8_t *bogus_firefox =
     (const uint8_t *)
     "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
@@ -109,4 +135,28 @@ int cmd_register() {
     res_APDU_size = sizeof(CTAP_REGISTER_RESP) - sizeof(resp->keyHandleCertSig) + KEY_HANDLE_LEN +
                     ef_certdev_size + olen;
     return SW_OK();
+}
+
+extern int cmd_register();
+extern int cmd_authenticate();
+extern int cmd_version();
+
+static const cmd_t cmds[] = {
+    { CTAP_REGISTER, cmd_register },
+    { CTAP_AUTHENTICATE, cmd_authenticate },
+    { CTAP_VERSION, cmd_version },
+    { 0x00, 0x0 }
+};
+
+int u2f_process_apdu() {
+    if (CLA(apdu) != 0x00) {
+        return SW_CLA_NOT_SUPPORTED();
+    }
+    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
+        if (cmd->ins == INS(apdu)) {
+            int r = cmd->cmd_handler();
+            return r;
+        }
+    }
+    return SW_INS_NOT_SUPPORTED();
 }

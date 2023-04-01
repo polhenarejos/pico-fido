@@ -400,14 +400,7 @@ void set_opts(uint8_t opts) {
     low_flash_available();
 }
 
-extern int cmd_register();
-extern int cmd_authenticate();
-extern int cmd_version();
-
 static const cmd_t cmds[] = {
-    { CTAP_REGISTER, cmd_register },
-    { CTAP_AUTHENTICATE, cmd_authenticate },
-    { CTAP_VERSION, cmd_version },
     { 0x00, 0x0 }
 };
 
