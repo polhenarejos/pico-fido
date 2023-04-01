@@ -365,7 +365,7 @@ int cmd_otp() {
         if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
             return SW_WRONG_DATA();
         }
-        file_t *ef = file_new(p1 == 0x04 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+        file_t *ef = search_dynamic_file(p1 == 0x04 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
             if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
@@ -379,6 +379,29 @@ int cmd_otp() {
             flash_write_data_to_file(ef, apdu.data, otp_config_size);
             low_flash_available();
         }
+    }
+    else if (p1 == 0x06) {
+        uint8_t tmp[otp_config_size + 8];
+        bool ef1_data = false;
+        file_t *ef1 = file_new(EF_OTP_SLOT1);
+        file_t *ef2 = file_new(EF_OTP_SLOT2);
+        if (file_has_data(ef1)) {
+            memcpy(tmp, file_get_data(ef1), file_get_size(ef1));
+            ef1_data = true;
+        }
+        if (file_has_data(ef2)) {
+            flash_write_data_to_file(ef1, file_get_data(ef2), file_get_size(ef2));
+        }
+        else {
+            delete_file(ef1);
+        }
+        if (ef1_data) {
+            flash_write_data_to_file(ef2, tmp, sizeof(tmp));
+        }
+        else {
+            delete_file(ef2);
+        }
+        low_flash_available();
     }
     else if (p1 == 0x10) {
 #ifndef ENABLE_EMULATION
