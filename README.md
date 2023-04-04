@@ -29,6 +29,11 @@ Pico FIDO has implemented the following features:
 - largeBlobs support (2048 bytes máx.)
 - OATH (based on YKOATH protocol specification)
 - TOTP / HOTP
+- Yubikey OTP
+- Challenge-response generation
+- Emulated keyboard interface
+- Button press generates an OTP that is written directly is it was typed
+- Yubico YKMAN compatible
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
