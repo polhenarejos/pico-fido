@@ -40,6 +40,15 @@ If the Pico is stolen the contents of private and secret keys can be read.
 ## Download
 Please, go to the [Release page](https://github.com/polhenarejos/pico-fido/releases "Release page") and download the UF2 file for your board.
 
+Note that UF2 files are shiped with a dummy VID/PID to avoid license issues (FEFF:FCFD). If you are planning to use it with OpenSC or similar, you should modify Info.plist of CCID driver to add these VID/PID or use the [Pico Patcher tool](https://www.picokeys.com/pico-patcher/).
+
+Alternatively you can use the legacy VID/PID patcher as follows:
+`./patch_vidpid.sh VID:PID input_hsm_file.uf2 output_hsm_file.uf2`
+
+You can use whatever VID/PID (i.e., 234b:0000 from FISJ), but remember that you are not authorized to distribute the binary with a VID/PID that you do not own.
+
+Note that the pure-browser option [Pico Patcher tool](https://www.picokeys.com/pico-patcher/) is the most recommended. 
+
 ## Build
 Before building, ensure you have installed the toolchain for the Pico and the Pico SDK is properly located in your drive.
 
