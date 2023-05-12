@@ -82,6 +82,7 @@ app_t *oath_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
         memset(res_APDU + res_APDU_size, 0, 8); res_APDU_size += 8;
 #endif
         if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
+            random_gen(NULL, challenge, sizeof(challenge));
             res_APDU[res_APDU_size++] = TAG_CHALLENGE;
             res_APDU[res_APDU_size++] = sizeof(challenge);
             memcpy(res_APDU + res_APDU_size, challenge, sizeof(challenge));
