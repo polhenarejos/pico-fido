@@ -464,12 +464,12 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
 
     CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,
-                                       self_attestation == false ? 3 : 2));
+                                       self_attestation == false || is_nitrokey ? 3 : 2));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
-    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, self_attestation ? -alg : -FIDO2_ALG_ES256));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, self_attestation || is_nitrokey ? -alg : -FIDO2_ALG_ES256));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "sig"));
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, sig, olen));
-    if (self_attestation == false) {
+    if (self_attestation == false || is_nitrokey) {
         CborEncoder arrEncoder;
         file_t *ef_cert = NULL;
         if (enterpriseAttestation == 2) {
