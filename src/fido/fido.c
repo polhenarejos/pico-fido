@@ -115,10 +115,9 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_validity(&ctx, "20220901000000", "20720831235959");
     mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
-    mbedtls_mpi serial;
-    mbedtls_mpi_init(&serial);
-    mbedtls_mpi_fill_random(&serial, 32, random_gen, NULL);
-    mbedtls_x509write_crt_set_serial(&ctx, &serial);
+    uint8_t serial[20];
+    random_gen(NULL, serial, sizeof(serial));
+    mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
     mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
