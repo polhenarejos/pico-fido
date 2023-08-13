@@ -193,6 +193,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "credBlob", credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", extensions.thirdPartyPayment);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -460,6 +461,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         if (credBlob == ptrue) {
             l++;
         }
+        if (extensions.thirdPartyPayment != NULL) {
+            l++;
+        }
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
         if (credBlob == ptrue) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
@@ -537,6 +541,15 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
             encrypt(hmacSecretPinUvAuthProtocol, sharedSecret, out1, salt_enc.len - poff, hmac_res);
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, hmac_res, salt_enc.len));
+        }
+        if (extensions.thirdPartyPayment != NULL) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "thirdPartyPayment"));
+            if (selcred->extensions.thirdPartyPayment == ptrue) {
+                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+            }
+            else {
+                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
+            }
         }
 
         CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));

@@ -124,6 +124,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "minPinLength", extensions.minPinLength);
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", extensions.credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", extensions.thirdPartyPayment);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);

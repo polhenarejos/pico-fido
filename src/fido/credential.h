@@ -33,6 +33,7 @@ typedef struct CredExtensions {
     const bool *minPinLength;
     CborByteString credBlob;
     const bool *largeBlobKey;
+    const bool *thirdPartyPayment;
     bool present;
 } CredExtensions;
 
