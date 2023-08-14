@@ -23,6 +23,7 @@
 #include "version.h"
 #include "asn1.h"
 #include "crypto_utils.h"
+#include "management.h"
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
@@ -36,7 +37,7 @@
 #define TAG_T_RESPONSE      0x76
 #define TAG_NO_RESPONSE     0x77
 #define TAG_PROPERTY        0x78
-#define TAG_VERSION         0x79
+#define TAG_T_VERSION       0x79
 #define TAG_IMF             0x7a
 #define TAG_ALGO            0x7b
 #define TAG_TOUCH_RESPONSE  0x7c
@@ -68,12 +69,12 @@ const uint8_t oath_aid[] = {
 };
 
 app_t *oath_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, oath_aid + 1, MIN(aid_len, oath_aid[0]))) {
+    if (!memcmp(aid, oath_aid + 1, MIN(aid_len, oath_aid[0])) && cap_supported(CAP_OATH)) {
         a->aid = oath_aid;
         a->process_apdu = oath_process_apdu;
         a->unload = oath_unload;
         res_APDU_size = 0;
-        res_APDU[res_APDU_size++] = TAG_VERSION;
+        res_APDU[res_APDU_size++] = TAG_T_VERSION;
         res_APDU[res_APDU_size++] = 3;
         res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
         res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;

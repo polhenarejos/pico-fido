@@ -31,6 +31,7 @@
 #include "bsp/board.h"
 #endif
 #include <math.h>
+#include "management.h"
 
 int fido_process_apdu();
 int fido_unload();
@@ -52,7 +53,7 @@ const uint8_t atr_fido[] = {
 };
 
 app_t *fido_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, fido_aid + 1, MIN(aid_len, fido_aid[0]))) {
+    if (!memcmp(aid, fido_aid + 1, MIN(aid_len, fido_aid[0])) && cap_supported(CAP_FIDO2)) {
         a->aid = fido_aid;
         a->process_apdu = fido_process_apdu;
         a->unload = fido_unload;

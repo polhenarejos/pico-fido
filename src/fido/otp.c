@@ -27,6 +27,7 @@
 #include "bsp/board.h"
 #endif
 #include "mbedtls/aes.h"
+#include "management.h"
 
 #define FIXED_SIZE          16
 #define KEY_SIZE            16
@@ -114,7 +115,7 @@ const uint8_t otp_aid[] = {
 };
 
 app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0]))) {
+    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0]) && cap_supported(CAP_OTP))) {
         a->aid = otp_aid;
         a->process_apdu = otp_process_apdu;
         a->unload = otp_unload;
@@ -175,6 +176,9 @@ extern int calculate_oath(uint8_t truncate,
 static uint8_t session_counter[2] = {0};
 #endif
 int otp_button_pressed(uint8_t slot) {
+    if (!cap_supported(CAP_OTP)) {
+        return 3;
+    }
     init_otp();
 #ifndef ENABLE_EMULATION
     file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
@@ -327,8 +331,6 @@ bool check_crc(const otp_config_t *data) {
     uint16_t crc = calculate_crc((const uint8_t *)data, otp_config_size);
     return crc == 0xF0B8;
 }
-
-extern int man_get_config();
 
 int cmd_otp() {
     uint8_t p1 = P1(apdu), p2 = P2(apdu);

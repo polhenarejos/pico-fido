@@ -22,6 +22,7 @@
 #include "random.h"
 #include "files.h"
 #include "hid/ctap_hid.h"
+#include "management.h"
 
 const uint8_t u2f_aid[] = {
     7,
@@ -32,7 +33,7 @@ int u2f_unload();
 int u2f_process_apdu();
 
 app_t *u2f_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, u2f_aid + 1, MIN(aid_len, u2f_aid[0]))) {
+    if (!memcmp(aid, u2f_aid + 1, MIN(aid_len, u2f_aid[0])) && cap_supported(CAP_U2F)) {
         a->aid = u2f_aid;
         a->process_apdu = u2f_process_apdu;
         a->unload = u2f_unload;
