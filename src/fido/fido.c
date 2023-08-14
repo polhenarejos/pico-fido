@@ -415,10 +415,12 @@ int fido_process_apdu() {
     if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
     }
-    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
-        if (cmd->ins == INS(apdu)) {
-            int r = cmd->cmd_handler();
-            return r;
+    if (cap_supported(CAP_U2F)) {
+        for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
+            if (cmd->ins == INS(apdu)) {
+                int r = cmd->cmd_handler();
+                return r;
+            }
         }
     }
     return SW_INS_NOT_SUPPORTED();

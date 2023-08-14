@@ -23,6 +23,7 @@
 #include "fido.h"
 #include "usb.h"
 #include "apdu.h"
+#include "management.h"
 
 const bool _btrue = true, _bfalse = false;
 
@@ -52,41 +53,43 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len > 0) {
         DEBUG_DATA(data + 1, len - 1);
     }
-    driver_prepare_response_hid();
-    if (cmd == CTAPHID_CBOR) {
-        if (data[0] == CTAP_MAKE_CREDENTIAL) {
-            return cbor_make_credential(data + 1, len - 1);
+    if (cap_supported(CAP_FIDO2)) {
+        driver_prepare_response_hid();
+        if (cmd == CTAPHID_CBOR) {
+            if (data[0] == CTAP_MAKE_CREDENTIAL) {
+                return cbor_make_credential(data + 1, len - 1);
+            }
+            if (data[0] == CTAP_GET_INFO) {
+                return cbor_get_info();
+            }
+            else if (data[0] == CTAP_RESET) {
+                return cbor_reset();
+            }
+            else if (data[0] == CTAP_CLIENT_PIN) {
+                return cbor_client_pin(data + 1, len - 1);
+            }
+            else if (data[0] == CTAP_GET_ASSERTION) {
+                return cbor_get_assertion(data + 1, len - 1, false);
+            }
+            else if (data[0] == CTAP_GET_NEXT_ASSERTION) {
+                return cbor_get_next_assertion(data + 1, len - 1);
+            }
+            else if (data[0] == CTAP_SELECTION) {
+                return cbor_selection();
+            }
+            else if (data[0] == CTAP_CREDENTIAL_MGMT || data[0] == 0x41) {
+                return cbor_cred_mgmt(data + 1, len - 1);
+            }
+            else if (data[0] == CTAP_CONFIG) {
+                return cbor_config(data + 1, len - 1);
+            }
+            else if (data[0] == CTAP_LARGE_BLOBS) {
+                return cbor_large_blobs(data + 1, len - 1);
+            }
         }
-        if (data[0] == CTAP_GET_INFO) {
-            return cbor_get_info();
+        else if (cmd == CTAP_VENDOR_CBOR) {
+            return cbor_vendor(data, len);
         }
-        else if (data[0] == CTAP_RESET) {
-            return cbor_reset();
-        }
-        else if (data[0] == CTAP_CLIENT_PIN) {
-            return cbor_client_pin(data + 1, len - 1);
-        }
-        else if (data[0] == CTAP_GET_ASSERTION) {
-            return cbor_get_assertion(data + 1, len - 1, false);
-        }
-        else if (data[0] == CTAP_GET_NEXT_ASSERTION) {
-            return cbor_get_next_assertion(data + 1, len - 1);
-        }
-        else if (data[0] == CTAP_SELECTION) {
-            return cbor_selection();
-        }
-        else if (data[0] == CTAP_CREDENTIAL_MGMT || data[0] == 0x41) {
-            return cbor_cred_mgmt(data + 1, len - 1);
-        }
-        else if (data[0] == CTAP_CONFIG) {
-            return cbor_config(data + 1, len - 1);
-        }
-        else if (data[0] == CTAP_LARGE_BLOBS) {
-            return cbor_large_blobs(data + 1, len - 1);
-        }
-    }
-    else if (cmd == CTAP_VENDOR_CBOR) {
-        return cbor_vendor(data, len);
     }
     return CTAP1_ERR_INVALID_CMD;
 }
