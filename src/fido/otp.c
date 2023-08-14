@@ -176,10 +176,10 @@ extern int calculate_oath(uint8_t truncate,
 static uint8_t session_counter[2] = {0};
 #endif
 int otp_button_pressed(uint8_t slot) {
+    init_otp();
     if (!cap_supported(CAP_OTP)) {
         return 3;
     }
-    init_otp();
 #ifndef ENABLE_EMULATION
     file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
     const uint8_t *data = file_get_data(ef);
