@@ -337,9 +337,6 @@ int cmd_otp() {
     }
     if (p1 == 0x01 || p1 == 0x03) { // Configure slot
         otp_config_t *odata = (otp_config_t *)apdu.data;
-        if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
-            return SW_WRONG_DATA();
-        }
         file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
@@ -349,6 +346,9 @@ int cmd_otp() {
         }
         for (int c = 0; c < otp_config_size; c++) {
             if (apdu.data[c] != 0) {
+                if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
+                    return SW_WRONG_DATA();
+                }
                 memset(apdu.data + otp_config_size, 0, 8); // Add 8 bytes extra
                 flash_write_data_to_file(ef, apdu.data, otp_config_size + 8);
                 low_flash_available();
