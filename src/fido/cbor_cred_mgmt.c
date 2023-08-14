@@ -258,7 +258,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
 
         cred_counter++;
 
-        uint8_t l = 3;
+        uint8_t l = 4;
         if (subcommand == 0x04) {
             l++;
         }
@@ -349,6 +349,12 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                                                    sizeof(largeBlobKey)));
                 mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
             }
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, cred.extensions.thirdPartyPayment == ptrue));
+        }
+        else {
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
         }
         credential_free(&cred);
         mbedtls_ecdsa_free(&key);
