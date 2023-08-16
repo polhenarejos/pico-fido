@@ -309,21 +309,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
 
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
-        CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  5));
-        CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 1));
-        CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 2));
-        CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 3));
-        CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -cred.alg));
-        CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 1));
-        CBOR_CHECK(cbor_encode_uint(&mapEncoder2, cred.curve));
-        CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 2));
-        uint8_t pkey[66];
-        mbedtls_mpi_write_binary(&key.Q.X, pkey, mbedtls_mpi_size(&key.Q.X));
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, mbedtls_mpi_size(&key.Q.X)));
-        CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 3));
-        mbedtls_mpi_write_binary(&key.Q.Y, pkey, mbedtls_mpi_size(&key.Q.Y));
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, mbedtls_mpi_size(&key.Q.Y)));
-        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+        CBOR_CHECK(COSE_key(&key, &mapEncoder, &mapEncoder2));
 
         if (subcommand == 0x04) {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x09));

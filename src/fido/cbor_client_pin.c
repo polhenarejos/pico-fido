@@ -374,21 +374,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
 
-            CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  5));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 1));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 2));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 3));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ECDH_ES_HKDF_256));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 1));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, FIDO2_CURVE_P256));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 2));
-            uint8_t pkey[32];
-            mbedtls_mpi_write_binary(&hkey.ctx.mbed_ecdh.Q.X, pkey, 32);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, 32));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 3));
-            mbedtls_mpi_write_binary(&hkey.ctx.mbed_ecdh.Q.Y, pkey, 32);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, 32));
-            CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+            CBOR_CHECK(COSE_key_shared(&hkey, &mapEncoder, &mapEncoder2));
         }
         else if (pinUvAuthProtocol == 0) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
