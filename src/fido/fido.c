@@ -120,6 +120,12 @@ int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
     else if (id == MBEDTLS_ECP_DP_CURVE448) {
         return FIDO2_CURVE_X448;
     }
+    else if (id == MBEDTLS_ECP_DP_ED25519) {
+        return FIDO2_CURVE_ED25519;
+    }
+    else if (id == MBEDTLS_ECP_DP_ED448) {
+        return FIDO2_CURVE_ED448;
+    }
     return 0;
 }
 

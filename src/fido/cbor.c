@@ -187,6 +187,9 @@ CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent, Cbor
     else if (key->grp.id == MBEDTLS_ECP_DP_CURVE25519) {
         alg = FIDO2_ALG_ECDH_ES_HKDF_256;
     }
+    else if (key->grp.id == MBEDTLS_ECP_DP_ED25519) {
+        alg = FIDO2_ALG_EDDSA;
+    }
     return COSE_key_params(crv, alg, &key->grp, &key->Q, mapEncoderParent, mapEncoder);
 }
 CborError COSE_key_shared(mbedtls_ecdh_context *key, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
