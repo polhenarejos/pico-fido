@@ -177,6 +177,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512) {
             curve = FIDO2_CURVE_P521;
         }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K) {
+            curve = FIDO2_CURVE_P256K1;
+        }
         else if (pubKeyCredParams[i].alg == 0) { // no present
             curve = -1;
         }

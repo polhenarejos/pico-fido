@@ -90,7 +90,7 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CRED_ID_LENGTH)); // MAX_CRED_ID_MAX_LENGTH
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
     CBOR_CHECK(cbor_encoder_create_map(&arrayEncoder, &mapEncoder2, 2));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ES256));
@@ -106,6 +106,12 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_create_map(&arrayEncoder, &mapEncoder2, 2));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
     CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ES512));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
+    CBOR_CHECK(cbor_encoder_close_container(&arrayEncoder, &mapEncoder2));
+    CBOR_CHECK(cbor_encoder_create_map(&arrayEncoder, &mapEncoder2, 2));
+    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ES256K));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
     CBOR_CHECK(cbor_encoder_close_container(&arrayEncoder, &mapEncoder2));
