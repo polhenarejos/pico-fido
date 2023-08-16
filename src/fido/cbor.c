@@ -204,3 +204,32 @@ CborError COSE_public_key(int alg, CborEncoder *mapEncoderParent, CborEncoder *m
     err:
     return error;
 }
+CborError COSE_read_key(CborValue *f, int64_t *kty, int64_t *alg, int64_t *crv, CborByteString *kax, CborByteString *kay) {
+    int64_t kkey = 0;
+    CborError error = CborNoError;
+    CBOR_PARSE_MAP_START(*f, 0)
+    {
+        CBOR_FIELD_GET_INT(kkey, 0);
+        if (kkey == 1) {
+            CBOR_FIELD_GET_INT(*kty, 0);
+        }
+        else if (kkey == 3) {
+            CBOR_FIELD_GET_INT(*alg, 0);
+        }
+        else if (kkey == -1) {
+            CBOR_FIELD_GET_INT(*crv, 0);
+        }
+        else if (kkey == -2) {
+            CBOR_FIELD_GET_BYTES(*kax, 0);
+        }
+        else if (kkey == -3) {
+            CBOR_FIELD_GET_BYTES(*kay, 0);
+        }
+        else {
+            CBOR_ADVANCE(0);
+        }
+    }
+    CBOR_PARSE_MAP_END(*f, 0);
+    err:
+    return error;
+}

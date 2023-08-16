@@ -312,30 +312,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_FIELD_GET_UINT(subcommand, 1);
         }
         else if (val_u == 0x03) {
-            int64_t key = 0;
-            CBOR_PARSE_MAP_START(_f1, 2)
-            {
-                CBOR_FIELD_GET_INT(key, 2);
-                if (key == 1) {
-                    CBOR_FIELD_GET_INT(kty, 2);
-                }
-                else if (key == 3) {
-                    CBOR_FIELD_GET_INT(alg, 2);
-                }
-                else if (key == -1) {
-                    CBOR_FIELD_GET_INT(crv, 2);
-                }
-                else if (key == -2) {
-                    CBOR_FIELD_GET_BYTES(kax, 2);
-                }
-                else if (key == -3) {
-                    CBOR_FIELD_GET_BYTES(kay, 2);
-                }
-                else {
-                    CBOR_ADVANCE(2);
-                }
-            }
-            CBOR_PARSE_MAP_END(_f1, 2);
+            CBOR_CHECK(COSE_read_key(&_f1, &kty, &alg, &crv, &kax, &kay));
         }
         else if (val_u == 0x04) {
             CBOR_FIELD_GET_BYTES(pinUvAuthParam, 1);

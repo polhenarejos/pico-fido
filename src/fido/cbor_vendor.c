@@ -84,30 +84,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                     CBOR_FIELD_GET_BYTES(vendorParam, 2);
                 }
                 else if (subpara == 0x02) {
-                    int64_t key = 0;
-                    CBOR_PARSE_MAP_START(_f2, 3)
-                    {
-                        CBOR_FIELD_GET_INT(key, 3);
-                        if (key == 1) {
-                            CBOR_FIELD_GET_INT(kty, 3);
-                        }
-                        else if (key == 3) {
-                            CBOR_FIELD_GET_INT(alg, 3);
-                        }
-                        else if (key == -1) {
-                            CBOR_FIELD_GET_INT(crv, 3);
-                        }
-                        else if (key == -2) {
-                            CBOR_FIELD_GET_BYTES(kax, 3);
-                        }
-                        else if (key == -3) {
-                            CBOR_FIELD_GET_BYTES(kay, 3);
-                        }
-                        else {
-                            CBOR_ADVANCE(3);
-                        }
-                    }
-                    CBOR_PARSE_MAP_END(_f2, 3);
+                    CBOR_CHECK(COSE_read_key(&_f2, &kty, &alg, &crv, &kax, &kay));
                 }
                 else {
                     CBOR_ADVANCE(2);
