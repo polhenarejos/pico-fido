@@ -574,16 +574,23 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
 
     memcpy(pa, clientDataHash.data, clientDataHash.len);
-    uint8_t hash[32], sig[MBEDTLS_ECDSA_MAX_LEN];
-    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+    uint8_t hash[64], sig[MBEDTLS_ECDSA_MAX_LEN];
+    const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
+        md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
+    }
+    else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
+        md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    }
+    ret = mbedtls_md(md,
                      aut_data,
                      aut_data_len + clientDataHash.len,
                      hash);
     size_t olen = 0;
     ret = mbedtls_ecdsa_write_signature(&ekey,
-                                        MBEDTLS_MD_SHA256,
+                                        mbedtls_md_get_type(md),
                                         hash,
-                                        32,
+                                        mbedtls_md_get_size(md),
                                         sig,
                                         sizeof(sig),
                                         &olen,
