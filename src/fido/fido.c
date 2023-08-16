@@ -32,6 +32,7 @@
 #endif
 #include <math.h>
 #include "management.h"
+#include "ctap_hid.h"
 
 int fido_process_apdu();
 int fido_unload();
@@ -403,16 +404,32 @@ void set_opts(uint8_t opts) {
 extern int cmd_register();
 extern int cmd_authenticate();
 extern int cmd_version();
+extern int cbor_parse(int, uint8_t *, size_t);
+
+#define CTAP_CBOR 0x10
+
+int cmd_cbor() {
+    uint8_t *old_buf = res_APDU;
+    int ret = cbor_parse(0x90, apdu.data, apdu.nc);
+    if (ret != 0) {
+        return SW_EXEC_ERROR();
+    }
+    res_APDU = old_buf;
+    res_APDU_size += 1;
+    memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
+    return SW_OK();
+}
 
 static const cmd_t cmds[] = {
     { CTAP_REGISTER, cmd_register },
     { CTAP_AUTHENTICATE, cmd_authenticate },
     { CTAP_VERSION, cmd_version },
+    { CTAP_CBOR, cmd_cbor },
     { 0x00, 0x0 }
 };
 
 int fido_process_apdu() {
-    if (CLA(apdu) != 0x00) {
+    if (CLA(apdu) != 0x00 && CLA(apdu) != 0x80) {
         return SW_CLA_NOT_SUPPORTED();
     }
     if (cap_supported(CAP_U2F)) {
