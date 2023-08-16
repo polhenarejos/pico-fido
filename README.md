@@ -13,7 +13,7 @@ Pico FIDO has implemented the following features:
 - User Verification with PIN
 - Discoverable credentials
 - Credential management
-- ECDSA authentication
+- ECDSA and EDDSA authentication
 - App registration and login
 - Device selection
 - Support for vendor Config
