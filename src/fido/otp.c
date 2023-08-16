@@ -115,7 +115,7 @@ const uint8_t otp_aid[] = {
 };
 
 app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0]) && cap_supported(CAP_OTP))) {
+    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0])) && cap_supported(CAP_OTP)) {
         a->aid = otp_aid;
         a->process_apdu = otp_process_apdu;
         a->unload = otp_unload;
