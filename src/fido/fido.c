@@ -32,6 +32,7 @@
 #endif
 #include <math.h>
 #include "management.h"
+#include "ctap_hid.h"
 
 int fido_process_apdu();
 int fido_unload();
@@ -99,6 +100,27 @@ mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
         return MBEDTLS_ECP_DP_ED448;
     }
     return MBEDTLS_ECP_DP_NONE;
+}
+int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
+    if (id == MBEDTLS_ECP_DP_SECP256R1) {
+        return FIDO2_CURVE_P256;
+    }
+    else if (id == MBEDTLS_ECP_DP_SECP384R1) {
+        return FIDO2_CURVE_P384;
+    }
+    else if (id == MBEDTLS_ECP_DP_SECP521R1) {
+        return FIDO2_CURVE_P521;
+    }
+    else if (id == MBEDTLS_ECP_DP_SECP256K1) {
+        return FIDO2_CURVE_P256K1;
+    }
+    else if (id == MBEDTLS_ECP_DP_CURVE25519) {
+        return MBEDTLS_ECP_DP_CURVE25519;
+    }
+    else if (id == MBEDTLS_ECP_DP_CURVE448) {
+        return FIDO2_CURVE_X448;
+    }
+    return 0;
 }
 
 int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key) {
@@ -409,16 +431,32 @@ void set_opts(uint8_t opts) {
 extern int cmd_register();
 extern int cmd_authenticate();
 extern int cmd_version();
+extern int cbor_parse(int, uint8_t *, size_t);
+
+#define CTAP_CBOR 0x10
+
+int cmd_cbor() {
+    uint8_t *old_buf = res_APDU;
+    int ret = cbor_parse(0x90, apdu.data, apdu.nc);
+    if (ret != 0) {
+        return SW_EXEC_ERROR();
+    }
+    res_APDU = old_buf;
+    res_APDU_size += 1;
+    memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
+    return SW_OK();
+}
 
 static const cmd_t cmds[] = {
     { CTAP_REGISTER, cmd_register },
     { CTAP_AUTHENTICATE, cmd_authenticate },
     { CTAP_VERSION, cmd_version },
+    { CTAP_CBOR, cmd_cbor },
     { 0x00, 0x0 }
 };
 
 int fido_process_apdu() {
-    if (CLA(apdu) != 0x00) {
+    if (CLA(apdu) != 0x00 && CLA(apdu) != 0x80) {
         return SW_CLA_NOT_SUPPORTED();
     }
     if (cap_supported(CAP_U2F)) {

@@ -19,6 +19,9 @@
 #define _CTAP2_CBOR_H_
 
 #include "cbor.h"
+#include "common.h"
+#include "mbedtls/ecp.h"
+#include "mbedtls/ecdh.h"
 
 extern uint8_t *driver_prepare_response();
 extern void driver_exec_finished(size_t size_next);
@@ -236,5 +239,10 @@ typedef struct CborCharString {
             CBOR_CHECK(cbor_encode_uint(&(p), (k))); \
             CBOR_CHECK(cbor_encode_boolean(&(p), v == ptrue ? true : false)); \
         } } while (0)
+
+extern CborError COSE_key(mbedtls_ecp_keypair *, CborEncoder *, CborEncoder *);
+extern CborError COSE_key_shared(mbedtls_ecdh_context *key, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder);
+extern CborError COSE_public_key(int alg, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder);
+extern CborError COSE_read_key(CborValue *f, int64_t *kty, int64_t *alg, int64_t *crv, CborByteString *kax, CborByteString *kay);
 
 #endif //_CTAP2_CBOR_H_

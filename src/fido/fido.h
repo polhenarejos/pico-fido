@@ -46,6 +46,7 @@ extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ec
 extern bool wait_button_pressed();
 extern void init_fido();
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
+extern int mbedtls_curve_to_fido(mbedtls_ecp_group_id id);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key);
 extern int load_keydev(uint8_t *key);
 extern int encrypt(uint8_t protocol,

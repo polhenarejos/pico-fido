@@ -84,30 +84,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                     CBOR_FIELD_GET_BYTES(vendorParam, 2);
                 }
                 else if (subpara == 0x02) {
-                    int64_t key = 0;
-                    CBOR_PARSE_MAP_START(_f2, 3)
-                    {
-                        CBOR_FIELD_GET_INT(key, 3);
-                        if (key == 1) {
-                            CBOR_FIELD_GET_INT(kty, 3);
-                        }
-                        else if (key == 3) {
-                            CBOR_FIELD_GET_INT(alg, 3);
-                        }
-                        else if (key == -1) {
-                            CBOR_FIELD_GET_INT(crv, 3);
-                        }
-                        else if (key == -2) {
-                            CBOR_FIELD_GET_BYTES(kax, 3);
-                        }
-                        else if (key == -3) {
-                            CBOR_FIELD_GET_BYTES(kay, 3);
-                        }
-                        else {
-                            CBOR_ADVANCE(3);
-                        }
-                    }
-                    CBOR_PARSE_MAP_END(_f2, 3);
+                    CBOR_CHECK(COSE_read_key(&_f2, &kty, &alg, &crv, &kax, &kay));
                 }
                 else {
                     CBOR_ADVANCE(2);
@@ -223,22 +200,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
 
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
-
-            CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  5));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 1));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 2));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 3));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ECDH_ES_HKDF_256));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 1));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, FIDO2_CURVE_P256));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 2));
-            uint8_t pkey[32];
-            mbedtls_mpi_write_binary(&hkey.ctx.mbed_ecdh.Q.X, pkey, 32);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, 32));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 3));
-            mbedtls_mpi_write_binary(&hkey.ctx.mbed_ecdh.Q.Y, pkey, 32);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, 32));
-            CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+            CBOR_CHECK(COSE_key_shared(&hkey, &mapEncoder, &mapEncoder2));
             mbedtls_ecdh_free(&hkey);
         }
     }

@@ -150,30 +150,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     {
                         CBOR_FIELD_GET_UINT(ukey, 3);
                         if (ukey == 0x01) {
-                            int64_t kkey = 0;
-                            CBOR_PARSE_MAP_START(_f3, 4)
-                            {
-                                CBOR_FIELD_GET_INT(kkey, 4);
-                                if (kkey == 1) {
-                                    CBOR_FIELD_GET_INT(kty, 4);
-                                }
-                                else if (kkey == 3) {
-                                    CBOR_FIELD_GET_INT(alg, 4);
-                                }
-                                else if (kkey == -1) {
-                                    CBOR_FIELD_GET_INT(crv, 4);
-                                }
-                                else if (kkey == -2) {
-                                    CBOR_FIELD_GET_BYTES(kax, 4);
-                                }
-                                else if (kkey == -3) {
-                                    CBOR_FIELD_GET_BYTES(kay, 4);
-                                }
-                                else {
-                                    CBOR_ADVANCE(4);
-                                }
-                            }
-                            CBOR_PARSE_MAP_END(_f3, 4);
+                            CBOR_CHECK(COSE_read_key(&_f3, &kty, &alg, &crv, &kax, &kay));
                         }
                         else if (ukey == 0x02) {
                             CBOR_FIELD_GET_BYTES(salt_enc, 3);
