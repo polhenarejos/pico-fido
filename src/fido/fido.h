@@ -23,6 +23,7 @@
 #endif
 #include "common.h"
 #include "mbedtls/ecdsa.h"
+#include "mbedtls/eddsa.h"
 #ifndef ENABLE_EMULATION
 #include "ctap_hid.h"
 #else
@@ -40,12 +41,12 @@ extern int derive_key(const uint8_t *app_id,
                       bool new_key,
                       uint8_t *key_handle,
                       int,
-                      mbedtls_ecdsa_context *key);
-extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *);
+                      mbedtls_ecp_keypair *key);
+extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *);
 extern bool wait_button_pressed();
 extern void init_fido();
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
-extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);
+extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key);
 extern int load_keydev(uint8_t *key);
 extern int encrypt(uint8_t protocol,
                    const uint8_t *key,

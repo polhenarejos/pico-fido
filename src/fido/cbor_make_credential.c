@@ -180,6 +180,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K) {
             curve = FIDO2_CURVE_P256K1;
         }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_EDDSA) {
+            curve = FIDO2_CURVE_ED25519;
+        }
         else if (pubKeyCredParams[i].alg == 0) { // no present
             curve = -1;
         }
@@ -370,16 +373,16 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         flags |= FIDO2_AUT_FLAG_ED;
     }
     uint8_t pkey[66];
-    mbedtls_ecdsa_context ekey;
-    mbedtls_ecdsa_init(&ekey);
+    mbedtls_ecp_keypair ekey;
+    mbedtls_ecp_keypair_init(&ekey);
     int ret = fido_load_key(curve, cred_id, &ekey);
     if (ret != 0) {
-        mbedtls_ecdsa_free(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
     const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(ekey.grp.id);
     if (cinfo == NULL) {
-        mbedtls_ecdsa_free(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
     size_t olen = 0;
@@ -419,7 +422,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     memcpy(pa, cbor_buf, rs); pa += rs;
     memcpy(pa, ext, ext_len); pa += ext_len;
     if (pa - aut_data != aut_data_len) {
-        mbedtls_ecdsa_free(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
 
@@ -432,29 +435,51 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
     }
-    ret = mbedtls_md(md,
-                     aut_data,
-                     aut_data_len + clientDataHash.len,
-                     hash);
-
+    else if (ekey.grp.id == MBEDTLS_ECP_DP_ED25519) {
+        md = NULL;
+    }
+    if (md != NULL) {
+        ret = mbedtls_md(md,
+                         aut_data,
+                         aut_data_len + clientDataHash.len,
+                         hash);
+    }
     bool self_attestation = true;
     if (enterpriseAttestation == 2 || (ka && ka->use_self_attestation == pfalse)) {
-        mbedtls_ecdsa_free(&ekey);
-        mbedtls_ecdsa_init(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
+        mbedtls_ecp_keypair_init(&ekey);
         ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), 32);
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
         self_attestation = false;
     }
-    ret = mbedtls_ecdsa_write_signature(&ekey,
-                                        mbedtls_md_get_type(md),
-                                        hash,
-                                        mbedtls_md_get_size(md),
-                                        sig,
-                                        sizeof(sig),
-                                        &olen,
-                                        random_gen,
-                                        NULL);
-    mbedtls_ecdsa_free(&ekey);
+    if (md != NULL) {
+        ret = mbedtls_ecdsa_write_signature(&ekey,
+                                            mbedtls_md_get_type(md),
+                                            hash,
+                                            mbedtls_md_get_size(md),
+                                            sig,
+                                            sizeof(sig),
+                                            &olen,
+                                            random_gen,
+                                            NULL);
+    }
+    else {
+        ret = mbedtls_eddsa_write_signature(&ekey,
+                                            aut_data,
+                                            aut_data_len + clientDataHash.len,
+                                            sig,
+                                            sizeof(sig),
+                                            &olen,
+                                            MBEDTLS_EDDSA_PURE,
+                                            NULL,
+                                            0,
+                                            random_gen,
+                                            NULL);
+    }
+    if (ret != 0) {
+        CBOR_ERROR(CTAP2_ERR_PROCESSING);
+    }
+    mbedtls_ecp_keypair_free(&ekey);
 
     uint8_t largeBlobKey[32];
     if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {

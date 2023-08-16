@@ -92,10 +92,16 @@ mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
     else if (curve == FIDO2_CURVE_X448) {
         return MBEDTLS_ECP_DP_CURVE448;
     }
+    else if (curve == FIDO2_CURVE_ED25519) {
+        return MBEDTLS_ECP_DP_ED25519;
+    }
+    else if (curve == FIDO2_CURVE_ED448) {
+        return MBEDTLS_ECP_DP_ED448;
+    }
     return MBEDTLS_ECP_DP_NONE;
 }
 
-int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key) {
+int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key) {
     mbedtls_ecp_group_id mbedtls_curve = fido_curve_to_mbedtls(curve);
     if (mbedtls_curve == MBEDTLS_ECP_DP_NONE) {
         return CTAP2_ERR_UNSUPPORTED_ALGORITHM;
@@ -152,7 +158,7 @@ int load_keydev(uint8_t *key) {
     return CCID_OK;
 }
 
-int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *key) {
+int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *key) {
     for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
         uint32_t k = *(uint32_t *) &keyHandle[i * sizeof(uint32_t)];
         if (!(k & 0x80000000)) {
@@ -194,7 +200,7 @@ int derive_key(const uint8_t *app_id,
                bool new_key,
                uint8_t *key_handle,
                int curve,
-               mbedtls_ecdsa_context *key) {
+               mbedtls_ecp_keypair *key) {
     uint8_t outk[64] = { 0 };
     int r = 0;
     memset(outk, 0, sizeof(outk));
