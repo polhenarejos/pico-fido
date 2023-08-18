@@ -121,7 +121,7 @@ def test_bad_type_pubKeyCredParams(device):
         device.doMC(key_params=["wrong"])
 
 @pytest.mark.parametrize(
-    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM]
+    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM, EdDSA.ALGORITHM]
 )
 def test_algorithms(device, info, alg):
     if ({'alg': alg, 'type': 'public-key'} in info.algorithms):
