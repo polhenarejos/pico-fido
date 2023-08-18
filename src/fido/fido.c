@@ -282,6 +282,9 @@ int derive_key(const uint8_t *app_id,
         if (r != 0) {
             return r;
         }
+        if (curve == MBEDTLS_ECP_DP_ED25519) {
+            return mbedtls_ecp_point_edwards(&key->grp, &key->Q, &key->d, random_gen, NULL);
+        }
         return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL);
     }
     mbedtls_platform_zeroize(outk, sizeof(outk));
