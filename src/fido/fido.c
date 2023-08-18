@@ -262,6 +262,9 @@ int derive_key(const uint8_t *app_id,
         if (cinfo == NULL) {
             return 1;
         }
+        if (cinfo->bit_size % 8 != 0) {
+            outk[0] >>= 8 - (cinfo->bit_size % 8);
+        }
         r = mbedtls_ecp_read_key(curve, key, outk, ceil((float) cinfo->bit_size / 8));
         mbedtls_platform_zeroize(outk, sizeof(outk));
         if (r != 0) {
