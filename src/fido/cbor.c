@@ -136,7 +136,7 @@ CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedtls_ecp_
         kty = 2;
     }
 
-    CBOR_CHECK(cbor_encoder_create_map(mapEncoderParent, mapEncoder, 5));
+    CBOR_CHECK(cbor_encoder_create_map(mapEncoderParent, mapEncoder, kty == 2 ? 5 : 4));
 
     CBOR_CHECK(cbor_encode_uint(mapEncoder, 1));
     CBOR_CHECK(cbor_encode_uint(mapEncoder, kty));
