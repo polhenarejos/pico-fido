@@ -19,7 +19,7 @@
 
 
 from fido2.client import CtapError
-from fido2.cose import ES256
+from fido2.cose import ES256, ES384, ES512, EdDSA
 import pytest
 
 
@@ -31,7 +31,7 @@ def test_make_credential():
     pass
 
 def test_attestation_format(MCRes):
-        assert MCRes['res'].attestation_object.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
+    assert MCRes['res'].attestation_object.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
 
 def test_authdata_length(MCRes):
     assert len(MCRes['res'].attestation_object.auth_data) >= 77
@@ -119,6 +119,13 @@ def test_bad_type_user_icon(device):
 def test_bad_type_pubKeyCredParams(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=["wrong"])
+
+@pytest.mark.parametrize(
+    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM]
+)
+def test_algorithms(device, info, alg):
+    if ({'alg': alg, 'type': 'public-key'} in info.algorithms):
+        device.doMC(key_params=[{"alg": alg, "type": "public-key"}])
 
 def test_missing_pubKeyCredParams_type(device):
     with pytest.raises(CtapError) as e:
