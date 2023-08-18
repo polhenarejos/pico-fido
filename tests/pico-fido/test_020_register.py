@@ -19,7 +19,7 @@
 
 
 from fido2.client import CtapError
-from fido2.cose import ES256, ES384, ES512, EdDSA
+from fido2.cose import ES256, ES384, ES512
 import pytest
 
 
