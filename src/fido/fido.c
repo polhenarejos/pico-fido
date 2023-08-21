@@ -217,7 +217,7 @@ int derive_key(const uint8_t *app_id,
                uint8_t *key_handle,
                int curve,
                mbedtls_ecdsa_context *key) {
-    uint8_t outk[64] = { 0 };
+    uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
     int r = 0;
     memset(outk, 0, sizeof(outk));
     if ((r = load_keydev(outk)) != CCID_OK) {
