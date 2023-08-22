@@ -131,14 +131,14 @@ def test_missing_pubKeyCredParams_type(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=[{"alg": ES256.ALGORITHM}])
 
-    assert e.value.code == CtapError.ERR.MISSING_PARAMETER
+    assert e.value.code == CtapError.ERR.INVALID_CBOR
 
 def test_missing_pubKeyCredParams_alg(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=[{"type": "public-key"}])
 
     assert e.value.code in [
-        CtapError.ERR.MISSING_PARAMETER,
+        CtapError.ERR.INVALID_CBOR,
         CtapError.ERR.UNSUPPORTED_ALGORITHM,
     ]
 
@@ -150,7 +150,7 @@ def test_unsupported_algorithm(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=[{"alg": 1337, "type": "public-key"}])
 
-    assert e.value.code == CtapError.ERR.UNSUPPORTED_ALGORITHM
+    assert e.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
 
 def test_exclude_list(resetdevice):
     resetdevice.doMC(exclude_list=[{"id": b"1234", "type": "rot13"}])
