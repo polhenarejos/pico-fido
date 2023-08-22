@@ -14,6 +14,7 @@ Pico FIDO has implemented the following features:
 - Discoverable credentials
 - Credential management
 - ECDSA authentication
+- Authentication with SECP256R1, SECP384R1, SECP521R1 and SECP256K1 curves.
 - App registration and login
 - Device selection
 - Support for vendor Config
