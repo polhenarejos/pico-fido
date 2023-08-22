@@ -25,7 +25,7 @@ from fido2.attestation import FidoU2FAttestation
 from fido2.ctap2.pin import ClientPin
 from fido2.server import Fido2Server
 from fido2.ctap import CtapError
-from fido2.webauthn import CollectedClientData, AttestedCredentialData
+from fido2.webauthn import CollectedClientData, PublicKeyCredentialParameters, PublicKeyCredentialType
 from utils import *
 from fido2.cose import ES256
 import sys
@@ -116,6 +116,10 @@ class Device():
         self.__rp = rp
         self.__attestation = attestation
         self.__server = Fido2Server(self.__rp, attestation=self.__attestation)
+        self.__server.allowed_algorithms = [
+            PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, p['alg'])
+            for p in self.__client._backend.info.algorithms
+        ]
 
     def client(self):
         return self.__client

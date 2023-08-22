@@ -156,51 +156,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t rp_id_hash[32];
     mbedtls_sha256((uint8_t *) rp.id.data, rp.id.len, rp_id_hash, 0);
 
-    int curve = -1, alg = 0;
-    if (pubKeyCredParams_len == 0) {
-        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-    }
-
-    for (int i = 0; i < pubKeyCredParams_len; i++) {
-        if (pubKeyCredParams[i].type.present == false) {
-            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-        }
-        if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0) {
-            continue;
-        }
-        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256) {
-            curve = FIDO2_CURVE_P256;
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES384) {
-            curve = FIDO2_CURVE_P384;
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512) {
-            curve = FIDO2_CURVE_P521;
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K) {
-            curve = FIDO2_CURVE_P256K1;
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_EDDSA) {
-            curve = FIDO2_CURVE_ED25519;
-        }
-        else if (pubKeyCredParams[i].alg == 0) { // no present
-            curve = -1;
-        }
-        else {
-            curve = 0;
-        }
-        if (curve > 0) {
-            alg = pubKeyCredParams[i].alg;
-            break;
-        }
-    }
-    if (curve == 0) {
-        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
-    }
-    else if (curve == -1) {
-        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-    }
-
     if (pinUvAuthParam.present == true) {
         if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
             if (check_user_presence() == false) {
@@ -222,6 +177,58 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
         }
     }
+
+    int curve = -1, alg = 0;
+    if (pubKeyCredParams_len == 0) {
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+
+    for (int i = 0; i < pubKeyCredParams_len; i++) {
+        if (pubKeyCredParams[i].type.present == false) {
+            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+        }
+        if (pubKeyCredParams[i].alg == 0) {
+            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+        }
+        if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0) {
+            CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
+        }
+        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_P256;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES384) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_P384;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_P521;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_P256K1;
+            }
+        }        
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_EDDSA) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_ED25519;
+            }
+        }
+        else {
+            CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
+        }
+        if (curve > 0 && alg == 0) {
+            alg = pubKeyCredParams[i].alg;
+        }
+    }
+    if (curve <= 0) {
+        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
+    }
+
     if (options.present) {
         if (options.uv == ptrue) { //5.3
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);

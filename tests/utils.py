@@ -19,6 +19,11 @@
 
 
 from fido2.webauthn import AttestedCredentialData
+from fido2.cose import CoseKey
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from fido2.utils import bytes2int, int2bytes
+from cryptography.hazmat.backends import default_backend
 import random
 import string
 import secrets
@@ -175,3 +180,29 @@ class Timeout(object):
         if self.timer:
             self.timer.cancel()
             self.timer.join()
+
+class ES256K(CoseKey):
+    ALGORITHM = -47
+    _HASH_ALG = hashes.SHA256()
+
+    def verify(self, message, signature):
+        if self[-1] != 8:
+            raise ValueError("Unsupported elliptic curve")
+        ec.EllipticCurvePublicNumbers(
+            bytes2int(self[-2]), bytes2int(self[-3]), ec.SECP256K1()
+        ).public_key(default_backend()).verify(
+            signature, message, ec.ECDSA(self._HASH_ALG)
+        )
+
+    @classmethod
+    def from_cryptography_key(cls, public_key):
+        pn = public_key.public_numbers()
+        return cls(
+            {
+                1: 2,
+                3: cls.ALGORITHM,
+                -1: 8,
+                -2: int2bytes(pn.x, 32),
+                -3: int2bytes(pn.y, 32),
+            }
+        )
