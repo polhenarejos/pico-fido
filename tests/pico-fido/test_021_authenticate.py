@@ -18,8 +18,9 @@
 """
 
 
-from fido2.utils import sha256
 from fido2.client import CtapError
+from fido2.cose import ES256, ES384, ES512
+from utils import verify, ES256K
 import pytest
 
 def test_authenticate(device):
@@ -46,6 +47,17 @@ def test_empty_allowList(device):
     with pytest.raises(CtapError) as e:
         device.doGA(allow_list=[])
     assert e.value.code == CtapError.ERR.NO_CREDENTIALS
+
+@pytest.mark.parametrize(
+    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM, ES256K.ALGORITHM]
+)
+def test_algorithms(device, info, alg):
+    if ({'alg': alg, 'type': 'public-key'} in info.algorithms):
+        MCRes = device.doMC(key_params=[{"alg": alg, "type": "public-key"}])
+        res = device.GA(allow_list=[
+            {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
+        ])
+        verify(MCRes['res'].attestation_object, res['res'], res['req']['client_data_hash'])
 
 def test_get_assertion_allow_list_filtering_and_buffering(device):
     """ Check that authenticator filters and stores items in allow list correctly """
@@ -124,7 +136,6 @@ def test_missing_rp(device):
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
 
 def test_bad_rp(device):
-
     with pytest.raises(CtapError) as e:
         device.doGA(rp_id={"id": {"type": "wrong"}})
 

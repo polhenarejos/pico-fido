@@ -14,6 +14,7 @@ Pico FIDO has implemented the following features:
 - Discoverable credentials
 - Credential management
 - ECDSA authentication
+- Authentication with SECP256R1, SECP384R1, SECP521R1 and SECP256K1 curves.
 - App registration and login
 - Device selection
 - Support for vendor Config
@@ -34,6 +35,7 @@ Pico FIDO has implemented the following features:
 - Emulated keyboard interface
 - Button press generates an OTP that is written directly is it was typed
 - Yubico YKMAN compatible
+- Nitrokey nitropy and nitroapp compatible
 
 All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
 
@@ -52,7 +54,7 @@ Alternatively you can use the legacy VID/PID patcher as follows:
 
 You can use whatever VID/PID (i.e., 234b:0000 from FISJ), but remember that you are not authorized to distribute the binary with a VID/PID that you do not own.
 
-Note that the pure-browser option [Pico Patcher tool](https://www.picokeys.com/pico-patcher/) is the most recommended. 
+Note that the pure-browser option [Pico Patcher tool](https://www.picokeys.com/pico-patcher/) is the most recommended.
 
 ## Build
 Before building, ensure you have installed the toolchain for the Pico and the Pico SDK is properly located in your drive.

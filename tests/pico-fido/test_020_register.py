@@ -19,7 +19,8 @@
 
 
 from fido2.client import CtapError
-from fido2.cose import ES256
+from fido2.cose import ES256, ES384, ES512
+from utils import ES256K
 import pytest
 
 
@@ -31,7 +32,7 @@ def test_make_credential():
     pass
 
 def test_attestation_format(MCRes):
-        assert MCRes['res'].attestation_object.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
+    assert MCRes['res'].attestation_object.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
 
 def test_authdata_length(MCRes):
     assert len(MCRes['res'].attestation_object.auth_data) >= 77
@@ -120,18 +121,25 @@ def test_bad_type_pubKeyCredParams(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=["wrong"])
 
+@pytest.mark.parametrize(
+    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM, ES256K.ALGORITHM]
+)
+def test_algorithms(device, info, alg):
+    if ({'alg': alg, 'type': 'public-key'} in info.algorithms):
+        device.doMC(key_params=[{"alg": alg, "type": "public-key"}])
+
 def test_missing_pubKeyCredParams_type(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=[{"alg": ES256.ALGORITHM}])
 
-    assert e.value.code == CtapError.ERR.MISSING_PARAMETER
+    assert e.value.code == CtapError.ERR.INVALID_CBOR
 
 def test_missing_pubKeyCredParams_alg(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=[{"type": "public-key"}])
 
     assert e.value.code in [
-        CtapError.ERR.MISSING_PARAMETER,
+        CtapError.ERR.INVALID_CBOR,
         CtapError.ERR.UNSUPPORTED_ALGORITHM,
     ]
 
@@ -143,7 +151,7 @@ def test_unsupported_algorithm(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=[{"alg": 1337, "type": "public-key"}])
 
-    assert e.value.code == CtapError.ERR.UNSUPPORTED_ALGORITHM
+    assert e.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
 
 def test_exclude_list(resetdevice):
     resetdevice.doMC(exclude_list=[{"id": b"1234", "type": "rot13"}])

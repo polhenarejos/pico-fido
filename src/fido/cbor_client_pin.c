@@ -312,30 +312,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_FIELD_GET_UINT(subcommand, 1);
         }
         else if (val_u == 0x03) {
-            int64_t key = 0;
-            CBOR_PARSE_MAP_START(_f1, 2)
-            {
-                CBOR_FIELD_GET_INT(key, 2);
-                if (key == 1) {
-                    CBOR_FIELD_GET_INT(kty, 2);
-                }
-                else if (key == 3) {
-                    CBOR_FIELD_GET_INT(alg, 2);
-                }
-                else if (key == -1) {
-                    CBOR_FIELD_GET_INT(crv, 2);
-                }
-                else if (key == -2) {
-                    CBOR_FIELD_GET_BYTES(kax, 2);
-                }
-                else if (key == -3) {
-                    CBOR_FIELD_GET_BYTES(kay, 2);
-                }
-                else {
-                    CBOR_ADVANCE(2);
-                }
-            }
-            CBOR_PARSE_MAP_END(_f1, 2);
+            CBOR_CHECK(COSE_read_key(&_f1, &kty, &alg, &crv, &kax, &kay));
         }
         else if (val_u == 0x04) {
             CBOR_FIELD_GET_BYTES(pinUvAuthParam, 1);
@@ -374,21 +351,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
 
-            CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,  5));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 1));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 2));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, 3));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ECDH_ES_HKDF_256));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 1));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, FIDO2_CURVE_P256));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 2));
-            uint8_t pkey[32];
-            mbedtls_mpi_write_binary(&hkey.ctx.mbed_ecdh.Q.X, pkey, 32);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, 32));
-            CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, 3));
-            mbedtls_mpi_write_binary(&hkey.ctx.mbed_ecdh.Q.Y, pkey, 32);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, pkey, 32));
-            CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
+            CBOR_CHECK(COSE_key_shared(&hkey, &mapEncoder, &mapEncoder2));
         }
         else if (pinUvAuthProtocol == 0) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);

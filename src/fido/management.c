@@ -19,6 +19,9 @@
 #include "hsm.h"
 #include "apdu.h"
 #include "version.h"
+#include "files.h"
+#include "asn1.h"
+#include "management.h"
 
 int man_process_apdu();
 int man_unload();
@@ -27,15 +30,16 @@ const uint8_t man_aid[] = {
     8,
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x47, 0x11, 0x17
 };
-
+extern void scan_all();
 app_t *man_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
     if (!memcmp(aid, man_aid + 1, MIN(aid_len, man_aid[0]))) {
         a->aid = man_aid;
         a->process_apdu = man_process_apdu;
         a->unload = man_unload;
-        sprintf((char *)res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
-        res_APDU_size = strlen((char *)res_APDU);
+        sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
+        res_APDU_size = strlen((char *) res_APDU);
         apdu.ne = res_APDU_size;
+        scan_all();
         return a;
     }
     return NULL;
@@ -49,43 +53,69 @@ int man_unload() {
     return CCID_OK;
 }
 
+bool cap_supported(uint16_t cap) {
+    file_t *ef = search_dynamic_file(EF_DEV_CONF);
+    if (file_has_data(ef)) {
+        uint16_t tag = 0x0, data_len = file_get_size(ef);
+        uint8_t *tag_data = NULL, *p = NULL, *data = file_get_data(ef);
+        size_t tag_len = 0;
+        while (walk_tlv(data, data_len, &p, &tag, &tag_len, &tag_data)) {
+            if (tag == TAG_USB_ENABLED) {
+                uint16_t ecaps = tag_data[0];
+                if (tag_len == 2) {
+                    ecaps = (tag_data[0] << 8) | tag_data[1];
+                }
+                return ecaps & cap;
+            }
+        }
+    }
+    return true;
+}
+
 int man_get_config() {
+    file_t *ef = search_dynamic_file(EF_DEV_CONF);
     res_APDU_size = 0;
     res_APDU[res_APDU_size++] = 0; // Overall length. Filled later
-    res_APDU[res_APDU_size++] = 0x01;
+    res_APDU[res_APDU_size++] = TAG_USB_SUPPORTED;
     res_APDU[res_APDU_size++] = 2;
-    res_APDU[res_APDU_size++] = 0x02;
-    res_APDU[res_APDU_size++] = 0x01 | 0x02 | 0x20;
-    res_APDU[res_APDU_size++] = 0x02;
+    res_APDU[res_APDU_size++] = CAP_FIDO2 >> 8;
+    res_APDU[res_APDU_size++] = CAP_OTP | CAP_U2F | CAP_OATH;
+    res_APDU[res_APDU_size++] = TAG_SERIAL;
     res_APDU[res_APDU_size++] = 4;
 #ifndef ENABLE_EMULATION
     pico_get_unique_board_id_string((char *) res_APDU + res_APDU_size, 4);
 #endif
     res_APDU_size += 4;
-    res_APDU[res_APDU_size++] = 0x03;
-    res_APDU[res_APDU_size++] = 2;
-    res_APDU[res_APDU_size++] = 0x02;
-    res_APDU[res_APDU_size++] = 0x01 | 0x02 | 0x20;
-    res_APDU[res_APDU_size++] = 0x04;
+    res_APDU[res_APDU_size++] = TAG_FORM_FACTOR;
     res_APDU[res_APDU_size++] = 1;
     res_APDU[res_APDU_size++] = 0x01;
-    res_APDU[res_APDU_size++] = 0x05;
+    res_APDU[res_APDU_size++] = TAG_VERSION;
     res_APDU[res_APDU_size++] = 3;
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
     res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = 0x08;
-    res_APDU[res_APDU_size++] = 1;
-    res_APDU[res_APDU_size++] = 0x80;
-    res_APDU[res_APDU_size++] = 0x0A;
+    res_APDU[res_APDU_size++] = TAG_NFC_SUPPORTED;
     res_APDU[res_APDU_size++] = 1;
     res_APDU[res_APDU_size++] = 0x00;
-    res_APDU[res_APDU_size++] = 0x0D;
-    res_APDU[res_APDU_size++] = 1;
-    res_APDU[res_APDU_size++] = 0x00;
-    res_APDU[res_APDU_size++] = 0x0E;
-    res_APDU[res_APDU_size++] = 1;
-    res_APDU[res_APDU_size++] = 0x00;
+    if (!file_has_data(ef)) {
+        res_APDU[res_APDU_size++] = TAG_USB_ENABLED;
+        res_APDU[res_APDU_size++] = 2;
+        res_APDU[res_APDU_size++] = CAP_FIDO2 >> 8;
+        res_APDU[res_APDU_size++] = CAP_OTP | CAP_U2F | CAP_OATH;
+        res_APDU[res_APDU_size++] = TAG_DEVICE_FLAGS;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = FLAG_EJECT;
+        res_APDU[res_APDU_size++] = TAG_CONFIG_LOCK;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = 0x00;
+        res_APDU[res_APDU_size++] = TAG_NFC_ENABLED;
+        res_APDU[res_APDU_size++] = 1;
+        res_APDU[res_APDU_size++] = 0x00;
+    }
+    else {
+        memcpy(res_APDU + res_APDU_size, file_get_data(ef), file_get_size(ef));
+        res_APDU_size += file_get_size(ef);
+    }
     res_APDU[0] = res_APDU_size - 1;
     return 0;
 }
@@ -95,10 +125,22 @@ int cmd_read_config() {
     return SW_OK();
 }
 
+int cmd_write_config() {
+    if (apdu.data[0] != apdu.nc - 1) {
+        return SW_WRONG_DATA();
+    }
+    file_t *ef = file_new(EF_DEV_CONF);
+    flash_write_data_to_file(ef, apdu.data + 1, apdu.nc - 1);
+    low_flash_available();
+    return SW_OK();
+}
+
 #define INS_READ_CONFIG             0x1D
+#define INS_WRITE_CONFIG            0x1C
 
 static const cmd_t cmds[] = {
     { INS_READ_CONFIG, cmd_read_config },
+    { INS_WRITE_CONFIG, cmd_write_config },
     { 0x00, 0x0 }
 };
 

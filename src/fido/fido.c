@@ -31,6 +31,8 @@
 #include "bsp/board.h"
 #endif
 #include <math.h>
+#include "management.h"
+#include "ctap_hid.h"
 
 int fido_process_apdu();
 int fido_unload();
@@ -52,7 +54,7 @@ const uint8_t atr_fido[] = {
 };
 
 app_t *fido_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, fido_aid + 1, MIN(aid_len, fido_aid[0]))) {
+    if (!memcmp(aid, fido_aid + 1, MIN(aid_len, fido_aid[0])) && cap_supported(CAP_FIDO2)) {
         a->aid = fido_aid;
         a->process_apdu = fido_process_apdu;
         a->unload = fido_unload;
@@ -93,6 +95,27 @@ mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
     }
     return MBEDTLS_ECP_DP_NONE;
 }
+int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
+    if (id == MBEDTLS_ECP_DP_SECP256R1) {
+        return FIDO2_CURVE_P256;
+    }
+    else if (id == MBEDTLS_ECP_DP_SECP384R1) {
+        return FIDO2_CURVE_P384;
+    }
+    else if (id == MBEDTLS_ECP_DP_SECP521R1) {
+        return FIDO2_CURVE_P521;
+    }
+    else if (id == MBEDTLS_ECP_DP_SECP256K1) {
+        return FIDO2_CURVE_P256K1;
+    }
+    else if (id == MBEDTLS_ECP_DP_CURVE25519) {
+        return MBEDTLS_ECP_DP_CURVE25519;
+    }
+    else if (id == MBEDTLS_ECP_DP_CURVE448) {
+        return FIDO2_CURVE_X448;
+    }
+    return 0;
+}
 
 int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key) {
     mbedtls_ecp_group_id mbedtls_curve = fido_curve_to_mbedtls(curve);
@@ -115,10 +138,9 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_validity(&ctx, "20220901000000", "20720831235959");
     mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
-    mbedtls_mpi serial;
-    mbedtls_mpi_init(&serial);
-    mbedtls_mpi_fill_random(&serial, 32, random_gen, NULL);
-    mbedtls_x509write_crt_set_serial(&ctx, &serial);
+    uint8_t serial[20];
+    random_gen(NULL, serial, sizeof(serial));
+    mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
     mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
@@ -195,7 +217,7 @@ int derive_key(const uint8_t *app_id,
                uint8_t *key_handle,
                int curve,
                mbedtls_ecdsa_context *key) {
-    uint8_t outk[64] = { 0 };
+    uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
     int r = 0;
     memset(outk, 0, sizeof(outk));
     if ((r = load_keydev(outk)) != CCID_OK) {
@@ -239,6 +261,9 @@ int derive_key(const uint8_t *app_id,
         const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(curve);
         if (cinfo == NULL) {
             return 1;
+        }
+        if (cinfo->bit_size % 8 != 0) {
+            outk[0] >>= 8 - (cinfo->bit_size % 8);
         }
         r = mbedtls_ecp_read_key(curve, key, outk, ceil((float) cinfo->bit_size / 8));
         mbedtls_platform_zeroize(outk, sizeof(outk));
@@ -403,22 +428,40 @@ void set_opts(uint8_t opts) {
 extern int cmd_register();
 extern int cmd_authenticate();
 extern int cmd_version();
+extern int cbor_parse(int, uint8_t *, size_t);
+
+#define CTAP_CBOR 0x10
+
+int cmd_cbor() {
+    uint8_t *old_buf = res_APDU;
+    int ret = cbor_parse(0x90, apdu.data, apdu.nc);
+    if (ret != 0) {
+        return SW_EXEC_ERROR();
+    }
+    res_APDU = old_buf;
+    res_APDU_size += 1;
+    memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
+    return SW_OK();
+}
 
 static const cmd_t cmds[] = {
     { CTAP_REGISTER, cmd_register },
     { CTAP_AUTHENTICATE, cmd_authenticate },
     { CTAP_VERSION, cmd_version },
+    { CTAP_CBOR, cmd_cbor },
     { 0x00, 0x0 }
 };
 
 int fido_process_apdu() {
-    if (CLA(apdu) != 0x00) {
+    if (CLA(apdu) != 0x00 && CLA(apdu) != 0x80) {
         return SW_CLA_NOT_SUPPORTED();
     }
-    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
-        if (cmd->ins == INS(apdu)) {
-            int r = cmd->cmd_handler();
-            return r;
+    if (cap_supported(CAP_U2F)) {
+        for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
+            if (cmd->ins == INS(apdu)) {
+                int r = cmd->cmd_handler();
+                return r;
+            }
         }
     }
     return SW_INS_NOT_SUPPORTED();

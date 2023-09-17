@@ -45,6 +45,7 @@ extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ec
 extern bool wait_button_pressed();
 extern void init_fido();
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
+extern int mbedtls_curve_to_fido(mbedtls_ecp_group_id id);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);
 extern int load_keydev(uint8_t *key);
 extern int encrypt(uint8_t protocol,
@@ -64,6 +65,7 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #define FIDO2_ALG_ES384     -35 //ECDSA-SHA384 P384
 #define FIDO2_ALG_ES512     -36 //ECDSA-SHA512 P521
 #define FIDO2_ALG_ECDH_ES_HKDF_256 -25 //ECDH-ES + HKDF-256
+#define FIDO2_ALG_ES256K    -47
 
 #define FIDO2_CURVE_P256        1
 #define FIDO2_CURVE_P384        2

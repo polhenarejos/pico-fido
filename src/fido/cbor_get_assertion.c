@@ -150,30 +150,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     {
                         CBOR_FIELD_GET_UINT(ukey, 3);
                         if (ukey == 0x01) {
-                            int64_t kkey = 0;
-                            CBOR_PARSE_MAP_START(_f3, 4)
-                            {
-                                CBOR_FIELD_GET_INT(kkey, 4);
-                                if (kkey == 1) {
-                                    CBOR_FIELD_GET_INT(kty, 4);
-                                }
-                                else if (kkey == 3) {
-                                    CBOR_FIELD_GET_INT(alg, 4);
-                                }
-                                else if (kkey == -1) {
-                                    CBOR_FIELD_GET_INT(crv, 4);
-                                }
-                                else if (kkey == -2) {
-                                    CBOR_FIELD_GET_BYTES(kax, 4);
-                                }
-                                else if (kkey == -3) {
-                                    CBOR_FIELD_GET_BYTES(kay, 4);
-                                }
-                                else {
-                                    CBOR_ADVANCE(4);
-                                }
-                            }
-                            CBOR_PARSE_MAP_END(_f3, 4);
+                            CBOR_CHECK(COSE_read_key(&_f3, &kty, &alg, &crv, &kax, &kay));
                         }
                         else if (ukey == 0x02) {
                             CBOR_FIELD_GET_BYTES(salt_enc, 3);
@@ -193,6 +170,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "credBlob", credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", extensions.thirdPartyPayment);
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -460,6 +438,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         if (credBlob == ptrue) {
             l++;
         }
+        if (extensions.thirdPartyPayment != NULL) {
+            l++;
+        }
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
         if (credBlob == ptrue) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
@@ -538,6 +519,15 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             encrypt(hmacSecretPinUvAuthProtocol, sharedSecret, out1, salt_enc.len - poff, hmac_res);
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, hmac_res, salt_enc.len));
         }
+        if (extensions.thirdPartyPayment != NULL) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "thirdPartyPayment"));
+            if (selcred->extensions.thirdPartyPayment == ptrue) {
+                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+            }
+            else {
+                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
+            }
+        }
 
         CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
         ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
@@ -561,16 +551,23 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
 
     memcpy(pa, clientDataHash.data, clientDataHash.len);
-    uint8_t hash[32], sig[MBEDTLS_ECDSA_MAX_LEN];
-    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+    uint8_t hash[64], sig[MBEDTLS_ECDSA_MAX_LEN];
+    const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
+        md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
+    }
+    else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
+        md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    }
+    ret = mbedtls_md(md,
                      aut_data,
                      aut_data_len + clientDataHash.len,
                      hash);
     size_t olen = 0;
     ret = mbedtls_ecdsa_write_signature(&ekey,
-                                        MBEDTLS_MD_SHA256,
+                                        mbedtls_md_get_type(md),
                                         hash,
-                                        32,
+                                        mbedtls_md_get_size(md),
                                         sig,
                                         sizeof(sig),
                                         &olen,

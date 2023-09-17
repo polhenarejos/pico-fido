@@ -37,12 +37,13 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 5));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 6));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credBlob"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobKey"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "minPinLength"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "thirdPartyPayment"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
@@ -89,25 +90,11 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CRED_ID_LENGTH)); // MAX_CRED_ID_MAX_LENGTH
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
-    CBOR_CHECK(cbor_encoder_create_map(&arrayEncoder, &mapEncoder2, 2));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
-    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ES256));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
-    CBOR_CHECK(cbor_encoder_close_container(&arrayEncoder, &mapEncoder2));
-    CBOR_CHECK(cbor_encoder_create_map(&arrayEncoder, &mapEncoder2, 2));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
-    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ES384));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
-    CBOR_CHECK(cbor_encoder_close_container(&arrayEncoder, &mapEncoder2));
-    CBOR_CHECK(cbor_encoder_create_map(&arrayEncoder, &mapEncoder2, 2));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
-    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, -FIDO2_ALG_ES512));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
-    CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
-    CBOR_CHECK(cbor_encoder_close_container(&arrayEncoder, &mapEncoder2));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
+    CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES256, &arrayEncoder, &mapEncoder2));
+    CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES384, &arrayEncoder, &mapEncoder2));
+    CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES512, &arrayEncoder, &mapEncoder2));
+    CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES256K, &arrayEncoder, &mapEncoder2));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0B));

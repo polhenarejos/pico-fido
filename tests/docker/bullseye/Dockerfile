@@ -22,7 +22,12 @@ RUN apt install -y libccid \
     cmake \
     libfuse-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN pip3 install pytest pycvc cryptography pyscard fido2 inputimeout
+RUN pip3 install pytest pycvc cryptography pyscard inputimeout
+RUN git clone https://github.com/polhenarejos/python-fido2.git
+WORKDIR /python-fido2
+RUN git checkout development
+RUN pip3 install .
+WORKDIR /
 RUN git clone https://github.com/frankmorgner/vsmartcard.git
 WORKDIR /vsmartcard/virtualsmartcard
 RUN autoreconf --verbose --install

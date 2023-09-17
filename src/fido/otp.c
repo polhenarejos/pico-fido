@@ -27,6 +27,7 @@
 #include "bsp/board.h"
 #endif
 #include "mbedtls/aes.h"
+#include "management.h"
 
 #define FIXED_SIZE          16
 #define KEY_SIZE            16
@@ -50,7 +51,8 @@
 #define ALLOW_UPDATE        0x20    // Allow update of existing configuration (selected flags + access code)
 #define DORMANT             0x40    // Dormant config (woken up, flag removed, requires update flag)
 #define LED_INV             0x80    // LED idle state is off rather than on
-#define EXTFLAG_UPDATE_MASK (SERIAL_BTN_VISIBLE | SERIAL_USB_VISIBLE | SERIAL_API_VISIBLE | USE_NUMERIC_KEYPAD | FAST_TRIG | ALLOW_UPDATE | DORMANT | LED_INV)
+#define EXTFLAG_UPDATE_MASK (SERIAL_BTN_VISIBLE | SERIAL_USB_VISIBLE | SERIAL_API_VISIBLE | \
+                             USE_NUMERIC_KEYPAD | FAST_TRIG | ALLOW_UPDATE | DORMANT | LED_INV)
 
 /* TKT Flags */
 #define TAB_FIRST       0x01    // Send TAB before first part
@@ -62,7 +64,8 @@
 #define OATH_HOTP       0x40    // OATH HOTP mode
 #define CHAL_RESP       0x40    // Challenge-response enabled (both must be set)
 #define PROTECT_CFG2    0x80    // Block update of config 2 unless config 2 is configured and has this bit set
-#define TKTFLAG_UPDATE_MASK (TAB_FIRST | APPEND_TAB1 | APPEND_TAB2 | APPEND_DELAY1 | APPEND_DELAY2 | APPEND_CR)
+#define TKTFLAG_UPDATE_MASK (TAB_FIRST | APPEND_TAB1 | APPEND_TAB2 | APPEND_DELAY1 | APPEND_DELAY2 | \
+                             APPEND_CR)
 
 /* CFG Flags */
 #define SEND_REF            0x01    // Send reference string (0..F) before data
@@ -114,7 +117,7 @@ const uint8_t otp_aid[] = {
 };
 
 app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0]))) {
+    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0])) && cap_supported(CAP_OTP)) {
         a->aid = otp_aid;
         a->process_apdu = otp_process_apdu;
         a->unload = otp_unload;
@@ -134,7 +137,8 @@ app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
     return NULL;
 }
 
-uint8_t modhex_tab[] = {'c', 'b', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'n', 'r', 't', 'u', 'v'};
+uint8_t modhex_tab[] =
+{ 'c', 'b', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'n', 'r', 't', 'u', 'v' };
 int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
     for (int l = 0; l < len; l++) {
         *out++ = modhex_tab[in[l] >> 4];
@@ -150,8 +154,9 @@ void init_otp() {
         for (int i = 0; i < 2; i++) {
             file_t *ef = search_dynamic_file(EF_OTP_SLOT1 + i);
             uint8_t *data = file_get_data(ef);
-            otp_config_t *otp_config = (otp_config_t *)data;
-            if (file_has_data(ef) && !(otp_config->tkt_flags & OATH_HOTP) && !(otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET)) {
+            otp_config_t *otp_config = (otp_config_t *) data;
+            if (file_has_data(ef) && !(otp_config->tkt_flags & OATH_HOTP) &&
+                !(otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET)) {
                 uint16_t counter = (data[otp_config_size] << 8) | data[otp_config_size + 1];
                 if (++counter <= 0x7fff) {
                     uint8_t new_data[otp_config_size + 8];
@@ -172,14 +177,17 @@ extern int calculate_oath(uint8_t truncate,
                           const uint8_t *chal,
                           size_t chal_len);
 #ifndef ENABLE_EMULATION
-static uint8_t session_counter[2] = {0};
+static uint8_t session_counter[2] = { 0 };
 #endif
 int otp_button_pressed(uint8_t slot) {
     init_otp();
+    if (!cap_supported(CAP_OTP)) {
+        return 3;
+    }
 #ifndef ENABLE_EMULATION
     file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
     const uint8_t *data = file_get_data(ef);
-    otp_config_t *otp_config = (otp_config_t *)data;
+    otp_config_t *otp_config = (otp_config_t *) data;
     if (file_has_data(ef) == false) {
         return 1;
     }
@@ -192,10 +200,10 @@ int otp_button_pressed(uint8_t slot) {
         memcpy(tmp_key + 2, otp_config->aes_key, KEY_SIZE);
         uint64_t imf = 0;
         const uint8_t *p = data + otp_config_size;
-        imf |= (uint64_t)*p++ << 56;
-        imf |= (uint64_t)*p++ << 48;
-        imf |= (uint64_t)*p++ << 40;
-        imf |= (uint64_t)*p++ << 32;
+        imf |= (uint64_t) *p++ << 56;
+        imf |= (uint64_t) *p++ << 48;
+        imf |= (uint64_t) *p++ << 40;
+        imf |= (uint64_t) *p++ << 32;
         imf |= *p++ << 24;
         imf |= *p++ << 16;
         imf |= *p++ << 8;
@@ -203,24 +211,28 @@ int otp_button_pressed(uint8_t slot) {
         if (imf == 0) {
             imf = ((otp_config->uid[4] << 8) | otp_config->uid[5]) << 4;
         }
-        uint8_t chal[8] = {imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff};
+        uint8_t chal[8] =
+        { imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff };
         res_APDU_size = 0;
         int ret = calculate_oath(1, tmp_key, sizeof(tmp_key), chal, sizeof(chal));
         if (ret == CCID_OK) {
             uint32_t base = otp_config->cfg_flags & OATH_HOTP8 ? 1e8 : 1e6;
-            uint32_t number = (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];
+            uint32_t number =
+                (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];
             number %= base;
             char number_str[9];
             if (otp_config->cfg_flags & OATH_HOTP8) {
-                sprintf(number_str, "%08lu", (long unsigned int)number);
-                add_keyboard_buffer((const uint8_t *)number_str, 8, true);
+                sprintf(number_str, "%08lu", (long unsigned int) number);
+                add_keyboard_buffer((const uint8_t *) number_str, 8, true);
             }
             else {
-                sprintf(number_str, "%06lu", (long unsigned int)number);
-                add_keyboard_buffer((const uint8_t *)number_str, 6, true);
+                sprintf(number_str, "%06lu", (long unsigned int) number);
+                add_keyboard_buffer((const uint8_t *) number_str, 6, true);
             }
             imf++;
-            uint8_t new_chal[8] = {imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff};
+            uint8_t new_chal[8] =
+            { imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8,
+              imf & 0xff };
             uint8_t new_otp_config[otp_config_size + sizeof(new_chal)];
             memcpy(new_otp_config, otp_config, otp_config_size);
             memcpy(new_otp_config + otp_config_size, new_chal, sizeof(new_chal));
@@ -228,7 +240,7 @@ int otp_button_pressed(uint8_t slot) {
             low_flash_available();
         }
         if (otp_config->tkt_flags & APPEND_CR) {
-            append_keyboard_buffer((const uint8_t *)"\r", 1);
+            append_keyboard_buffer((const uint8_t *) "\r", 1);
         }
     }
     else if (otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET) {
@@ -237,7 +249,7 @@ int otp_button_pressed(uint8_t slot) {
         }
         add_keyboard_buffer(otp_config->fixed_data, otp_config->fixed_size, false);
         if (otp_config->tkt_flags & APPEND_CR) {
-            append_keyboard_buffer((const uint8_t *)"\x28", 1);
+            append_keyboard_buffer((const uint8_t *) "\x28", 1);
         }
     }
     else {
@@ -272,9 +284,9 @@ int otp_button_pressed(uint8_t slot) {
         mbedtls_aes_free(&ctx);
         uint8_t otp_out[44];
         encode_modhex(otpk, sizeof(otpk), otp_out);
-        add_keyboard_buffer((const uint8_t *)otp_out, sizeof(otp_out), true);
+        add_keyboard_buffer((const uint8_t *) otp_out, sizeof(otp_out), true);
         if (otp_config->tkt_flags & APPEND_CR) {
-            append_keyboard_buffer((const uint8_t *)"\r", 1);
+            append_keyboard_buffer((const uint8_t *) "\r", 1);
         }
 
         if (++session_counter[slot - 1] == 0) {
@@ -315,20 +327,18 @@ uint16_t otp_status() {
     res_APDU[3] = 0;
     res_APDU[4] = config_seq;
     res_APDU[5] = (CONFIG2_TOUCH | CONFIG1_TOUCH) |
-                                (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID :
-                                 0x00) |
-                                (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID :
-                                 0x00);
+                  (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID :
+                   0x00) |
+                  (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID :
+                   0x00);
     res_APDU[6] = 0;
     return SW_OK();
 }
 
 bool check_crc(const otp_config_t *data) {
-    uint16_t crc = calculate_crc((const uint8_t *)data, otp_config_size);
+    uint16_t crc = calculate_crc((const uint8_t *) data, otp_config_size);
     return crc == 0xF0B8;
 }
-
-extern int man_get_config();
 
 int cmd_otp() {
     uint8_t p1 = P1(apdu), p2 = P2(apdu);
@@ -336,10 +346,7 @@ int cmd_otp() {
         return SW_INCORRECT_P1P2();
     }
     if (p1 == 0x01 || p1 == 0x03) { // Configure slot
-        otp_config_t *odata = (otp_config_t *)apdu.data;
-        if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
-            return SW_WRONG_DATA();
-        }
+        otp_config_t *odata = (otp_config_t *) apdu.data;
         file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
@@ -349,6 +356,9 @@ int cmd_otp() {
         }
         for (int c = 0; c < otp_config_size; c++) {
             if (apdu.data[c] != 0) {
+                if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
+                    return SW_WRONG_DATA();
+                }
                 memset(apdu.data + otp_config_size, 0, 8); // Add 8 bytes extra
                 flash_write_data_to_file(ef, apdu.data, otp_config_size + 8);
                 low_flash_available();
@@ -365,7 +375,7 @@ int cmd_otp() {
         return otp_status();
     }
     else if (p1 == 0x04 || p1 == 0x05) {
-        otp_config_t *odata = (otp_config_t *)apdu.data;
+        otp_config_t *odata = (otp_config_t *) apdu.data;
         if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
             return SW_WRONG_DATA();
         }
@@ -377,9 +387,12 @@ int cmd_otp() {
             }
             memcpy(apdu.data, file_get_data(ef), FIXED_SIZE + UID_SIZE + KEY_SIZE);
             odata->fixed_size = otpc->fixed_size;
-            odata->ext_flags = (otpc->ext_flags & ~EXTFLAG_UPDATE_MASK) | (odata->ext_flags & EXTFLAG_UPDATE_MASK);
-            odata->tkt_flags = (otpc->tkt_flags & ~TKTFLAG_UPDATE_MASK) | (odata->tkt_flags & TKTFLAG_UPDATE_MASK);
-            odata->cfg_flags = (otpc->cfg_flags & ~CFGFLAG_UPDATE_MASK) | (odata->cfg_flags & CFGFLAG_UPDATE_MASK);
+            odata->ext_flags = (otpc->ext_flags & ~EXTFLAG_UPDATE_MASK) |
+                               (odata->ext_flags & EXTFLAG_UPDATE_MASK);
+            odata->tkt_flags = (otpc->tkt_flags & ~TKTFLAG_UPDATE_MASK) |
+                               (odata->tkt_flags & TKTFLAG_UPDATE_MASK);
+            odata->cfg_flags = (otpc->cfg_flags & ~CFGFLAG_UPDATE_MASK) |
+                               (odata->cfg_flags & CFGFLAG_UPDATE_MASK);
             flash_write_data_to_file(ef, apdu.data, otp_config_size);
             low_flash_available();
         }
@@ -419,13 +432,18 @@ int cmd_otp() {
     else if (p1 == 0x30 || p1 == 0x38 || p1 == 0x20 || p1 == 0x28) {
         file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
-            otp_config_t *otp_config = (otp_config_t *)file_get_data(ef);
+            otp_config_t *otp_config = (otp_config_t *) file_get_data(ef);
             if (!(otp_config->cfg_flags & CHAL_YUBICO && otp_config->tkt_flags & CHAL_RESP)) {
                 return SW_WRONG_DATA();
             }
             int ret = 0;
             if (p1 == 0x30 || p1 == 0x38) {
-                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, 8, res_APDU);
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1),
+                                otp_config->aes_key,
+                                KEY_SIZE,
+                                apdu.data,
+                                8,
+                                res_APDU);
                 if (ret == 0) {
                     res_APDU_size = 20;
                 }
@@ -461,10 +479,12 @@ int otp_process_apdu() {
     if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
     }
-    for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
-        if (cmd->ins == INS(apdu)) {
-            int r = cmd->cmd_handler();
-            return r;
+    if (cap_supported(CAP_OTP)) {
+        for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
+            if (cmd->ins == INS(apdu)) {
+                int r = cmd->cmd_handler();
+                return r;
+            }
         }
     }
     return SW_INS_NOT_SUPPORTED();
