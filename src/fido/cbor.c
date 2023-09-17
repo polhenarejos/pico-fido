@@ -111,6 +111,10 @@ void cbor_thread() {
         if (apdu.sw == 0) {
             DEBUG_DATA(res_APDU + 1, res_APDU_size);
         }
+        else {
+            res_APDU[0] = apdu.sw;
+            apdu.sw = 0;
+        }
 
         finished_data_size = res_APDU_size + 1;
 
