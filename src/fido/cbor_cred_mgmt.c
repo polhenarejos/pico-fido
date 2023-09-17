@@ -336,7 +336,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                 mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
             }
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
-            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, cred.extensions.thirdPartyPayment == ptrue));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder,
+                                           cred.extensions.thirdPartyPayment == ptrue));
         }
         else {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));

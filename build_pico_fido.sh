@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VERSION_MAJOR="5"
-VERSION_MINOR="4"
+VERSION_MINOR="6"
 
 rm -rf release/*
 cd build_release
@@ -17,6 +17,7 @@ for board in adafruit_feather_rp2040 \
     eetree_gamekit_rp2040 \
     garatronic_pybstick26_rp2040 \
     melopero_shake_rp2040 \
+    nullbits_bit_c_pro \
     pico \
     pico_w \
     pimoroni_badger2040 \
@@ -31,6 +32,7 @@ for board in adafruit_feather_rp2040 \
     pimoroni_servo2040 \
     pimoroni_tiny2040 \
     pimoroni_tiny2040_2mb \
+    pololu_3pi_2040_robot \
     seeed_xiao_rp2040 \
     solderparty_rp2040_stamp \
     solderparty_rp2040_stamp_carrier \

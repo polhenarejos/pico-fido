@@ -205,7 +205,9 @@ int credential_load(const uint8_t *cred_id,
                     CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
                     CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
                     CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", cred->extensions.largeBlobKey);
-                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", cred->extensions.thirdPartyPayment);
+                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2,
+                                                 "thirdPartyPayment",
+                                                 cred->extensions.thirdPartyPayment);
                     CBOR_ADVANCE(2);
                 }
                 CBOR_PARSE_MAP_END(_f1, 2);

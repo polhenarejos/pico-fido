@@ -36,8 +36,8 @@ app_t *man_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
         a->aid = man_aid;
         a->process_apdu = man_process_apdu;
         a->unload = man_unload;
-        sprintf((char *)res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
-        res_APDU_size = strlen((char *)res_APDU);
+        sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
+        res_APDU_size = strlen((char *) res_APDU);
         apdu.ne = res_APDU_size;
         scan_all();
         return a;
@@ -65,7 +65,7 @@ bool cap_supported(uint16_t cap) {
                 if (tag_len == 2) {
                     ecaps = (tag_data[0] << 8) | tag_data[1];
                 }
-                return (ecaps & cap);
+                return ecaps & cap;
             }
         }
     }

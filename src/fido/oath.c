@@ -585,7 +585,7 @@ int cmd_verify_hotp() {
         return SW_DATA_INVALID();
     }
     if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_IMF, &chal_len,
-                        &chal) == false) {
+                      &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
     if (asn1_find_tag(apdu.data, apdu.nc, TAG_RESPONSE, &code_len, &code) == true) {
@@ -598,10 +598,10 @@ int cmd_verify_hotp() {
     }
     uint32_t res_int = (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];
     if (res_APDU[1] == 6) {
-        res_int %= (uint32_t)1e6;
+        res_int %= (uint32_t) 1e6;
     }
     else {
-        res_int %= (uint32_t)1e8;
+        res_int %= (uint32_t) 1e8;
     }
     if (res_int != code_int) {
         return SW_WRONG_DATA();
