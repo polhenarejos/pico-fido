@@ -65,7 +65,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_FIELD_GET_BYTES(clientDataHash, 1);
         }
         else if (val_u == 0x02) { // rp
-            CBOR_PARSE_MAP_START(_f1, 2) {
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 CBOR_FIELD_KEY_TEXT_VAL_TEXT(2, "id", rp.id);
                 CBOR_FIELD_KEY_TEXT_VAL_TEXT(2, "name", rp.parent.name);
@@ -73,7 +74,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_PARSE_MAP_END(_f1, 2);
         }
         else if (val_u == 0x03) { // user
-            CBOR_PARSE_MAP_START(_f1, 2) {
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "id", user.id);
                 CBOR_FIELD_KEY_TEXT_VAL_TEXT(2, "name", user.parent.name);
@@ -83,9 +85,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_PARSE_MAP_END(_f1, 2);
         }
         else if (val_u == 0x04) { // pubKeyCredParams
-            CBOR_PARSE_ARRAY_START(_f1, 2) {
+            CBOR_PARSE_ARRAY_START(_f1, 2)
+            {
                 PublicKeyCredentialParameters *pk = &pubKeyCredParams[pubKeyCredParams_len];
-                CBOR_PARSE_MAP_START(_f2, 3) {
+                CBOR_PARSE_MAP_START(_f2, 3)
+                {
                     CBOR_FIELD_GET_KEY_TEXT(3);
                     CBOR_FIELD_KEY_TEXT_VAL_TEXT(3, "type", pk->type);
                     CBOR_FIELD_KEY_TEXT_VAL_INT(3, "alg", pk->alg);
@@ -96,14 +100,17 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_PARSE_ARRAY_END(_f1, 2);
         }
         else if (val_u == 0x05) { // excludeList
-            CBOR_PARSE_ARRAY_START(_f1, 2) {
+            CBOR_PARSE_ARRAY_START(_f1, 2)
+            {
                 PublicKeyCredentialDescriptor *pc = &excludeList[excludeList_len];
-                CBOR_PARSE_MAP_START(_f2, 3) {
+                CBOR_PARSE_MAP_START(_f2, 3)
+                {
                     CBOR_FIELD_GET_KEY_TEXT(3);
                     CBOR_FIELD_KEY_TEXT_VAL_BYTES(3, "id", pc->id);
                     CBOR_FIELD_KEY_TEXT_VAL_TEXT(3, "type", pc->type);
                     if (strcmp(_fd3, "transports") == 0) {
-                        CBOR_PARSE_ARRAY_START(_f3, 4) {
+                        CBOR_PARSE_ARRAY_START(_f3, 4)
+                        {
                             CBOR_FIELD_GET_TEXT(pc->transports[pc->transports_len], 4);
                             pc->transports_len++;
                         }
@@ -117,7 +124,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
         else if (val_u == 0x06) { // extensions
             extensions.present = true;
-            CBOR_PARSE_MAP_START(_f1, 2) {
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
                 CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
@@ -131,7 +139,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
         else if (val_u == 0x07) { // options
             options.present = true;
-            CBOR_PARSE_MAP_START(_f1, 2) {
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "rk", options.rk);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "up", options.up);
@@ -468,7 +477,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2,
                                        self_attestation == false || is_nitrokey ? 3 : 2));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "alg"));
-    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2, self_attestation || is_nitrokey ? -alg : -FIDO2_ALG_ES256));
+    CBOR_CHECK(cbor_encode_negative_int(&mapEncoder2,
+                                        self_attestation || is_nitrokey ? -alg : -FIDO2_ALG_ES256));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "sig"));
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, sig, olen));
     if (self_attestation == false || is_nitrokey) {

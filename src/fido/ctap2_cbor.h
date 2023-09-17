@@ -241,8 +241,15 @@ typedef struct CborCharString {
         } } while (0)
 
 extern CborError COSE_key(mbedtls_ecp_keypair *, CborEncoder *, CborEncoder *);
-extern CborError COSE_key_shared(mbedtls_ecdh_context *key, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder);
+extern CborError COSE_key_shared(mbedtls_ecdh_context *key,
+                                 CborEncoder *mapEncoderParent,
+                                 CborEncoder *mapEncoder);
 extern CborError COSE_public_key(int alg, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder);
-extern CborError COSE_read_key(CborValue *f, int64_t *kty, int64_t *alg, int64_t *crv, CborByteString *kax, CborByteString *kay);
+extern CborError COSE_read_key(CborValue *f,
+                               int64_t *kty,
+                               int64_t *alg,
+                               int64_t *crv,
+                               CborByteString *kax,
+                               CborByteString *kay);
 
 #endif //_CTAP2_CBOR_H_

@@ -129,10 +129,16 @@ int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     return 1;
 }
 
-CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedtls_ecp_point *Q, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
+CborError COSE_key_params(int crv,
+                          int alg,
+                          mbedtls_ecp_group *grp,
+                          mbedtls_ecp_point *Q,
+                          CborEncoder *mapEncoderParent,
+                          CborEncoder *mapEncoder) {
     CborError error = CborNoError;
     int kty = 1;
-    if (crv == FIDO2_CURVE_P256 || crv == FIDO2_CURVE_P384 || crv == FIDO2_CURVE_P521 || crv == FIDO2_CURVE_P256K1) {
+    if (crv == FIDO2_CURVE_P256 || crv == FIDO2_CURVE_P384 || crv == FIDO2_CURVE_P521 ||
+        crv == FIDO2_CURVE_P256K1) {
         kty = 2;
     }
 
@@ -162,15 +168,17 @@ CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedtls_ecp_
     }
     else {
         size_t olen = 0;
-        CBOR_CHECK(mbedtls_ecp_point_write_binary(grp, Q, MBEDTLS_ECP_PF_COMPRESSED, &olen, pkey, sizeof(pkey)));
+        CBOR_CHECK(mbedtls_ecp_point_write_binary(grp, Q, MBEDTLS_ECP_PF_COMPRESSED, &olen, pkey,
+                                                  sizeof(pkey)));
         CBOR_CHECK(cbor_encode_byte_string(mapEncoder, pkey, olen));
     }
 
     CBOR_CHECK(cbor_encoder_close_container(mapEncoderParent, mapEncoder));
-    err:
+err:
     return error;
 }
-CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
+CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent,
+                   CborEncoder *mapEncoder) {
     int crv = mbedtls_curve_to_fido(key->grp.id), alg = 0;
     if (key->grp.id == MBEDTLS_ECP_DP_SECP256R1) {
         alg = FIDO2_ALG_ES256;
@@ -189,9 +197,16 @@ CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent, Cbor
     }
     return COSE_key_params(crv, alg, &key->grp, &key->Q, mapEncoderParent, mapEncoder);
 }
-CborError COSE_key_shared(mbedtls_ecdh_context *key, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
+CborError COSE_key_shared(mbedtls_ecdh_context *key,
+                          CborEncoder *mapEncoderParent,
+                          CborEncoder *mapEncoder) {
     int crv = mbedtls_curve_to_fido(key->ctx.mbed_ecdh.grp.id), alg = FIDO2_ALG_ECDH_ES_HKDF_256;
-    return COSE_key_params(crv, alg, &key->ctx.mbed_ecdh.grp, &key->ctx.mbed_ecdh.Q, mapEncoderParent, mapEncoder);
+    return COSE_key_params(crv,
+                           alg,
+                           &key->ctx.mbed_ecdh.grp,
+                           &key->ctx.mbed_ecdh.Q,
+                           mapEncoderParent,
+                           mapEncoder);
 }
 CborError COSE_public_key(int alg, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
     CborError error = CborNoError;
@@ -201,10 +216,15 @@ CborError COSE_public_key(int alg, CborEncoder *mapEncoderParent, CborEncoder *m
     CBOR_CHECK(cbor_encode_text_stringz(mapEncoder, "type"));
     CBOR_CHECK(cbor_encode_text_stringz(mapEncoder, "public-key"));
     CBOR_CHECK(cbor_encoder_close_container(mapEncoderParent, mapEncoder));
-    err:
+err:
     return error;
 }
-CborError COSE_read_key(CborValue *f, int64_t *kty, int64_t *alg, int64_t *crv, CborByteString *kax, CborByteString *kay) {
+CborError COSE_read_key(CborValue *f,
+                        int64_t *kty,
+                        int64_t *alg,
+                        int64_t *crv,
+                        CborByteString *kax,
+                        CborByteString *kay) {
     int64_t kkey = 0;
     CborError error = CborNoError;
     CBOR_PARSE_MAP_START(*f, 0)
@@ -230,6 +250,6 @@ CborError COSE_read_key(CborValue *f, int64_t *kty, int64_t *alg, int64_t *crv, 
         }
     }
     CBOR_PARSE_MAP_END(*f, 0);
-    err:
+err:
     return error;
 }
