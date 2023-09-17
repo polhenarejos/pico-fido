@@ -227,6 +227,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 curve = FIDO2_CURVE_ED25519;
             }
         }
+        else if (pubKeyCredParams[i].alg <= FIDO2_ALG_RS256 && pubKeyCredParams[i].alg >= FIDO2_ALG_RS512) {
+            // pass
+        }
         else {
             CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
         }
