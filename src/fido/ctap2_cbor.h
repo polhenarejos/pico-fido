@@ -57,7 +57,7 @@ extern const bool _btrue, _bfalse;
     do                \
     {                 \
         error = e;    \
-        printf("Cbor ERROR [%s:%d]: %d\n", __FILE__, __LINE__, e); \
+        printf("Cbor ERROR [%s:%d]: %x\n", __FILE__, __LINE__, e); \
         goto err;     \
     } while (0)
 
