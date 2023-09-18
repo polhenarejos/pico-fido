@@ -66,6 +66,9 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #define FIDO2_ALG_ES512     -36 //ECDSA-SHA512 P521
 #define FIDO2_ALG_ECDH_ES_HKDF_256 -25 //ECDH-ES + HKDF-256
 #define FIDO2_ALG_ES256K    -47
+#define FIDO2_ALG_RS256     -257
+#define FIDO2_ALG_RS384     -258
+#define FIDO2_ALG_RS512     -259
 
 #define FIDO2_CURVE_P256        1
 #define FIDO2_CURVE_P384        2
