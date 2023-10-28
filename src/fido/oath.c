@@ -69,41 +69,44 @@ const uint8_t oath_aid[] = {
 };
 
 int oath_select(app_t *a) {
-    a->process_apdu = oath_process_apdu;
-    a->unload = oath_unload;
-    res_APDU_size = 0;
-    res_APDU[res_APDU_size++] = TAG_T_VERSION;
-    res_APDU[res_APDU_size++] = 3;
-    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
-    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
-    res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = TAG_NAME;
-    res_APDU[res_APDU_size++] = 8;
+    if (cap_supported(CAP_OATH)) {
+        a->process_apdu = oath_process_apdu;
+        a->unload = oath_unload;
+        res_APDU_size = 0;
+        res_APDU[res_APDU_size++] = TAG_T_VERSION;
+        res_APDU[res_APDU_size++] = 3;
+        res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
+        res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
+        res_APDU[res_APDU_size++] = 0;
+        res_APDU[res_APDU_size++] = TAG_NAME;
+        res_APDU[res_APDU_size++] = 8;
 #ifndef ENABLE_EMULATION
-    pico_get_unique_board_id((pico_unique_board_id_t *) (res_APDU + res_APDU_size));
-    res_APDU_size += 8;
+	    pico_get_unique_board_id((pico_unique_board_id_t *) (res_APDU + res_APDU_size));
+	    res_APDU_size += 8;
 #else
-    memset(res_APDU + res_APDU_size, 0, 8); res_APDU_size += 8;
+    	memset(res_APDU + res_APDU_size, 0, 8); res_APDU_size += 8;
 #endif
-    if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
-        random_gen(NULL, challenge, sizeof(challenge));
-        res_APDU[res_APDU_size++] = TAG_CHALLENGE;
-        res_APDU[res_APDU_size++] = sizeof(challenge);
-        memcpy(res_APDU + res_APDU_size, challenge, sizeof(challenge));
-        res_APDU_size += sizeof(challenge);
-    }
-    file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
-    if (file_has_data(ef_otp_pin)) {
-        const uint8_t *pin_data = file_get_data(ef_otp_pin);
-        res_APDU[res_APDU_size++] = TAG_PIN_COUNTER;
+        if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
+            random_gen(NULL, challenge, sizeof(challenge));
+            res_APDU[res_APDU_size++] = TAG_CHALLENGE;
+            res_APDU[res_APDU_size++] = sizeof(challenge);
+            memcpy(res_APDU + res_APDU_size, challenge, sizeof(challenge));
+            res_APDU_size += sizeof(challenge);
+        }
+        file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
+        if (file_has_data(ef_otp_pin)) {
+            const uint8_t *pin_data = file_get_data(ef_otp_pin);
+            res_APDU[res_APDU_size++] = TAG_PIN_COUNTER;
+            res_APDU[res_APDU_size++] = 1;
+            res_APDU[res_APDU_size++] = *pin_data;
+        }
+        res_APDU[res_APDU_size++] = TAG_ALGO;
         res_APDU[res_APDU_size++] = 1;
-        res_APDU[res_APDU_size++] = *pin_data;
+        res_APDU[res_APDU_size++] = ALG_HMAC_SHA1;
+        apdu.ne = res_APDU_size;
+        return CCID_OK;
     }
-    res_APDU[res_APDU_size++] = TAG_ALGO;
-    res_APDU[res_APDU_size++] = 1;
-    res_APDU[res_APDU_size++] = ALG_HMAC_SHA1;
-    apdu.ne = res_APDU_size;
-    return CCID_OK;
+    return CCID_ERR_FILE_NOT_FOUND;
 }
 
 void __attribute__((constructor)) oath_ctor() {

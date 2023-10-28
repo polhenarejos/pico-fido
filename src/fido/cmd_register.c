@@ -33,9 +33,12 @@ int u2f_unload();
 int u2f_process_apdu();
 
 int u2f_select(app_t *a) {
-    a->process_apdu = u2f_process_apdu;
-    a->unload = u2f_unload;
-    return CCID_OK;
+    if (cap_supported(CAP_U2F)) {
+        a->process_apdu = u2f_process_apdu;
+        a->unload = u2f_unload;
+        return CCID_OK;
+    }
+    return CCID_ERR_FILE_NOT_FOUND;
 }
 
 void __attribute__((constructor)) u2f_ctor() {
