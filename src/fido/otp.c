@@ -116,25 +116,21 @@ const uint8_t otp_aid[] = {
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x20, 0x01
 };
 
-app_t *otp_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, otp_aid + 1, MIN(aid_len, otp_aid[0])) && cap_supported(CAP_OTP)) {
-        a->aid = otp_aid;
-        a->process_apdu = otp_process_apdu;
-        a->unload = otp_unload;
-        if (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ||
-            file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
-            config_seq = 1;
-        }
-        else {
-            config_seq = 0;
-        }
-        otp_status();
-        memmove(res_APDU, res_APDU + 1, 6);
-        res_APDU_size = 6;
-        apdu.ne = res_APDU_size;
-        return a;
+int otp_select(app_t *a) {
+    a->process_apdu = otp_process_apdu;
+    a->unload = otp_unload;
+    if (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ||
+        file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
+        config_seq = 1;
     }
-    return NULL;
+    else {
+        config_seq = 0;
+    }
+    otp_status();
+    memmove(res_APDU, res_APDU + 1, 6);
+    res_APDU_size = 6;
+    apdu.ne = res_APDU_size;
+    return CCID_OK;
 }
 
 uint8_t modhex_tab[] =
@@ -308,7 +304,7 @@ int otp_button_pressed(uint8_t slot) {
 }
 
 void __attribute__((constructor)) otp_ctor() {
-    register_app(otp_select);
+    register_app(otp_select, otp_aid);
     button_pressed_cb = otp_button_pressed;
 }
 

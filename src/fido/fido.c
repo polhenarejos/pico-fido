@@ -33,6 +33,7 @@
 #include <math.h>
 #include "management.h"
 #include "ctap_hid.h"
+#include "version.h"
 
 int fido_process_apdu();
 int fido_unload();
@@ -53,25 +54,28 @@ const uint8_t atr_fido[] = {
     0x75, 0x62, 0x69, 0x4b, 0x65, 0x79, 0x40
 };
 
-app_t *fido_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, fido_aid + 1, MIN(aid_len, fido_aid[0])) && cap_supported(CAP_FIDO2)) {
-        a->aid = fido_aid;
-        a->process_apdu = fido_process_apdu;
-        a->unload = fido_unload;
-        return a;
-    }
-    return NULL;
+int fido_select(app_t *a) {
+    a->process_apdu = fido_process_apdu;
+    a->unload = fido_unload;
+    return CCID_OK;
 }
 
 void __attribute__((constructor)) fido_ctor() {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
     ccid_atr = atr_fido;
 #endif
-    register_app(fido_select);
+    register_app(fido_select, fido_aid);
 }
 
 int fido_unload() {
     return CCID_OK;
+}
+
+uint8_t get_version_major() {
+    return PICO_FIDO_VERSION_MAJOR;
+}
+uint8_t get_version_minor() {
+    return PICO_FIDO_VERSION_MINOR;
 }
 
 mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {

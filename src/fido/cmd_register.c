@@ -32,18 +32,14 @@ const uint8_t u2f_aid[] = {
 int u2f_unload();
 int u2f_process_apdu();
 
-app_t *u2f_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, u2f_aid + 1, MIN(aid_len, u2f_aid[0])) && cap_supported(CAP_U2F)) {
-        a->aid = u2f_aid;
-        a->process_apdu = u2f_process_apdu;
-        a->unload = u2f_unload;
-        return a;
-    }
-    return NULL;
+int u2f_select(app_t *a) {
+    a->process_apdu = u2f_process_apdu;
+    a->unload = u2f_unload;
+    return CCID_OK;
 }
 
 void __attribute__((constructor)) u2f_ctor() {
-    register_app(u2f_select);
+    register_app(u2f_select, u2f_aid);
 }
 
 int u2f_unload() {
