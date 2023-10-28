@@ -55,9 +55,12 @@ const uint8_t atr_fido[] = {
 };
 
 int fido_select(app_t *a) {
-    a->process_apdu = fido_process_apdu;
-    a->unload = fido_unload;
-    return CCID_OK;
+    if (cap_supported(CAP_FIDO2)) {
+        a->process_apdu = fido_process_apdu;
+        a->unload = fido_unload;
+        return CCID_OK;
+    }
+    return CCID_ERR_FILE_NOT_FOUND;
 }
 
 void __attribute__((constructor)) fido_ctor() {

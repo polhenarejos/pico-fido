@@ -117,20 +117,23 @@ const uint8_t otp_aid[] = {
 };
 
 int otp_select(app_t *a) {
-    a->process_apdu = otp_process_apdu;
-    a->unload = otp_unload;
-    if (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ||
-        file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
-        config_seq = 1;
+    if (cap_supported(CAP_OTP)) {
+        a->process_apdu = otp_process_apdu;
+        a->unload = otp_unload;
+        if (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ||
+            file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
+            config_seq = 1;
+        }
+        else {
+            config_seq = 0;
+        }
+        otp_status();
+        memmove(res_APDU, res_APDU + 1, 6);
+        res_APDU_size = 6;
+        apdu.ne = res_APDU_size;
+        return CCID_OK;
     }
-    else {
-        config_seq = 0;
-    }
-    otp_status();
-    memmove(res_APDU, res_APDU + 1, 6);
-    res_APDU_size = 6;
-    apdu.ne = res_APDU_size;
-    return CCID_OK;
+    return CCID_ERR_FILE_NOT_FOUND;
 }
 
 uint8_t modhex_tab[] =
