@@ -25,6 +25,7 @@
 #include "apdu.h"
 #include "management.h"
 #include "ctap2_cbor.h"
+#include "version.h"
 
 const bool _btrue = true, _bfalse = false;
 
@@ -39,6 +40,8 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len);
 int cbor_config(const uint8_t *data, size_t len);
 int cbor_vendor(const uint8_t *data, size_t len);
 int cbor_large_blobs(const uint8_t *data, size_t len);
+
+extern int cmd_read_config();
 
 const uint8_t aaguid[16] =
 { 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45 };                          // First 16 bytes of SHA256("Pico FIDO2")
@@ -90,6 +93,12 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
         }
         else if (cmd == CTAP_VENDOR_CBOR) {
             return cbor_vendor(data, len);
+        }
+        else if (cmd == 0xC2) {
+            if (cmd_read_config() == 0x9000) {
+                res_APDU_size -= 1;
+                return 0;
+            }
         }
     }
     return CTAP1_ERR_INVALID_CMD;
