@@ -454,6 +454,7 @@ int cmd_calculate_all() {
     if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
+    res_APDU_size = 0;
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
         if (file_has_data(ef)) {
