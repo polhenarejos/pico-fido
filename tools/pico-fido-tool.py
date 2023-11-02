@@ -23,7 +23,6 @@ import sys
 import argparse
 import platform
 from binascii import hexlify
-from words import words
 from threading import Event
 from typing import Mapping, Any, Optional, Callable
 import struct
@@ -57,14 +56,6 @@ except:
 
 from enum import IntEnum
 from binascii import hexlify
-
-if (platform.system() == 'Windows' or platform.system() == 'Linux'):
-    from secure_key import windows as skey
-elif (platform.system() == 'Darwin'):
-    from secure_key import macos as skey
-else:
-    print('ERROR: platform not supported')
-    sys.exit(-1)
 
 def get_pki_data(url, data=None, method='GET'):
     user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; '
@@ -252,6 +243,14 @@ class Vendor:
         return self.ctap.vendor(cmd, sub_cmd, params, pin_uv_protocol, pin_uv_param)
 
     def backup_save(self, filename):
+        if (platform.system() == 'Windows' or platform.system() == 'Linux'):
+            from secure_key import windows as skey
+        elif (platform.system() == 'Darwin'):
+            from secure_key import macos as skey
+        else:
+            print('ERROR: platform not supported')
+            sys.exit(-1)
+        from words import words
         ret = self._call(
             Vendor.CMD.VENDOR_BACKUP,
             Vendor.SUBCMD.ENABLE,
@@ -270,6 +269,14 @@ class Vendor:
             print(f'{(c+1):02d} - {words[coef]}')
 
     def backup_load(self, filename):
+        if (platform.system() == 'Windows' or platform.system() == 'Linux'):
+            from secure_key import windows as skey
+        elif (platform.system() == 'Darwin'):
+            from secure_key import macos as skey
+        else:
+            print('ERROR: platform not supported')
+            sys.exit(-1)
+        from words import words
         d = 0
         if (d == 0):
             for c in range(24):
@@ -349,6 +356,13 @@ class Vendor:
         )
 
     def _get_key_device(self):
+        if (platform.system() == 'Windows' or platform.system() == 'Linux'):
+            from secure_key import windows as skey
+        elif (platform.system() == 'Darwin'):
+            from secure_key import macos as skey
+        else:
+            print('ERROR: platform not supported')
+            sys.exit(-1)
         return skey.get_secure_key()
 
     def get_skey(self):
