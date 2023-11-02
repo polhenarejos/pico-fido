@@ -32,7 +32,7 @@ from enum import IntEnum, unique
 
 try:
     from fido2.ctap2.config import Config
-    from fido2.ctap2 import Ctap2
+    from fido2.ctap2 import Ctap2, ClientPin, PinProtocolV2
     from fido2.hid import CtapHidDevice, CTAPHID
     from fido2.utils import bytes2int, int2bytes
     from fido2 import cbor
@@ -221,7 +221,7 @@ class Vendor:
         self.__key_enc = None
         self.__iv = None
 
-        self.vcfg = VendorConfig(ctap)
+        self.vcfg = VendorConfig(ctap, pin_uv_protocol=pin_uv_protocol, pin_uv_token=pin_uv_token)
 
     def _call(self, cmd, sub_cmd, params=None):
         if params:
@@ -395,6 +395,7 @@ class Vendor:
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
+    parser.add_argument('-p','--pin', help='Specify the PIN of the device.', required=True)
     parser_secure = subparser.add_parser('secure', help='Manages security of Pico Fido.')
     parser_secure.add_argument('subcommand', choices=['enable', 'disable', 'unlock'], help='Enables, disables or unlocks the security.')
 
@@ -440,15 +441,17 @@ def attestation(vdr, args):
         vdr.upload_ea(cert.public_bytes(Encoding.DER))
 
 def main(args):
-    print('Pico Fido Tool v1.4')
+    print('Pico Fido Tool v1.5')
     print('Author: Pol Henarejos')
     print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
     print('')
     print('')
 
     dev = next(CtapHidDevice.list_devices(), None)
-
-    vdr = Vendor(Ctap2Vendor(dev))
+    ctap = Ctap2Vendor(dev)
+    client_pin = ClientPin(ctap)
+    token = client_pin.get_pin_token(args.pin)
+    vdr = Vendor(ctap, pin_uv_protocol=PinProtocolV2(), pin_uv_token=token)
 
     if (args.command == 'secure'):
         secure(vdr, args)
