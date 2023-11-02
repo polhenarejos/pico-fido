@@ -90,7 +90,7 @@ class VendorConfig(Config):
 
     def enable_device_aut(self, ct):
         self._call(
-            Config.CMD.VENDOR_PROTOTYPE,
+            Config.CMD.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_ENABLE,
                 VendorConfig.PARAM.VENDOR_AUT_CT: ct
@@ -99,7 +99,7 @@ class VendorConfig(Config):
 
     def disable_device_aut(self):
         self._call(
-            Config.CMD.VENDOR_PROTOTYPE,
+            Config.CMD.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_DISABLE
             },
@@ -450,7 +450,7 @@ def main(args):
     dev = next(CtapHidDevice.list_devices(), None)
     ctap = Ctap2Vendor(dev)
     client_pin = ClientPin(ctap)
-    token = client_pin.get_pin_token(args.pin)
+    token = client_pin.get_pin_token(args.pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG)
     vdr = Vendor(ctap, pin_uv_protocol=PinProtocolV2(), pin_uv_token=token)
 
     if (args.command == 'secure'):
