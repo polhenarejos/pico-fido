@@ -64,7 +64,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             raw_subpara = (uint8_t *) cbor_value_get_next_byte(&_f1);
             CBOR_PARSE_MAP_START(_f1, 2)
             {
-                if (subcommand == 0xff) {
+                if (subcommand == 0x7f) {
                     CBOR_FIELD_GET_UINT(subpara, 2);
                     if (subpara == 0x01) {
                         CBOR_FIELD_GET_UINT(vendorCommandId, 2);
@@ -134,7 +134,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
     }
 
-    if (subcommand == 0xff) {
+    if (subcommand == 0x7f) {
         if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE) {
             if (!file_has_data(ef_keydev_enc)) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);

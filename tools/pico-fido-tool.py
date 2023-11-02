@@ -81,6 +81,7 @@ class VendorConfig(Config):
     class CMD(IntEnum):
         CONFIG_AUT_ENABLE    = 0x03e43f56b34285e2
         CONFIG_AUT_DISABLE   = 0x1831a40f04a25ed9
+        CONFIG_VENDOR_PROTOTYPE = 0x7f
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -90,7 +91,7 @@ class VendorConfig(Config):
 
     def enable_device_aut(self, ct):
         self._call(
-            Config.CMD.CONFIG_VENDOR_PROTOTYPE,
+            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_ENABLE,
                 VendorConfig.PARAM.VENDOR_AUT_CT: ct
@@ -99,7 +100,7 @@ class VendorConfig(Config):
 
     def disable_device_aut(self):
         self._call(
-            Config.CMD.CONFIG_VENDOR_PROTOTYPE,
+            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_DISABLE
             },
