@@ -25,7 +25,7 @@
 #include "credential.h"
 #include "mbedtls/sha256.h"
 #include "random.h"
-#include "hsm.h"
+#include "pico_keys.h"
 
 int cbor_make_credential(const uint8_t *data, size_t len) {
     CborParser parser;
