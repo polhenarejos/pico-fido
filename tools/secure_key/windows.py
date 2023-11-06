@@ -1,6 +1,4 @@
 import sys
-import os
-import base64
 
 DOMAIN = "PicoKeys.com"
 USERNAME = "Pico-Fido"
@@ -39,6 +37,8 @@ def get_secure_key():
     key = None
     try:
         key = keyring.get_password(DOMAIN, USERNAME)
-    except keyring.errors.KeyringError:
+        if (key is None):
+            raise TypeError
+    except (keyring.errors.KeyringError, TypeError):
         key = generate_secure_key()
     return get_d(key.encode())
