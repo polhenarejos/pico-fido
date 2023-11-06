@@ -24,7 +24,7 @@
 #include "fido.h"
 #include "files.h"
 #include "crypto_utils.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "apdu.h"
 #include "cbor_make_credential.h"
 #include "credential.h"

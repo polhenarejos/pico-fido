@@ -16,7 +16,7 @@
  */
 
 #include "fido.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "apdu.h"
 #include "version.h"
 #include "files.h"

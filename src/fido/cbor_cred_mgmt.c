@@ -22,7 +22,7 @@
 #include "files.h"
 #include "apdu.h"
 #include "credential.h"
-#include "hsm.h"
+#include "pico_keys.h"
 
 uint8_t rp_counter = 1;
 uint8_t rp_total = 0;

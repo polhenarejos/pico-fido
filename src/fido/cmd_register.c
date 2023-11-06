@@ -16,7 +16,7 @@
  */
 
 #include "fido.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "apdu.h"
 #include "ctap.h"
 #include "random.h"

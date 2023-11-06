@@ -109,7 +109,7 @@ set(SOURCES ${SOURCES}
 endif()
 
 set(USB_ITF_HID 1)
-include(pico-hsm-sdk/pico_hsm_sdk_import.cmake)
+include(pico-keys-sdk/pico_keys_sdk_import.cmake)
 
 set(INCLUDES ${INCLUDES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido
@@ -147,5 +147,5 @@ target_compile_options(pico_fido PUBLIC
         endif (APPLE)
 else()
 pico_add_extra_outputs(pico_fido)
-target_link_libraries(pico_fido PRIVATE pico_hsm_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id hardware_rtc tinyusb_device tinyusb_board)
+target_link_libraries(pico_fido PRIVATE pico_keys_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id hardware_rtc tinyusb_device tinyusb_board)
 endif()

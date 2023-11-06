@@ -26,7 +26,7 @@
 #include "ctap.h"
 #include "random.h"
 #include "files.h"
-#include "hsm.h"
+#include "pico_keys.h"
 
 int credential_derive_chacha_key(uint8_t *outk);
 

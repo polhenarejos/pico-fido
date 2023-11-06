@@ -22,7 +22,7 @@
 #include "files.h"
 #include "apdu.h"
 #include "credential.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "random.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
