@@ -54,6 +54,13 @@ const uint8_t atr_fido[] = {
     0x75, 0x62, 0x69, 0x4b, 0x65, 0x79, 0x40
 };
 
+uint8_t fido_get_version_major() {
+    return PICO_FIDO_VERSION_MAJOR;
+}
+uint8_t fido_get_version_minor() {
+    return PICO_FIDO_VERSION_MINOR;
+}
+
 int fido_select(app_t *a) {
     if (cap_supported(CAP_FIDO2)) {
         a->process_apdu = fido_process_apdu;
@@ -63,22 +70,20 @@ int fido_select(app_t *a) {
     return CCID_ERR_FILE_NOT_FOUND;
 }
 
+extern uint8_t (*get_version_major)();
+extern uint8_t (*get_version_minor)();
+
 void __attribute__((constructor)) fido_ctor() {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
     ccid_atr = atr_fido;
 #endif
     register_app(fido_select, fido_aid);
+    get_version_major = fido_get_version_major;
+    get_version_minor = fido_get_version_minor;
 }
 
 int fido_unload() {
     return CCID_OK;
-}
-
-uint8_t get_version_major() {
-    return PICO_FIDO_VERSION_MAJOR;
-}
-uint8_t get_version_minor() {
-    return PICO_FIDO_VERSION_MINOR;
 }
 
 mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
