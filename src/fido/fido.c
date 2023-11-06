@@ -43,7 +43,7 @@ pinUvAuthToken_t paut = { 0 };
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
 
-const uint8_t fido_aid[] = {
+const uint8_t _fido_aid[] = {
     8,
     0xA0, 0x00, 0x00, 0x06, 0x47, 0x2F, 0x00, 0x01
 };
@@ -72,14 +72,24 @@ int fido_select(app_t *a) {
 
 extern uint8_t (*get_version_major)();
 extern uint8_t (*get_version_minor)();
+extern const uint8_t *fido_aid;
+extern void (*init_fido_cb)();
+extern void (*cbor_thread_func)();
+extern int (*cbor_process_cb)(uint8_t, const uint8_t *, size_t);
+extern void cbor_thread();
+extern int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len);
 
 void __attribute__((constructor)) fido_ctor() {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
     ccid_atr = atr_fido;
 #endif
-    register_app(fido_select, fido_aid);
     get_version_major = fido_get_version_major;
     get_version_minor = fido_get_version_minor;
+    fido_aid = _fido_aid;
+    init_fido_cb = init_fido;
+    cbor_thread_func = cbor_thread;
+    cbor_process_cb = cbor_process;
+    register_app(fido_select, fido_aid);
 }
 
 int fido_unload() {
