@@ -442,7 +442,7 @@ def attestation(vdr, args):
         vdr.upload_ea(cert.public_bytes(Encoding.DER))
 
 def main(args):
-    print('Pico Fido Tool v1.5')
+    print('Pico Fido Tool v1.6')
     print('Author: Pol Henarejos')
     print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
     print('')
