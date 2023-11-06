@@ -87,7 +87,9 @@ void __attribute__((constructor)) fido_ctor() {
     get_version_minor = fido_get_version_minor;
     fido_aid = _fido_aid;
     init_fido_cb = init_fido;
+#ifndef ENABLE_EMULATION
     cbor_thread_func = cbor_thread;
+#endif
     cbor_process_cb = cbor_process;
     register_app(fido_select, fido_aid);
 }
