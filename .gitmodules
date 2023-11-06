@@ -1,3 +1,3 @@
-[submodule "pico-hsm-sdk"]
+[submodule "pico-keys-sdk"]
 	path = pico-keys-sdk
-	url = ../pico-hsm-sdk
+	url = https://github.com/polhenarejos/pico-keys-sdk
