@@ -111,6 +111,13 @@ uint16_t otp_status();
 int otp_process_apdu();
 int otp_unload();
 
+#ifndef ENABLE_EMULATION
+extern int (*hid_set_report_cb)(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, uint16_t);
+extern uint16_t (*hid_get_report_cb)(uint8_t, uint8_t, hid_report_type_t, uint8_t *, uint16_t);
+int otp_hid_set_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, uint16_t);
+uint16_t otp_hid_get_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t *, uint16_t);
+#endif
+
 const uint8_t otp_aid[] = {
     7,
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x20, 0x01
@@ -168,6 +175,10 @@ void init_otp() {
         }
         scanned = true;
         low_flash_available();
+#ifndef ENABLE_EMULATION
+        hid_set_report_cb = otp_hid_set_report_cb;
+        hid_get_report_cb = otp_hid_get_report_cb;
+#endif
     }
 }
 extern int calculate_oath(uint8_t truncate,
@@ -175,6 +186,22 @@ extern int calculate_oath(uint8_t truncate,
                           size_t key_len,
                           const uint8_t *chal,
                           size_t chal_len);
+
+uint16_t calculate_crc(const uint8_t *data, size_t data_len) {
+    uint16_t crc = 0xFFFF;
+    for (size_t idx = 0; idx < data_len; idx++) {
+        crc ^= data[idx];
+        for (uint8_t i = 0; i < 8; i++) {
+            uint16_t j = crc & 0x1;
+            crc >>= 1;
+            if (j == 1) {
+                crc ^= 0x8408;
+            }
+        }
+    }
+    return crc & 0xFFFF;
+}
+
 #ifndef ENABLE_EMULATION
 static uint8_t session_counter[2] = { 0 };
 #endif
@@ -488,3 +515,112 @@ int otp_process_apdu() {
     }
     return SW_INS_NOT_SUPPORTED();
 }
+
+#ifndef ENABLE_EMULATION
+
+uint8_t otp_frame_rx[70] = {0};
+uint8_t otp_frame_tx[70] = {0};
+uint8_t otp_exp_seq = 0, otp_curr_seq = 0;
+uint8_t otp_header[4] = {0};
+
+extern uint16_t *get_send_buffer_size(uint8_t itf);
+
+int otp_send_frame(uint8_t *frame, size_t frame_len) {
+    uint16_t crc = calculate_crc(frame, frame_len);
+    frame[frame_len] = ~crc & 0xff;
+    frame[frame_len + 1] = ~crc >> 8;
+    frame_len += 2;
+    *get_send_buffer_size(ITF_KEYBOARD) = frame_len;
+    otp_exp_seq = (frame_len / 7);
+    if (frame_len % 7) {
+        otp_exp_seq++;
+    }
+    otp_curr_seq = 0;
+    return 0;
+}
+
+int otp_hid_set_report_cb(uint8_t itf,
+                           uint8_t report_id,
+                           hid_report_type_t report_type,
+                           uint8_t const *buffer,
+                           uint16_t bufsize)
+{
+    if (report_type == 3) {
+        DEBUG_PAYLOAD(buffer, bufsize);
+        if (itf == ITF_KEYBOARD && buffer[7] == 0xFF) { // reset
+            *get_send_buffer_size(ITF_KEYBOARD) = 0;
+            otp_curr_seq = otp_exp_seq = 0;
+            memset(otp_frame_tx, 0, sizeof(otp_frame_tx));
+        }
+        else if (buffer[7] & 0x80) { // a frame
+            uint8_t rseq = buffer[7] & 0x1F;
+            if (rseq < 10) {
+                if (rseq == 0) {
+                    memset(otp_frame_rx, 0, sizeof(otp_frame_rx));
+                }
+                memcpy(otp_frame_rx + rseq * 7, buffer, 7);
+                if (rseq == 9) {
+                    DEBUG_DATA(otp_frame_rx, sizeof(otp_frame_rx));
+                    uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = (otp_frame_rx[66] << 8 | otp_frame_rx[65]);
+                    uint8_t slot_id = otp_frame_rx[64];
+                    if (residual_crc == rcrc) {
+                        apdu.data = otp_frame_rx;
+                        apdu.nc = 64;
+                        apdu.rdata = otp_frame_tx;
+                        apdu.header[0] = 0;
+                        apdu.header[1] = 0x01;
+                        apdu.header[2] = slot_id;
+                        apdu.header[3] = 0;
+                        int ret = otp_process_apdu();
+                        if (ret == 0x9000 && res_APDU_size > 0) {
+                            otp_send_frame(apdu.rdata, apdu.rlen);
+                        }
+                    }
+                    else {
+                        printf("[OTP] Bad CRC!\n");
+                    }
+                }
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
+uint16_t otp_hid_get_report_cb(uint8_t itf,
+                               uint8_t report_id,
+                               hid_report_type_t report_type,
+                               uint8_t *buffer,
+                               uint16_t reqlen) {
+    // TODO not Implemented
+    (void) itf;
+    (void) report_id;
+    (void) report_type;
+    (void) buffer;
+    (void) reqlen;
+    printf("get_report %d %d %d\n", itf, report_id, report_type);
+    DEBUG_PAYLOAD(buffer, reqlen);
+    uint16_t send_buffer_size = *get_send_buffer_size(ITF_KEYBOARD);
+    if (send_buffer_size > 0) {
+        uint8_t seq = otp_curr_seq++;
+        memset(buffer, 0, 8);
+        memcpy(buffer, otp_frame_tx + 7 * seq, MIN(7, send_buffer_size));
+        buffer[7] = 0x40 | seq;
+        DEBUG_DATA(buffer, 8);
+        *get_send_buffer_size(ITF_KEYBOARD) -= MIN(7, send_buffer_size);
+    }
+    else if (otp_curr_seq == otp_exp_seq && otp_exp_seq > 0) {
+        memset(buffer, 0, 7);
+        buffer[7] = 0x40;
+        DEBUG_DATA(buffer,8);
+        otp_curr_seq = otp_exp_seq = 0;
+    }
+    else {
+        otp_status();
+        memcpy(buffer, res_APDU, 7);
+    }
+
+    return reqlen;
+}
+
+#endif
