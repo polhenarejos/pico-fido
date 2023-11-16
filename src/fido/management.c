@@ -31,6 +31,7 @@ const uint8_t man_aid[] = {
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x47, 0x11, 0x17
 };
 extern void scan_all();
+extern void init_otp();
 int man_select(app_t *a) {
     a->process_apdu = man_process_apdu;
     a->unload = man_unload;
@@ -38,6 +39,7 @@ int man_select(app_t *a) {
     res_APDU_size = strlen((char *) res_APDU);
     apdu.ne = res_APDU_size;
     scan_all();
+    init_otp();
     return CCID_OK;
 }
 

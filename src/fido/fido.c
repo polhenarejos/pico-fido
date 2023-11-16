@@ -398,8 +398,10 @@ void scan_all() {
     scan_files();
 }
 
+extern void init_otp();
 void init_fido() {
     scan_all();
+    init_otp();
 }
 
 bool wait_button_pressed() {
