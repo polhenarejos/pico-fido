@@ -267,8 +267,8 @@ int otp_button_pressed(uint8_t slot) {
     }
     else if (otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET) {
         uint8_t fixed_size = FIXED_SIZE + UID_SIZE + KEY_SIZE;
-        if (otp_config->cfg_flags & SHORT_TICKET) {
-            fixed_size /= 2;
+        if (otp_config->cfg_flags & SHORT_TICKET) { // Not clear which is the purpose of SHORT_TICKET
+            //fixed_size /= 2;
         }
         add_keyboard_buffer(otp_config->fixed_data, fixed_size, false);
         if (otp_config->tkt_flags & APPEND_CR) {
