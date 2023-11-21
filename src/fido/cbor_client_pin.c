@@ -31,7 +31,7 @@
 #include "files.h"
 #include "random.h"
 #include "crypto_utils.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "apdu.h"
 
 uint32_t usage_timer = 0, initial_usage_time_limit = 0;
@@ -181,12 +181,12 @@ int resetPinUvAuthToken() {
 int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, size_t in_len, uint8_t *out) {
     if (protocol == 1) {
         memcpy(out, in, in_len);
-        return aes_encrypt(key, NULL, 32 * 8, HSM_AES_MODE_CBC, out, in_len);
+        return aes_encrypt(key, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len);
     }
     else if (protocol == 2) {
         random_gen(NULL, out, IV_SIZE);
         memcpy(out + IV_SIZE, in, in_len);
-        return aes_encrypt(key + 32, out, 32 * 8, HSM_AES_MODE_CBC, out + IV_SIZE, in_len);
+        return aes_encrypt(key + 32, out, 32 * 8, PICO_KEYS_AES_MODE_CBC, out + IV_SIZE, in_len);
     }
 
     return -1;
@@ -195,11 +195,11 @@ int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, size_t in_l
 int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, size_t in_len, uint8_t *out) {
     if (protocol == 1) {
         memcpy(out, in, in_len);
-        return aes_decrypt(key, NULL, 32 * 8, HSM_AES_MODE_CBC, out, in_len);
+        return aes_decrypt(key, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len);
     }
     else if (protocol == 2) {
         memcpy(out, in + IV_SIZE, in_len);
-        return aes_decrypt(key + 32, in, 32 * 8, HSM_AES_MODE_CBC, out, in_len - IV_SIZE);
+        return aes_decrypt(key + 32, in, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len - IV_SIZE);
     }
 
     return -1;

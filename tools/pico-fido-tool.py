@@ -23,7 +23,6 @@ import sys
 import argparse
 import platform
 from binascii import hexlify
-from words import words
 from threading import Event
 from typing import Mapping, Any, Optional, Callable
 import struct
@@ -33,7 +32,7 @@ from enum import IntEnum, unique
 
 try:
     from fido2.ctap2.config import Config
-    from fido2.ctap2 import Ctap2
+    from fido2.ctap2 import Ctap2, ClientPin, PinProtocolV2
     from fido2.hid import CtapHidDevice, CTAPHID
     from fido2.utils import bytes2int, int2bytes
     from fido2 import cbor
@@ -57,14 +56,6 @@ except:
 
 from enum import IntEnum
 from binascii import hexlify
-
-if (platform.system() == 'Windows' or platform.system() == 'Linux'):
-    from secure_key import windows as skey
-elif (platform.system() == 'Darwin'):
-    from secure_key import macos as skey
-else:
-    print('ERROR: platform not supported')
-    sys.exit(-1)
 
 def get_pki_data(url, data=None, method='GET'):
     user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; '
@@ -90,6 +81,7 @@ class VendorConfig(Config):
     class CMD(IntEnum):
         CONFIG_AUT_ENABLE    = 0x03e43f56b34285e2
         CONFIG_AUT_DISABLE   = 0x1831a40f04a25ed9
+        CONFIG_VENDOR_PROTOTYPE = 0x7f
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -99,7 +91,7 @@ class VendorConfig(Config):
 
     def enable_device_aut(self, ct):
         self._call(
-            Config.CMD.VENDOR_PROTOTYPE,
+            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_ENABLE,
                 VendorConfig.PARAM.VENDOR_AUT_CT: ct
@@ -108,7 +100,7 @@ class VendorConfig(Config):
 
     def disable_device_aut(self):
         self._call(
-            Config.CMD.VENDOR_PROTOTYPE,
+            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_DISABLE
             },
@@ -230,7 +222,7 @@ class Vendor:
         self.__key_enc = None
         self.__iv = None
 
-        self.vcfg = VendorConfig(ctap)
+        self.vcfg = VendorConfig(ctap, pin_uv_protocol=pin_uv_protocol, pin_uv_token=pin_uv_token)
 
     def _call(self, cmd, sub_cmd, params=None):
         if params:
@@ -252,6 +244,14 @@ class Vendor:
         return self.ctap.vendor(cmd, sub_cmd, params, pin_uv_protocol, pin_uv_param)
 
     def backup_save(self, filename):
+        if (platform.system() == 'Windows' or platform.system() == 'Linux'):
+            from secure_key import windows as skey
+        elif (platform.system() == 'Darwin'):
+            from secure_key import macos as skey
+        else:
+            print('ERROR: platform not supported')
+            sys.exit(-1)
+        from words import words
         ret = self._call(
             Vendor.CMD.VENDOR_BACKUP,
             Vendor.SUBCMD.ENABLE,
@@ -270,6 +270,14 @@ class Vendor:
             print(f'{(c+1):02d} - {words[coef]}')
 
     def backup_load(self, filename):
+        if (platform.system() == 'Windows' or platform.system() == 'Linux'):
+            from secure_key import windows as skey
+        elif (platform.system() == 'Darwin'):
+            from secure_key import macos as skey
+        else:
+            print('ERROR: platform not supported')
+            sys.exit(-1)
+        from words import words
         d = 0
         if (d == 0):
             for c in range(24):
@@ -349,6 +357,13 @@ class Vendor:
         )
 
     def _get_key_device(self):
+        if (platform.system() == 'Windows' or platform.system() == 'Linux'):
+            from secure_key import windows as skey
+        elif (platform.system() == 'Darwin'):
+            from secure_key import macos as skey
+        else:
+            print('ERROR: platform not supported')
+            sys.exit(-1)
         return skey.get_secure_key()
 
     def get_skey(self):
@@ -381,6 +396,7 @@ class Vendor:
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
+    parser.add_argument('-p','--pin', help='Specify the PIN of the device.', required=True)
     parser_secure = subparser.add_parser('secure', help='Manages security of Pico Fido.')
     parser_secure.add_argument('subcommand', choices=['enable', 'disable', 'unlock'], help='Enables, disables or unlocks the security.')
 
@@ -426,15 +442,17 @@ def attestation(vdr, args):
         vdr.upload_ea(cert.public_bytes(Encoding.DER))
 
 def main(args):
-    print('Pico Fido Tool v1.4')
+    print('Pico Fido Tool v1.6')
     print('Author: Pol Henarejos')
     print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
     print('')
     print('')
 
     dev = next(CtapHidDevice.list_devices(), None)
-
-    vdr = Vendor(Ctap2Vendor(dev))
+    ctap = Ctap2Vendor(dev)
+    client_pin = ClientPin(ctap)
+    token = client_pin.get_pin_token(args.pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG)
+    vdr = Vendor(ctap, pin_uv_protocol=PinProtocolV2(), pin_uv_token=token)
 
     if (args.command == 'secure'):
         secure(vdr, args)

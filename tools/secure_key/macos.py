@@ -51,7 +51,9 @@ def get_secure_key():
     try:
         backend = get_backend(False)
         key = backend.get_password(DOMAIN, USERNAME)[0]
-    except keyring.errors.KeyringError:
+        if (key is None):
+            raise TypeError
+    except (keyring.errors.KeyringError, TypeError):
         try:
             key = generate_secure_key(False)[0] # It should be True, but secure enclave causes python segfault
         except keyring.errors.PasswordSetError:

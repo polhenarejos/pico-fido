@@ -21,7 +21,7 @@
 #include "hid/ctap_hid.h"
 #include "files.h"
 #include "apdu.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "mbedtls/sha256.h"
 
 static uint64_t expectedLength = 0, expectedNextOffset = 0;

@@ -16,7 +16,7 @@
  */
 
 #include "fido.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "apdu.h"
 #include "files.h"
 #include "random.h"
@@ -68,9 +68,8 @@ const uint8_t oath_aid[] = {
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01
 };
 
-app_t *oath_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, oath_aid + 1, MIN(aid_len, oath_aid[0])) && cap_supported(CAP_OATH)) {
-        a->aid = oath_aid;
+int oath_select(app_t *a) {
+    if (cap_supported(CAP_OATH)) {
         a->process_apdu = oath_process_apdu;
         a->unload = oath_unload;
         res_APDU_size = 0;
@@ -82,10 +81,10 @@ app_t *oath_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
         res_APDU[res_APDU_size++] = TAG_NAME;
         res_APDU[res_APDU_size++] = 8;
 #ifndef ENABLE_EMULATION
-        pico_get_unique_board_id((pico_unique_board_id_t *) (res_APDU + res_APDU_size));
-        res_APDU_size += 8;
+	    pico_get_unique_board_id((pico_unique_board_id_t *) (res_APDU + res_APDU_size));
+	    res_APDU_size += 8;
 #else
-        memset(res_APDU + res_APDU_size, 0, 8); res_APDU_size += 8;
+    	memset(res_APDU + res_APDU_size, 0, 8); res_APDU_size += 8;
 #endif
         if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
             random_gen(NULL, challenge, sizeof(challenge));
@@ -105,13 +104,13 @@ app_t *oath_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = ALG_HMAC_SHA1;
         apdu.ne = res_APDU_size;
-        return a;
+        return CCID_OK;
     }
-    return NULL;
+    return CCID_ERR_FILE_NOT_FOUND;
 }
 
 void __attribute__((constructor)) oath_ctor() {
-    register_app(oath_select);
+    register_app(oath_select, oath_aid);
 }
 
 int oath_unload() {
@@ -455,6 +454,7 @@ int cmd_calculate_all() {
     if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
+    res_APDU_size = 0;
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
         if (file_has_data(ef)) {

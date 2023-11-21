@@ -16,7 +16,7 @@
  */
 
 #include "fido.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "apdu.h"
 #include "ctap.h"
 #include "files.h"
@@ -33,6 +33,7 @@
 #include <math.h>
 #include "management.h"
 #include "ctap_hid.h"
+#include "version.h"
 
 int fido_process_apdu();
 int fido_unload();
@@ -42,7 +43,7 @@ pinUvAuthToken_t paut = { 0 };
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
 
-const uint8_t fido_aid[] = {
+const uint8_t _fido_aid[] = {
     8,
     0xA0, 0x00, 0x00, 0x06, 0x47, 0x2F, 0x00, 0x01
 };
@@ -53,21 +54,44 @@ const uint8_t atr_fido[] = {
     0x75, 0x62, 0x69, 0x4b, 0x65, 0x79, 0x40
 };
 
-app_t *fido_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, fido_aid + 1, MIN(aid_len, fido_aid[0])) && cap_supported(CAP_FIDO2)) {
-        a->aid = fido_aid;
+uint8_t fido_get_version_major() {
+    return PICO_FIDO_VERSION_MAJOR;
+}
+uint8_t fido_get_version_minor() {
+    return PICO_FIDO_VERSION_MINOR;
+}
+
+int fido_select(app_t *a) {
+    if (cap_supported(CAP_FIDO2)) {
         a->process_apdu = fido_process_apdu;
         a->unload = fido_unload;
-        return a;
+        return CCID_OK;
     }
-    return NULL;
+    return CCID_ERR_FILE_NOT_FOUND;
 }
+
+extern uint8_t (*get_version_major)();
+extern uint8_t (*get_version_minor)();
+extern const uint8_t *fido_aid;
+extern void (*init_fido_cb)();
+extern void (*cbor_thread_func)();
+extern int (*cbor_process_cb)(uint8_t, const uint8_t *, size_t);
+extern void cbor_thread();
+extern int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len);
 
 void __attribute__((constructor)) fido_ctor() {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
     ccid_atr = atr_fido;
 #endif
-    register_app(fido_select);
+    get_version_major = fido_get_version_major;
+    get_version_minor = fido_get_version_minor;
+    fido_aid = _fido_aid;
+    init_fido_cb = init_fido;
+#ifndef ENABLE_EMULATION
+    cbor_thread_func = cbor_thread;
+#endif
+    cbor_process_cb = cbor_process;
+    register_app(fido_select, fido_aid);
 }
 
 int fido_unload() {
@@ -389,8 +413,10 @@ void scan_all() {
     scan_files();
 }
 
+extern void init_otp();
 void init_fido() {
     scan_all();
+    init_otp();
 }
 
 bool wait_button_pressed() {

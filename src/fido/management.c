@@ -16,7 +16,7 @@
  */
 
 #include "fido.h"
-#include "hsm.h"
+#include "pico_keys.h"
 #include "apdu.h"
 #include "version.h"
 #include "files.h"
@@ -31,22 +31,20 @@ const uint8_t man_aid[] = {
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x47, 0x11, 0x17
 };
 extern void scan_all();
-app_t *man_select(app_t *a, const uint8_t *aid, uint8_t aid_len) {
-    if (!memcmp(aid, man_aid + 1, MIN(aid_len, man_aid[0]))) {
-        a->aid = man_aid;
-        a->process_apdu = man_process_apdu;
-        a->unload = man_unload;
-        sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
-        res_APDU_size = strlen((char *) res_APDU);
-        apdu.ne = res_APDU_size;
-        scan_all();
-        return a;
-    }
-    return NULL;
+extern void init_otp();
+int man_select(app_t *a) {
+    a->process_apdu = man_process_apdu;
+    a->unload = man_unload;
+    sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
+    res_APDU_size = strlen((char *) res_APDU);
+    apdu.ne = res_APDU_size;
+    scan_all();
+    init_otp();
+    return CCID_OK;
 }
 
 void __attribute__((constructor)) man_ctor() {
-    register_app(man_select);
+    register_app(man_select, man_aid);
 }
 
 int man_unload() {
