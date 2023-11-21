@@ -175,10 +175,6 @@ void init_otp() {
         }
         scanned = true;
         low_flash_available();
-#ifndef ENABLE_EMULATION
-        hid_set_report_cb = otp_hid_set_report_cb;
-        hid_get_report_cb = otp_hid_get_report_cb;
-#endif
     }
 }
 extern int calculate_oath(uint8_t truncate,
@@ -337,6 +333,10 @@ int otp_button_pressed(uint8_t slot) {
 void __attribute__((constructor)) otp_ctor() {
     register_app(otp_select, otp_aid);
     button_pressed_cb = otp_button_pressed;
+#ifndef ENABLE_EMULATION
+    hid_set_report_cb = otp_hid_set_report_cb;
+    hid_get_report_cb = otp_hid_get_report_cb;
+#endif
 }
 
 int otp_unload() {
@@ -599,8 +599,6 @@ uint16_t otp_hid_get_report_cb(uint8_t itf,
     (void) report_type;
     (void) buffer;
     (void) reqlen;
-    printf("get_report %d %d %d\n", itf, report_id, report_type);
-    DEBUG_PAYLOAD(buffer, reqlen);
     uint16_t send_buffer_size = *get_send_buffer_size(ITF_KEYBOARD);
     if (send_buffer_size > 0) {
         uint8_t seq = otp_curr_seq++;
