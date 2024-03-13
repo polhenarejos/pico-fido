@@ -54,10 +54,12 @@ int man_unload() {
 bool cap_supported(uint16_t cap) {
     file_t *ef = search_dynamic_file(EF_DEV_CONF);
     if (file_has_data(ef)) {
-        uint16_t tag = 0x0, data_len = file_get_size(ef);
-        uint8_t *tag_data = NULL, *p = NULL, *data = file_get_data(ef);
-        size_t tag_len = 0;
-        while (walk_tlv(data, data_len, &p, &tag, &tag_len, &tag_data)) {
+        uint16_t tag = 0x0;
+        uint8_t *tag_data = NULL, *p = NULL;
+        uint16_t tag_len = 0;
+        asn1_ctx_t ctxi;
+        asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+        while (walk_tlv(&ctxi, &p, &tag, &tag_len, &tag_data)) {
             if (tag == TAG_USB_ENABLED) {
                 uint16_t ecaps = tag_data[0];
                 if (tag_len == 2) {

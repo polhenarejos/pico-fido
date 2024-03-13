@@ -118,14 +118,11 @@ int oath_unload() {
 }
 
 file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
-    size_t ef_tag_len = 0;
-    uint8_t *ef_tag_data = NULL;
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
-        if (file_has_data(ef) &&
-            asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_NAME, &ef_tag_len,
-                          &ef_tag_data) == true && ef_tag_len == name_len &&
-            memcmp(ef_tag_data, name, name_len) == 0) {
+        asn1_ctx_t ctxi, ef_tag = { 0 };
+        asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+        if (file_has_data(ef) && asn1_find_tag(&ctxi, TAG_NAME, &ef_tag) == true && ef_tag.len == name_len && memcmp(ef_tag.data, name, name_len) == 0) {
             return ef;
         }
     }
@@ -136,30 +133,30 @@ int cmd_put() {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    size_t key_len = 0, imf_len = 0, name_len = 0;
-    uint8_t *key = NULL, *imf = NULL, *name = NULL;
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_KEY, &key_len, &key) == false) {
+    asn1_ctx_t ctxi, key = { 0 }, name = { 0 }, imf = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_NAME, &name_len, &name) == false) {
+    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
-        if (asn1_find_tag(apdu.data, apdu.nc, TAG_IMF, &imf_len, &imf) == false) {
+    if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+        if (asn1_find_tag(&ctxi, TAG_IMF, &imf) == false) {
             memcpy(apdu.data + apdu.nc, "\x7a\x08\x00\x00\x00\x00\x00\x00\x00\x00", 10);
             apdu.nc += 10;
         }
         else { //prepend zero-valued bytes
-            if (imf_len < 8) {
-                memmove(imf + (8 - imf_len), imf, imf_len);
-                memset(imf, 0, 8 - imf_len);
-                *(imf - 1) = 8;
-                apdu.nc += (8 - imf_len);
+            if (imf.len < 8) {
+                memmove(imf.data + (8 - imf.len), imf.data, imf.len);
+                memset(imf.data, 0, 8 - imf.len);
+                *(imf.data - 1) = 8;
+                apdu.nc += (8 - imf.len);
             }
 
         }
     }
-    file_t *ef = find_oath_cred(name, name_len);
+    file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef)) {
         flash_write_data_to_file(ef, apdu.data, apdu.nc);
         low_flash_available();
@@ -181,13 +178,13 @@ int cmd_put() {
 
 
 int cmd_delete() {
-    size_t tag_len = 0;
-    uint8_t *tag_data = NULL;
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_NAME, &tag_len, &tag_data) == true) {
-        file_t *ef = find_oath_cred(tag_data, tag_len);
+    asn1_ctx_t ctxi, ctxo = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_NAME, &ctxo) == true) {
+        file_t *ef = find_oath_cred(ctxo.data, ctxo.len);
         if (ef) {
             delete_file(ef);
             return SW_OK();
@@ -219,38 +216,38 @@ int cmd_set_code() {
         validated = true;
         return SW_OK();
     }
-    size_t key_len = 0, chal_len = 0, resp_len = 0;
-    uint8_t *key = NULL, *chal = NULL, *resp = NULL;
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_KEY, &key_len, &key) == false) {
+    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, resp = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (key_len == 0) {
+    if (key.len == 0) {
         delete_file(search_dynamic_file(EF_OATH_CODE));
         validated = true;
         return SW_OK();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false) {
+    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_RESPONSE, &resp_len, &resp) == false) {
+    if (asn1_find_tag(&ctxi, TAG_RESPONSE, &resp) == false) {
         return SW_INCORRECT_PARAMS();
     }
 
-    const mbedtls_md_info_t *md_info = get_oath_md_info(key[0]);
+    const mbedtls_md_info_t *md_info = get_oath_md_info(key.data[0]);
     if (md_info == NULL) {
         return SW_INCORRECT_PARAMS();
     }
     uint8_t hmac[64];
-    int r = mbedtls_md_hmac(md_info, key + 1, key_len - 1, chal, chal_len, hmac);
+    int r = mbedtls_md_hmac(md_info, key.data + 1, key.len - 1, chal.data, chal.len, hmac);
     if (r != 0) {
         return SW_EXEC_ERROR();
     }
-    if (memcmp(hmac, resp, resp_len) != 0) {
+    if (memcmp(hmac, resp.data, resp.len) != 0) {
         return SW_DATA_INVALID();
     }
     random_gen(NULL, challenge, sizeof(challenge));
     file_t *ef = file_new(EF_OATH_CODE);
-    flash_write_data_to_file(ef, key, key_len);
+    flash_write_data_to_file(ef, key.data, key.len);
     low_flash_available();
     validated = false;
     return SW_OK();
@@ -274,23 +271,19 @@ int cmd_reset() {
 }
 
 int cmd_list() {
-    size_t name_len = 0, key_len = 0;
-    uint8_t *name = NULL, *key = NULL;
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
         if (file_has_data(ef)) {
-            uint8_t *data = file_get_data(ef);
-            size_t data_len = file_get_size(ef);
-            if (asn1_find_tag(data, data_len, TAG_NAME, &name_len,
-                              &name) == true &&
-                asn1_find_tag(data, data_len, TAG_KEY, &key_len, &key) == true) {
+            asn1_ctx_t ctxi, key = { 0 }, name = { 0 };
+            asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+            if (asn1_find_tag(&ctxi, TAG_NAME, &name) == true && asn1_find_tag(&ctxi, TAG_KEY, &key) == true) {
                 res_APDU[res_APDU_size++] = TAG_NAME_LIST;
-                res_APDU[res_APDU_size++] = name_len + 1;
-                res_APDU[res_APDU_size++] = key[0];
-                memcpy(res_APDU + res_APDU_size, name, name_len); res_APDU_size += name_len;
+                res_APDU[res_APDU_size++] = name.len + 1;
+                res_APDU[res_APDU_size++] = key.data[0];
+                memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
             }
         }
     }
@@ -299,12 +292,12 @@ int cmd_list() {
 }
 
 int cmd_validate() {
-    size_t chal_len = 0, resp_len = 0, key_len = 0;
-    uint8_t *chal = NULL, *resp = NULL, *key = NULL;
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false) {
+    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, resp = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_RESPONSE, &resp_len, &resp) == false) {
+    if (asn1_find_tag(&ctxi, TAG_RESPONSE, &resp) == false) {
         return SW_INCORRECT_PARAMS();
     }
     file_t *ef = search_dynamic_file(EF_OATH_CODE);
@@ -312,21 +305,21 @@ int cmd_validate() {
         validated = true;
         return SW_DATA_INVALID();
     }
-    key = file_get_data(ef);
-    key_len = file_get_size(ef);
-    const mbedtls_md_info_t *md_info = get_oath_md_info(key[0]);
+    key.data = file_get_data(ef);
+    key.len = file_get_size(ef);
+    const mbedtls_md_info_t *md_info = get_oath_md_info(key.data[0]);
     if (md_info == NULL) {
         return SW_INCORRECT_PARAMS();
     }
     uint8_t hmac[64];
-    int ret = mbedtls_md_hmac(md_info, key + 1, key_len - 1, challenge, sizeof(challenge), hmac);
+    int ret = mbedtls_md_hmac(md_info, key.data + 1, key.len - 1, challenge, sizeof(challenge), hmac);
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
-    if (memcmp(hmac, resp, resp_len) != 0) {
+    if (memcmp(hmac, resp.data, resp.len) != 0) {
         return SW_DATA_INVALID();
     }
-    ret = mbedtls_md_hmac(md_info, key + 1, key_len - 1, chal, chal_len, hmac);
+    ret = mbedtls_md_hmac(md_info, key.data + 1, key.len - 1, chal.data, chal.len, hmac);
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
@@ -373,67 +366,69 @@ int calculate_oath(uint8_t truncate,
 }
 
 int cmd_calculate() {
-    size_t chal_len = 0, name_len = 0, key_len = 0;
-    uint8_t *chal = NULL, *name = NULL, *key = NULL;
     if (P2(apdu) != 0x0 && P2(apdu) != 0x1) {
         return SW_INCORRECT_P1P2();
     }
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false) {
+    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_NAME, &name_len, &name) == false) {
+    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    file_t *ef = find_oath_cred(name, name_len);
+    file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef) == false) {
         return SW_DATA_INVALID();
     }
-
-    if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_KEY, &key_len, &key) == false) {
+    asn1_ctx_t ctxe;
+    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+    if (asn1_find_tag(&ctxe, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
 
-    if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
-        if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_IMF, &chal_len,
-                          &chal) == false) {
+    if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+        if (asn1_find_tag(&ctxe, TAG_IMF, &chal) == false) {
             return SW_INCORRECT_PARAMS();
         }
     }
 
     res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
 
-    int ret = calculate_oath(P2(apdu), key, key_len, chal, chal_len);
+    int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
     if (ret != CCID_OK) {
         return SW_EXEC_ERROR();
     }
-    if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+    if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
         uint64_t v =
-            ((uint64_t) chal[0] <<
+            ((uint64_t) chal.data[0] <<
                 56) |
-            ((uint64_t) chal[1] <<
+            ((uint64_t) chal.data[1] <<
                 48) |
-            ((uint64_t) chal[2] <<
+            ((uint64_t) chal.data[2] <<
                 40) |
-            ((uint64_t) chal[3] <<
+            ((uint64_t) chal.data[3] <<
                 32) |
-            ((uint64_t) chal[4] <<
-                24) | ((uint64_t) chal[5] << 16) | ((uint64_t) chal[6] << 8) | (uint64_t) chal[7];
+            ((uint64_t) chal.data[4] <<
+                24) | ((uint64_t) chal.data[5] << 16) | ((uint64_t) chal.data[6] << 8) | (uint64_t) chal.data[7];
         size_t ef_size = file_get_size(ef);
         v++;
         uint8_t *tmp = (uint8_t *) calloc(1, ef_size);
         memcpy(tmp, file_get_data(ef), ef_size);
-        asn1_find_tag(tmp, ef_size, TAG_IMF, &chal_len, &chal);
-        chal[0] = v >> 56;
-        chal[1] = v >> 48;
-        chal[2] = v >> 40;
-        chal[3] = v >> 32;
-        chal[4] = v >> 24;
-        chal[5] = v >> 16;
-        chal[6] = v >> 8;
-        chal[7] = v & 0xff;
+        asn1_ctx_t ctxt;
+        asn1_ctx_init(tmp, ef_size, &ctxt);
+        asn1_find_tag(&ctxt, TAG_IMF, &chal);
+        chal.data[0] = v >> 56;
+        chal.data[1] = v >> 48;
+        chal.data[2] = v >> 40;
+        chal.data[3] = v >> 32;
+        chal.data[4] = v >> 24;
+        chal.data[5] = v >> 16;
+        chal.data[6] = v >> 8;
+        chal.data[7] = v & 0xff;
         flash_write_data_to_file(ef, tmp, ef_size);
         low_flash_available();
         free(tmp);
@@ -443,15 +438,15 @@ int cmd_calculate() {
 }
 
 int cmd_calculate_all() {
-    size_t chal_len = 0, name_len = 0, key_len = 0, prop_len = 0;
-    uint8_t *chal = NULL, *name = NULL, *key = NULL, *prop = NULL;
+    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, prop = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
     if (P2(apdu) != 0x0 && P2(apdu) != 0x1) {
         return SW_INCORRECT_P1P2();
     }
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_CHALLENGE, &chal_len, &chal) == false) {
+    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
     res_APDU_size = 0;
@@ -460,31 +455,30 @@ int cmd_calculate_all() {
         if (file_has_data(ef)) {
             const uint8_t *ef_data = file_get_data(ef);
             size_t ef_len = file_get_size(ef);
-            if (asn1_find_tag(ef_data, ef_len, TAG_NAME, &name_len,
-                              &name) == false ||
-                asn1_find_tag(ef_data, ef_len, TAG_KEY, &key_len, &key) == false) {
+            asn1_ctx_t ctxe;
+            asn1_ctx_init((uint8_t *)ef_data, ef_len, &ctxe);
+            if (asn1_find_tag(&ctxe, TAG_NAME, &name) == false || asn1_find_tag(&ctxe, TAG_KEY, &key) == false) {
                 continue;
             }
             res_APDU[res_APDU_size++] = TAG_NAME;
-            res_APDU[res_APDU_size++] = name_len;
-            memcpy(res_APDU + res_APDU_size, name, name_len); res_APDU_size += name_len;
-            if ((key[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+            res_APDU[res_APDU_size++] = name.len;
+            memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
+            if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
                 res_APDU[res_APDU_size++] = TAG_NO_RESPONSE;
                 res_APDU[res_APDU_size++] = 1;
-                res_APDU[res_APDU_size++] = key[1];
+                res_APDU[res_APDU_size++] = key.data[1];
             }
-            else if (asn1_find_tag(ef_data, ef_len, TAG_PROPERTY, &prop_len,
-                                   &prop) == true && (prop[0] & PROP_TOUCH)) {
+            else if (asn1_find_tag(&ctxe, TAG_PROPERTY, &prop) == true && (prop.data[0] & PROP_TOUCH)) {
                 res_APDU[res_APDU_size++] = TAG_TOUCH_RESPONSE;
                 res_APDU[res_APDU_size++] = 1;
-                res_APDU[res_APDU_size++] = key[1];
+                res_APDU[res_APDU_size++] = key.data[1];
             }
             else {
                 res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
-                int ret = calculate_oath(P2(apdu), key, key_len, chal, chal_len);
+                int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
                 if (ret != CCID_OK) {
                     res_APDU[res_APDU_size++] = 1;
-                    res_APDU[res_APDU_size++] = key[1];
+                    res_APDU[res_APDU_size++] = key.data[1];
                 }
             }
         }
@@ -498,57 +492,60 @@ int cmd_send_remaining() {
 }
 
 int cmd_set_otp_pin() {
-    size_t pw_len = 0;
-    uint8_t *pw = NULL, hsh[33] = { 0 };
+    uint8_t hsh[33] = { 0 };
     file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_PASSWORD, &pw_len, &pw) == false) {
+    asn1_ctx_t ctxi, pw = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_PASSWORD, &pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
     hsh[0] = MAX_OTP_COUNTER;
-    double_hash_pin(pw, pw_len, hsh + 1);
+    double_hash_pin(pw.data, pw.len, hsh + 1);
     flash_write_data_to_file(ef_otp_pin, hsh, sizeof(hsh));
     low_flash_available();
     return SW_OK();
 }
 
 int cmd_change_otp_pin() {
-    size_t pw_len = 0, new_pw_len = 0;
-    uint8_t *pw = NULL, *new_pw = NULL, hsh[33] = { 0 };
+    uint8_t hsh[33] = { 0 };
     file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (!file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_PASSWORD, &pw_len, &pw) == false) {
+    asn1_ctx_t ctxi, pw = { 0 }, new_pw = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_PASSWORD,  &pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    double_hash_pin(pw, pw_len, hsh + 1);
+    double_hash_pin(pw.data, pw.len, hsh + 1);
     if (memcmp(file_get_data(ef_otp_pin) + 1, hsh + 1, 32) != 0) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_NEW_PASSWORD, &new_pw_len, &new_pw) == false) {
+    if (asn1_find_tag(&ctxi, TAG_NEW_PASSWORD, &new_pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
     hsh[0] = MAX_OTP_COUNTER;
-    double_hash_pin(new_pw, new_pw_len, hsh + 1);
+    double_hash_pin(new_pw.data, new_pw.len, hsh + 1);
     flash_write_data_to_file(ef_otp_pin, hsh, sizeof(hsh));
     low_flash_available();
     return SW_OK();
 }
 
 int cmd_verify_otp_pin() {
-    size_t pw_len = 0;
-    uint8_t *pw = NULL, hsh[33] = { 0 }, data_hsh[33];
+    uint8_t hsh[33] = { 0 }, data_hsh[33];
     file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (!file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_PASSWORD, &pw_len, &pw) == false) {
+    asn1_ctx_t ctxi, pw = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_PASSWORD, &pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    double_hash_pin(pw, pw_len, hsh + 1);
+    double_hash_pin(pw.data, pw.len, hsh + 1);
     memcpy(data_hsh, file_get_data(ef_otp_pin), sizeof(data_hsh));
     if (data_hsh[0] == 0 || memcmp(data_hsh + 1, hsh + 1, 32) != 0) {
         if (data_hsh[0] > 0) {
@@ -567,32 +564,33 @@ int cmd_verify_otp_pin() {
 }
 
 int cmd_verify_hotp() {
-    size_t key_len = 0, chal_len = 0, name_len = 0, code_len = 0;
-    uint8_t *key = NULL, *chal = NULL, *name = NULL, *code = NULL;
+    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, code = { 0 };
+    asn1_ctx_init(apdu.data, apdu.nc, &ctxi);
     uint32_t code_int = 0;
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_NAME, &name_len, &name) == false) {
+    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    file_t *ef = find_oath_cred(name, name_len);
+    file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef) == false) {
         return SW_DATA_INVALID();
     }
-    if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_KEY, &key_len, &key) == false) {
+    asn1_ctx_t ctxe;
+    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
+    if (asn1_find_tag(&ctxe, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
 
-    if ((key[0] & OATH_TYPE_MASK) != OATH_TYPE_HOTP) {
+    if ((key.data[0] & OATH_TYPE_MASK) != OATH_TYPE_HOTP) {
         return SW_DATA_INVALID();
     }
-    if (asn1_find_tag(file_get_data(ef), file_get_size(ef), TAG_IMF, &chal_len,
-                      &chal) == false) {
+    if (asn1_find_tag(&ctxe, TAG_IMF, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(apdu.data, apdu.nc, TAG_RESPONSE, &code_len, &code) == true) {
-        code_int = (code[0] << 24) | (code[1] << 16) | (code[2] << 8) | code[3];
+    if (asn1_find_tag(&ctxi, TAG_RESPONSE, &code) == true) {
+        code_int = (code.data[0] << 24) | (code.data[1] << 16) | (code.data[2] << 8) | code.data[3];
     }
 
-    int ret = calculate_oath(0x01, key, key_len, chal, chal_len);
+    int ret = calculate_oath(0x01, key.data, key.len, chal.data, chal.len);
     if (ret != CCID_OK) {
         return SW_EXEC_ERROR();
     }
