@@ -385,7 +385,7 @@ int cmd_calculate() {
         return SW_DATA_INVALID();
     }
     asn1_ctx_t ctxe;
-    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
     if (asn1_find_tag(&ctxe, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
