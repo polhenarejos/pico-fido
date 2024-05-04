@@ -158,7 +158,7 @@ int cmd_put() {
     }
     file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef)) {
-        flash_write_data_to_file(ef, apdu.data, apdu.nc);
+        file_put_data(ef, apdu.data, apdu.nc);
         low_flash_available();
     }
     else {
@@ -166,7 +166,7 @@ int cmd_put() {
             file_t *ef = search_dynamic_file(EF_OATH_CRED + i);
             if (!file_has_data(ef)) {
                 ef = file_new(EF_OATH_CRED + i);
-                flash_write_data_to_file(ef, apdu.data, apdu.nc);
+                file_put_data(ef, apdu.data, apdu.nc);
                 low_flash_available();
                 return SW_OK();
             }
@@ -247,7 +247,7 @@ int cmd_set_code() {
     }
     random_gen(NULL, challenge, sizeof(challenge));
     file_t *ef = file_new(EF_OATH_CODE);
-    flash_write_data_to_file(ef, key.data, key.len);
+    file_put_data(ef, key.data, key.len);
     low_flash_available();
     validated = false;
     return SW_OK();
@@ -429,7 +429,7 @@ int cmd_calculate() {
         chal.data[5] = v >> 16;
         chal.data[6] = v >> 8;
         chal.data[7] = v & 0xff;
-        flash_write_data_to_file(ef, tmp, ef_size);
+        file_put_data(ef, tmp, ef_size);
         low_flash_available();
         free(tmp);
     }
@@ -504,7 +504,7 @@ int cmd_set_otp_pin() {
     }
     hsh[0] = MAX_OTP_COUNTER;
     double_hash_pin(pw.data, pw.len, hsh + 1);
-    flash_write_data_to_file(ef_otp_pin, hsh, sizeof(hsh));
+    file_put_data(ef_otp_pin, hsh, sizeof(hsh));
     low_flash_available();
     return SW_OK();
 }
@@ -529,7 +529,7 @@ int cmd_change_otp_pin() {
     }
     hsh[0] = MAX_OTP_COUNTER;
     double_hash_pin(new_pw.data, new_pw.len, hsh + 1);
-    flash_write_data_to_file(ef_otp_pin, hsh, sizeof(hsh));
+    file_put_data(ef_otp_pin, hsh, sizeof(hsh));
     low_flash_available();
     return SW_OK();
 }
@@ -551,13 +551,13 @@ int cmd_verify_otp_pin() {
         if (data_hsh[0] > 0) {
             data_hsh[0] -= 1;
         }
-        flash_write_data_to_file(ef_otp_pin, data_hsh, sizeof(data_hsh));
+        file_put_data(ef_otp_pin, data_hsh, sizeof(data_hsh));
         low_flash_available();
         validated = false;
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     data_hsh[0] = MAX_OTP_COUNTER;
-    flash_write_data_to_file(ef_otp_pin, data_hsh, sizeof(data_hsh));
+    file_put_data(ef_otp_pin, data_hsh, sizeof(data_hsh));
     low_flash_available();
     validated = true;
     return SW_OK();

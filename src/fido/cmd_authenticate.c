@@ -97,7 +97,7 @@ int cmd_authenticate() {
     res_APDU_size = 1 + 4 + olen;
 
     ctr++;
-    flash_write_data_to_file(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
+    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
     low_flash_available();
     return SW_OK();
 }

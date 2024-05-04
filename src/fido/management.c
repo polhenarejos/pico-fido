@@ -130,7 +130,7 @@ int cmd_write_config() {
         return SW_WRONG_DATA();
     }
     file_t *ef = file_new(EF_DEV_CONF);
-    flash_write_data_to_file(ef, apdu.data + 1, apdu.nc - 1);
+    file_put_data(ef, apdu.data + 1, apdu.nc - 1);
     low_flash_available();
     return SW_OK();
 }

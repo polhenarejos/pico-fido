@@ -169,7 +169,7 @@ void init_otp() {
                     memcpy(new_data, data, sizeof(new_data));
                     new_data[otp_config_size] = counter >> 8;
                     new_data[otp_config_size + 1] = counter & 0xff;
-                    flash_write_data_to_file(ef, new_data, sizeof(new_data));
+                    file_put_data(ef, new_data, sizeof(new_data));
                 }
             }
         }
@@ -258,7 +258,7 @@ int otp_button_pressed(uint8_t slot) {
             uint8_t new_otp_config[otp_config_size + sizeof(new_chal)];
             memcpy(new_otp_config, otp_config, otp_config_size);
             memcpy(new_otp_config + otp_config_size, new_chal, sizeof(new_chal));
-            flash_write_data_to_file(ef, new_otp_config, sizeof(new_otp_config));
+            file_put_data(ef, new_otp_config, sizeof(new_otp_config));
             low_flash_available();
         }
         if (otp_config->tkt_flags & APPEND_CR) {
@@ -322,7 +322,7 @@ int otp_button_pressed(uint8_t slot) {
             memcpy(new_data, data, sizeof(new_data));
             new_data[otp_config_size] = counter >> 8;
             new_data[otp_config_size + 1] = counter & 0xff;
-            flash_write_data_to_file(ef, new_data, sizeof(new_data));
+            file_put_data(ef, new_data, sizeof(new_data));
             low_flash_available();
         }
     }
@@ -387,7 +387,7 @@ int cmd_otp() {
                     return SW_WRONG_DATA();
                 }
                 memset(apdu.data + otp_config_size, 0, 8); // Add 8 bytes extra
-                flash_write_data_to_file(ef, apdu.data, otp_config_size + 8);
+                file_put_data(ef, apdu.data, otp_config_size + 8);
                 low_flash_available();
                 config_seq++;
                 return otp_status();
@@ -420,7 +420,7 @@ int cmd_otp() {
                                (odata->tkt_flags & TKTFLAG_UPDATE_MASK);
             odata->cfg_flags = (otpc->cfg_flags & ~CFGFLAG_UPDATE_MASK) |
                                (odata->cfg_flags & CFGFLAG_UPDATE_MASK);
-            flash_write_data_to_file(ef, apdu.data, otp_config_size);
+            file_put_data(ef, apdu.data, otp_config_size);
             low_flash_available();
         }
     }
@@ -434,13 +434,13 @@ int cmd_otp() {
             ef1_data = true;
         }
         if (file_has_data(ef2)) {
-            flash_write_data_to_file(ef1, file_get_data(ef2), file_get_size(ef2));
+            file_put_data(ef1, file_get_data(ef2), file_get_size(ef2));
         }
         else {
             delete_file(ef1);
         }
         if (ef1_data) {
-            flash_write_data_to_file(ef2, tmp, sizeof(tmp));
+            file_put_data(ef2, tmp, sizeof(tmp));
         }
         else {
             delete_file(ef2);

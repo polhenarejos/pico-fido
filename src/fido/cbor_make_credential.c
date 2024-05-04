@@ -518,7 +518,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
     ctr++;
-    flash_write_data_to_file(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
+    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
     low_flash_available();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);

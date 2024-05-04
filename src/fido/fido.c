@@ -317,7 +317,7 @@ int scan_files() {
             uint8_t kdata[32];
             int key_size = mbedtls_mpi_size(&ecdsa.d);
             mbedtls_mpi_write_binary(&ecdsa.d, kdata, key_size);
-            ret = flash_write_data_to_file(ef_keydev, kdata, key_size);
+            ret = file_put_data(ef_keydev, kdata, key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             mbedtls_ecdsa_free(&ecdsa);
             if (ret != CCID_OK) {
@@ -353,7 +353,7 @@ int scan_files() {
             if (ret <= 0) {
                 return ret;
             }
-            flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
+            file_put_data(ef_certdev, cert + sizeof(cert) - ret, ret);
         }
     }
     else {
@@ -363,7 +363,7 @@ int scan_files() {
     if (ef_counter) {
         if (!file_has_data(ef_counter)) {
             uint32_t v = 0;
-            flash_write_data_to_file(ef_counter, (uint8_t *) &v, sizeof(v));
+            file_put_data(ef_counter, (uint8_t *) &v, sizeof(v));
         }
     }
     else {
@@ -375,7 +375,7 @@ int scan_files() {
         if (!file_has_data(ef_authtoken)) {
             uint8_t t[32];
             random_gen(NULL, t, sizeof(t));
-            flash_write_data_to_file(ef_authtoken, t, sizeof(t));
+            file_put_data(ef_authtoken, t, sizeof(t));
         }
         paut.data = file_get_data(ef_authtoken);
         paut.len = file_get_size(ef_authtoken);
@@ -385,7 +385,7 @@ int scan_files() {
     }
     ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     if (!file_has_data(ef_largeblob)) {
-        flash_write_data_to_file(ef_largeblob,
+        file_put_data(ef_largeblob,
                                  (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c",
                                  17);
     }
@@ -447,7 +447,7 @@ uint8_t get_opts() {
 
 void set_opts(uint8_t opts) {
     file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
-    flash_write_data_to_file(ef, &opts, sizeof(uint8_t));
+    file_put_data(ef, &opts, sizeof(uint8_t));
     low_flash_available();
 }
 
