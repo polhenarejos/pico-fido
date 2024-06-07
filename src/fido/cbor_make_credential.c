@@ -313,9 +313,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
         }
         flags |= FIDO2_AUT_FLAG_UP;
-        clearUserPresentFlag();
-        clearUserVerifiedFlag();
-        clearPinUvAuthTokenPermissionsExceptLbw();
+        if (options.up == ptrue) {
+            clearUserPresentFlag();
+            clearUserVerifiedFlag();
+            clearPinUvAuthTokenPermissionsExceptLbw();
+        }
     }
 
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
