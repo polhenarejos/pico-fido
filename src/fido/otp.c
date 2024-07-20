@@ -23,6 +23,7 @@
 #include "version.h"
 #include "asn1.h"
 #include "hid/ctap_hid.h"
+#include "usb.h"
 #ifndef ENABLE_EMULATION
 #include "bsp/board.h"
 #endif
