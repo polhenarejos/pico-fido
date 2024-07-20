@@ -121,9 +121,9 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             uint8_t zeros[32];
             memset(zeros, 0, sizeof(zeros));
-            flash_write_data_to_file(ef_keydev_enc, vendorParam.data, vendorParam.len);
-            flash_write_data_to_file(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
-            flash_write_data_to_file(ef_keydev, NULL, 0); // Set ef to 0 bytes
+            file_put_data(ef_keydev_enc, vendorParam.data, vendorParam.len);
+            file_put_data(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
+            file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
             low_flash_available();
             goto err;
         }
@@ -306,7 +306,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             file_t *ef_ee_ea = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
             if (ef_ee_ea) {
-                flash_write_data_to_file(ef_ee_ea, vendorParam.data, vendorParam.len);
+                file_put_data(ef_ee_ea, vendorParam.data, vendorParam.len);
             }
             low_flash_available();
             goto err;

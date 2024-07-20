@@ -155,7 +155,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
             if (expectedLength > 17 && memcmp(sha, temp_lba + expectedLength - 16, 16) != 0) {
                 CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
             }
-            flash_write_data_to_file(ef_largeblob, temp_lba, expectedLength);
+            file_put_data(ef_largeblob, temp_lba, expectedLength);
             low_flash_available();
         }
         goto err;

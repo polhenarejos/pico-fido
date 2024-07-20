@@ -380,7 +380,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                             delete_file(rp_ef);
                         }
                         else {
-                            flash_write_data_to_file(rp_ef, rp_data, file_get_size(rp_ef));
+                            file_put_data(rp_ef, rp_data, file_get_size(rp_ef));
                         }
                         free(rp_data);
                         break;

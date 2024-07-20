@@ -169,7 +169,7 @@ int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret) {
 int resetPinUvAuthToken() {
     uint8_t t[32];
     random_gen(NULL, t, sizeof(t));
-    flash_write_data_to_file(ef_authtoken, t, sizeof(t));
+    file_put_data(ef_authtoken, t, sizeof(t));
     paut.permissions = 0;
     paut.data = file_get_data(ef_authtoken);
     paut.len = file_get_size(ef_authtoken);
@@ -417,7 +417,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         hsh[0] = MAX_PIN_RETRIES;
         hsh[1] = pin_len;
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, hsh + 2);
-        flash_write_data_to_file(ef_pin, hsh, 2 + 16);
+        file_put_data(ef_pin, hsh, 2 + 16);
         low_flash_available();
         goto err; //No return
     }
@@ -464,7 +464,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint8_t pin_data[18];
         memcpy(pin_data, file_get_data(ef_pin), 18);
         pin_data[0] -= 1;
-        flash_write_data_to_file(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, pin_data, sizeof(pin_data));
         low_flash_available();
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64];
@@ -489,7 +489,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             }
         }
         pin_data[0] = MAX_PIN_RETRIES;
-        flash_write_data_to_file(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, pin_data, sizeof(pin_data));
         low_flash_available();
         new_pin_mismatches = 0;
         ret = decrypt(pinUvAuthProtocol, sharedSecret, newPinEnc.data, newPinEnc.len, paddedNewPin);
@@ -520,12 +520,12 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             memcmp(hsh + 2, file_get_data(ef_pin) + 2, 16) == 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
-        flash_write_data_to_file(ef_pin, hsh, 2 + 16);
+        file_put_data(ef_pin, hsh, 2 + 16);
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
             uint8_t *tmp = (uint8_t *) calloc(1, file_get_size(ef_minpin));
             memcpy(tmp, file_get_data(ef_minpin), file_get_size(ef_minpin));
             tmp[1] = 0;
-            flash_write_data_to_file(ef_minpin, tmp, file_get_size(ef_minpin));
+            file_put_data(ef_minpin, tmp, file_get_size(ef_minpin));
             free(tmp);
         }
         low_flash_available();
@@ -573,7 +573,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint8_t pin_data[18];
         memcpy(pin_data, file_get_data(ef_pin), 18);
         pin_data[0] -= 1;
-        flash_write_data_to_file(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, pin_data, sizeof(pin_data));
         low_flash_available();
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64], poff = (pinUvAuthProtocol - 1) * IV_SIZE;
@@ -599,7 +599,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         pin_data[0] = MAX_PIN_RETRIES;
         new_pin_mismatches = 0;
-        flash_write_data_to_file(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, pin_data, sizeof(pin_data));
         low_flash_available();
         file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {

@@ -225,9 +225,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         else if (pubKeyCredParams[i].alg <= FIDO2_ALG_RS256 && pubKeyCredParams[i].alg >= FIDO2_ALG_RS512) {
             // pass
         }
-        else {
-            CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
-        }
+        //else {
+        //    CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
+        //}
         if (curve > 0 && alg == 0) {
             alg = pubKeyCredParams[i].alg;
         }
@@ -313,9 +313,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
         }
         flags |= FIDO2_AUT_FLAG_UP;
-        clearUserPresentFlag();
-        clearUserVerifiedFlag();
-        clearPinUvAuthTokenPermissionsExceptLbw();
+        if (options.up == ptrue) {
+            clearUserPresentFlag();
+            clearUserVerifiedFlag();
+            clearPinUvAuthTokenPermissionsExceptLbw();
+        }
     }
 
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
@@ -518,7 +520,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
     ctr++;
-    flash_write_data_to_file(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
+    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
     low_flash_available();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
