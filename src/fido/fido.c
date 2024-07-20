@@ -215,7 +215,8 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_con
         }
     }
     uint8_t hmac[32], d[32];
-    int ret = mbedtls_ecp_write_key(key, d, sizeof(d));
+    size_t olen = 0;
+    int ret = mbedtls_ecp_write_key_ext(key, &olen, d, sizeof(d));
     if (key == NULL) {
         mbedtls_ecdsa_free(&ctx);
     }
