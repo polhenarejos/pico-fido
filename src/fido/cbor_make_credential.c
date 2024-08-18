@@ -468,7 +468,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
 
-    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder,
                                        extensions.largeBlobKey == ptrue &&
                                        options.rk == ptrue ? 5 : 4));
@@ -512,7 +512,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
 
     if (options.rk == ptrue) {
         if (credential_store(cred_id, cred_id_len, rp_id_hash) != 0) {
