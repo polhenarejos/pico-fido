@@ -17,6 +17,11 @@
 
 cmake_minimum_required(VERSION 3.13)
 
+if(ESP_PLATFORM)
+set(EXTRA_COMPONENT_DIRS src pico-keys-sdk/src)
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+else()
+
 if(ENABLE_EMULATION)
 else()
 include(pico_sdk_import.cmake)
@@ -33,7 +38,7 @@ pico_sdk_init()
 endif()
 
 add_executable(pico_fido)
-
+endif()
 option(ENABLE_UP_BUTTON "Enable/disable user presence button" ON)
 if(ENABLE_UP_BUTTON)
     add_definitions(-DENABLE_UP_BUTTON=1)
@@ -110,11 +115,13 @@ endif()
 
 set(USB_ITF_HID 1)
 include(pico-keys-sdk/pico_keys_sdk_import.cmake)
-
+if(ESP_PLATFORM)
+    project(pico_fido)
+endif()
 set(INCLUDES ${INCLUDES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido
         )
-
+if(NOT ESP_PLATFORM)
 target_sources(pico_fido PUBLIC ${SOURCES})
 target_include_directories(pico_fido PUBLIC ${INCLUDES})
 
@@ -148,4 +155,5 @@ target_compile_options(pico_fido PUBLIC
 else()
 pico_add_extra_outputs(pico_fido)
 target_link_libraries(pico_fido PRIVATE pico_keys_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id hardware_rtc tinyusb_device tinyusb_board)
+endif()
 endif()
