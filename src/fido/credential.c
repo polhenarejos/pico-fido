@@ -18,7 +18,7 @@
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"

@@ -24,11 +24,12 @@
 #include "asn1.h"
 #include "hid/ctap_hid.h"
 #include "usb.h"
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "mbedtls/aes.h"
 #include "management.h"
+#include "tusb.h"
 
 #define FIXED_SIZE          16
 #define KEY_SIZE            16
@@ -331,7 +332,7 @@ int otp_button_pressed(uint8_t slot) {
     return 0;
 }
 
-void __attribute__((constructor)) otp_ctor() {
+INITIALIZER( otp_ctor ) {
     register_app(otp_select, otp_aid);
     button_pressed_cb = otp_button_pressed;
 #ifndef ENABLE_EMULATION
@@ -449,9 +450,7 @@ int cmd_otp() {
         low_flash_available();
     }
     else if (p1 == 0x10) {
-#ifndef ENABLE_EMULATION
-        pico_get_unique_board_id_string((char *) res_APDU, 4);
-#endif
+        memcpy(res_APDU, pico_serial.id, 4);
         res_APDU_size = 4;
     }
     else if (p1 == 0x13) {
@@ -479,9 +478,7 @@ int cmd_otp() {
             else if (p1 == 0x20 || p1 == 0x28) {
                 uint8_t challenge[16];
                 memcpy(challenge, apdu.data, 6);
-#ifndef ENABLE_EMULATION
-                pico_get_unique_board_id_string((char *) challenge + 6, 10);
-#endif
+                memcpy(challenge + 6, pico_serial_str, 10);
                 mbedtls_aes_context ctx;
                 mbedtls_aes_init(&ctx);
                 mbedtls_aes_setkey_enc(&ctx, otp_config->aes_key, 128);
@@ -547,39 +544,41 @@ int otp_hid_set_report_cb(uint8_t itf,
                            uint8_t const *buffer,
                            uint16_t bufsize)
 {
-    if (report_type == 3) {
-        DEBUG_PAYLOAD(buffer, bufsize);
-        if (itf == ITF_KEYBOARD && buffer[7] == 0xFF) { // reset
-            *get_send_buffer_size(ITF_KEYBOARD) = 0;
-            otp_curr_seq = otp_exp_seq = 0;
-            memset(otp_frame_tx, 0, sizeof(otp_frame_tx));
-        }
-        else if (buffer[7] & 0x80) { // a frame
-            uint8_t rseq = buffer[7] & 0x1F;
-            if (rseq < 10) {
-                if (rseq == 0) {
-                    memset(otp_frame_rx, 0, sizeof(otp_frame_rx));
-                }
-                memcpy(otp_frame_rx + rseq * 7, buffer, 7);
-                if (rseq == 9) {
-                    DEBUG_DATA(otp_frame_rx, sizeof(otp_frame_rx));
-                    uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = (otp_frame_rx[66] << 8 | otp_frame_rx[65]);
-                    uint8_t slot_id = otp_frame_rx[64];
-                    if (residual_crc == rcrc) {
-                        apdu.data = otp_frame_rx;
-                        apdu.nc = 64;
-                        apdu.rdata = otp_frame_tx;
-                        apdu.header[0] = 0;
-                        apdu.header[1] = 0x01;
-                        apdu.header[2] = slot_id;
-                        apdu.header[3] = 0;
-                        int ret = otp_process_apdu();
-                        if (ret == 0x9000 && res_APDU_size > 0) {
-                            otp_send_frame(apdu.rdata, apdu.rlen);
-                        }
+    if (itf == ITF_KEYBOARD) {
+        if (report_type == 3) {
+            DEBUG_PAYLOAD(buffer, bufsize);
+            if (buffer[7] == 0xFF) { // reset
+                *get_send_buffer_size(ITF_KEYBOARD) = 0;
+                otp_curr_seq = otp_exp_seq = 0;
+                memset(otp_frame_tx, 0, sizeof(otp_frame_tx));
+            }
+            else if (buffer[7] & 0x80) { // a frame
+                uint8_t rseq = buffer[7] & 0x1F;
+                if (rseq < 10) {
+                    if (rseq == 0) {
+                        memset(otp_frame_rx, 0, sizeof(otp_frame_rx));
                     }
-                    else {
-                        printf("[OTP] Bad CRC!\n");
+                    memcpy(otp_frame_rx + rseq * 7, buffer, 7);
+                    if (rseq == 9) {
+                        DEBUG_DATA(otp_frame_rx, sizeof(otp_frame_rx));
+                        uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = (otp_frame_rx[66] << 8 | otp_frame_rx[65]);
+                        uint8_t slot_id = otp_frame_rx[64];
+                        if (residual_crc == rcrc) {
+                            apdu.data = otp_frame_rx;
+                            apdu.nc = 64;
+                            apdu.rdata = otp_frame_tx;
+                            apdu.header[0] = 0;
+                            apdu.header[1] = 0x01;
+                            apdu.header[2] = slot_id;
+                            apdu.header[3] = 0;
+                            int ret = otp_process_apdu();
+                            if (ret == 0x9000 && res_APDU_size > 0) {
+                                otp_send_frame(apdu.rdata, apdu.rlen);
+                            }
+                        }
+                        else {
+                            printf("[OTP] Bad CRC!\n");
+                        }
                     }
                 }
             }

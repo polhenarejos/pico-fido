@@ -18,13 +18,18 @@
 #ifndef _FIDO_H_
 #define _FIDO_H_
 
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "pico/stdlib.h"
 #endif
+#ifndef ESP_PLATFORM
 #include "common.h"
+#else
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+#endif
+
 #include "mbedtls/ecdsa.h"
 #ifndef ENABLE_EMULATION
-#include "ctap_hid.h"
+#include "hid/ctap_hid.h"
 #else
 #include <stdbool.h>
 #endif

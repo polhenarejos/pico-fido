@@ -41,7 +41,7 @@ int u2f_select(app_t *a) {
     return CCID_ERR_FILE_NOT_FOUND;
 }
 
-void __attribute__((constructor)) u2f_ctor() {
+INITIALIZER ( u2f_ctor ) {
     register_app(u2f_select, u2f_aid);
 }
 

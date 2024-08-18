@@ -256,27 +256,11 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
-#ifndef ENABLE_EMULATION
-            pico_unique_board_id_t rpiid;
-            pico_get_unique_board_id(&rpiid);
-#else
-            struct {
-                uint8_t id[8];
-            } rpiid = { 0 };
-#endif
             mbedtls_x509write_csr ctx;
             mbedtls_x509write_csr_init(&ctx);
             snprintf((char *) buffer,
                      sizeof(buffer),
-                     "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %02x%02x%02x%02x%02x%02x%02x%02x",
-                     rpiid.id[0],
-                     rpiid.id[1],
-                     rpiid.id[2],
-                     rpiid.id[3],
-                     rpiid.id[4],
-                     rpiid.id[5],
-                     rpiid.id[6],
-                     rpiid.id[7]);
+                     "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %s", pico_serial_str);
             mbedtls_x509write_csr_set_subject_name(&ctx, (char *) buffer);
             mbedtls_pk_context key;
             mbedtls_pk_init(&key);

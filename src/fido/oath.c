@@ -80,12 +80,7 @@ int oath_select(app_t *a) {
         res_APDU[res_APDU_size++] = 0;
         res_APDU[res_APDU_size++] = TAG_NAME;
         res_APDU[res_APDU_size++] = 8;
-#ifndef ENABLE_EMULATION
-	    pico_get_unique_board_id((pico_unique_board_id_t *) (res_APDU + res_APDU_size));
-	    res_APDU_size += 8;
-#else
-    	memset(res_APDU + res_APDU_size, 0, 8); res_APDU_size += 8;
-#endif
+        memcpy(res_APDU + res_APDU_size, pico_serial_str, 8);
         if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
             random_gen(NULL, challenge, sizeof(challenge));
             res_APDU[res_APDU_size++] = TAG_CHALLENGE;
@@ -109,7 +104,7 @@ int oath_select(app_t *a) {
     return CCID_ERR_FILE_NOT_FOUND;
 }
 
-void __attribute__((constructor)) oath_ctor() {
+INITIALIZER ( oath_ctor ) {
     register_app(oath_select, oath_aid);
 }
 

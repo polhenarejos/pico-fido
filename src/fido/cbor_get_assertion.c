@@ -17,7 +17,7 @@
 
 #include "cbor.h"
 #include "ctap.h"
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"

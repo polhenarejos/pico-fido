@@ -19,7 +19,7 @@
 #define _MANAGEMENT_H_
 
 #include <stdlib.h>
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "pico/stdlib.h"
 #endif
 

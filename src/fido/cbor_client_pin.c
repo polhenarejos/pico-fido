@@ -15,7 +15,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef ESP_PLATFORM
 #include "common.h"
+#else
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+#endif
 #include "mbedtls/ecp.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/sha256.h"
@@ -23,7 +27,7 @@
 #include "cbor.h"
 #include "ctap.h"
 #include "ctap2_cbor.h"
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"

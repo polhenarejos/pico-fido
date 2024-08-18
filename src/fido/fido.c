@@ -27,12 +27,12 @@
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
 #include "ccid/ccid.h"
 #endif
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include <math.h>
 #include "management.h"
-#include "ctap_hid.h"
+#include "hid/ctap_hid.h"
 #include "version.h"
 
 int fido_process_apdu();
@@ -79,7 +79,7 @@ extern int (*cbor_process_cb)(uint8_t, const uint8_t *, size_t);
 extern void cbor_thread();
 extern int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len);
 
-void __attribute__((constructor)) fido_ctor() {
+INITIALIZER ( fido_ctor ) {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
     ccid_atr = atr_fido;
 #endif
@@ -315,9 +315,12 @@ int scan_files() {
                 mbedtls_ecdsa_free(&ecdsa);
                 return ret;
             }
-            uint8_t kdata[32];
-            int key_size = mbedtls_mpi_size(&ecdsa.d);
-            mbedtls_mpi_write_binary(&ecdsa.d, kdata, key_size);
+            uint8_t kdata[64];
+            size_t key_size = 0;
+            ret = mbedtls_ecp_write_key_ext(&ecdsa, &key_size, kdata, sizeof(kdata));
+            if (ret != CCID_OK) {
+                return ret;
+            }
             ret = file_put_data(ef_keydev, kdata, key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             mbedtls_ecdsa_free(&ecdsa);
@@ -333,7 +336,7 @@ int scan_files() {
     ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
     if (ef_certdev) {
         if (!file_has_data(ef_certdev)) {
-            uint8_t cert[4096];
+            uint8_t cert[2048];
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
             int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1,

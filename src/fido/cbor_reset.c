@@ -18,8 +18,11 @@
 #include "file.h"
 #include "fido.h"
 #include "ctap.h"
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
+#endif
+#ifdef ESP_PLATFORM
+#include "esp_compat.h"
 #endif
 
 extern void scan_all();
