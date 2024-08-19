@@ -122,7 +122,7 @@ void cbor_thread() {
         }
         else {
             res_APDU[0] = apdu.sw;
-            apdu.sw = 0;
+            //apdu.sw = 0;
         }
 
         finished_data_size = res_APDU_size + 1;
