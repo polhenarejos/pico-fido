@@ -29,7 +29,9 @@
 #endif
 #include "mbedtls/aes.h"
 #include "management.h"
+#ifndef ENABLE_EMULATION
 #include "tusb.h"
+#endif
 
 #define FIXED_SIZE          16
 #define KEY_SIZE            16
