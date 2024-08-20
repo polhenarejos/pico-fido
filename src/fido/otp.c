@@ -566,6 +566,8 @@ int otp_hid_set_report_cb(uint8_t itf,
                         uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = (otp_frame_rx[66] << 8 | otp_frame_rx[65]);
                         uint8_t slot_id = otp_frame_rx[64];
                         if (residual_crc == rcrc) {
+                            uint8_t hdr[5];
+                            apdu.header = hdr;
                             apdu.data = otp_frame_rx;
                             apdu.nc = 64;
                             apdu.rdata = otp_frame_tx;
@@ -617,8 +619,8 @@ uint16_t otp_hid_get_report_cb(uint8_t itf,
         otp_curr_seq = otp_exp_seq = 0;
     }
     else {
+        res_APDU = buffer;
         otp_status();
-        memcpy(buffer, res_APDU, 7);
     }
 
     return reqlen;
