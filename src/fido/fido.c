@@ -43,7 +43,7 @@ pinUvAuthToken_t paut = { 0 };
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
 
-const uint8_t _fido_aid[] = {
+const uint8_t fido_aid[] = {
     8,
     0xA0, 0x00, 0x00, 0x06, 0x47, 0x2F, 0x00, 0x01
 };
@@ -72,7 +72,6 @@ int fido_select(app_t *a) {
 
 extern uint8_t (*get_version_major)();
 extern uint8_t (*get_version_minor)();
-extern const uint8_t *fido_aid;
 extern void (*init_fido_cb)();
 extern void (*cbor_thread_func)();
 extern int (*cbor_process_cb)(uint8_t, const uint8_t *, size_t);
@@ -85,7 +84,6 @@ INITIALIZER ( fido_ctor ) {
 #endif
     get_version_major = fido_get_version_major;
     get_version_minor = fido_get_version_minor;
-    fido_aid = _fido_aid;
     init_fido_cb = init_fido;
 #ifndef ENABLE_EMULATION
     cbor_thread_func = cbor_thread;
@@ -162,7 +160,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_validity(&ctx, "20220901000000", "20720831235959");
     mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
-    uint8_t serial[20];
+    uint8_t serial[16];
     random_gen(NULL, serial, sizeof(serial));
     mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));
     mbedtls_pk_context key;
