@@ -79,7 +79,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
 
-    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
     if (get > 0) {
         if (length != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -155,7 +155,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
             if (expectedLength > 17 && memcmp(sha, temp_lba + expectedLength - 16, 16) != 0) {
                 CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
             }
-            flash_write_data_to_file(ef_largeblob, temp_lba, expectedLength);
+            file_put_data(ef_largeblob, temp_lba, expectedLength);
             low_flash_available();
         }
         goto err;

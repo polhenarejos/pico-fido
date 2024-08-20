@@ -27,12 +27,12 @@
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
 #include "ccid/ccid.h"
 #endif
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include <math.h>
 #include "management.h"
-#include "ctap_hid.h"
+#include "hid/ctap_hid.h"
 #include "version.h"
 
 int fido_process_apdu();
@@ -79,7 +79,7 @@ extern int (*cbor_process_cb)(uint8_t, const uint8_t *, size_t);
 extern void cbor_thread();
 extern int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len);
 
-void __attribute__((constructor)) fido_ctor() {
+INITIALIZER ( fido_ctor ) {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
     ccid_atr = atr_fido;
 #endif
@@ -227,7 +227,8 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypa
         }
     }
     uint8_t hmac[32], d[32];
-    int ret = mbedtls_ecp_write_key(key, d, sizeof(d));
+    size_t olen = 0;
+    int ret = mbedtls_ecp_write_key_ext(key, &olen, d, sizeof(d));
     if (key == NULL) {
         mbedtls_ecdsa_free(&ctx);
     }
@@ -329,10 +330,13 @@ int scan_files() {
                 mbedtls_ecdsa_free(&ecdsa);
                 return ret;
             }
-            uint8_t kdata[32];
-            int key_size = mbedtls_mpi_size(&ecdsa.d);
-            mbedtls_mpi_write_binary(&ecdsa.d, kdata, key_size);
-            ret = flash_write_data_to_file(ef_keydev, kdata, key_size);
+            uint8_t kdata[64];
+            size_t key_size = 0;
+            ret = mbedtls_ecp_write_key_ext(&ecdsa, &key_size, kdata, sizeof(kdata));
+            if (ret != CCID_OK) {
+                return ret;
+            }
+            ret = file_put_data(ef_keydev, kdata, key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             mbedtls_ecdsa_free(&ecdsa);
             if (ret != CCID_OK) {
@@ -347,7 +351,7 @@ int scan_files() {
     ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
     if (ef_certdev) {
         if (!file_has_data(ef_certdev)) {
-            uint8_t cert[4096];
+            uint8_t cert[2048];
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
             int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1,
@@ -368,7 +372,7 @@ int scan_files() {
             if (ret <= 0) {
                 return ret;
             }
-            flash_write_data_to_file(ef_certdev, cert + sizeof(cert) - ret, ret);
+            file_put_data(ef_certdev, cert + sizeof(cert) - ret, ret);
         }
     }
     else {
@@ -378,7 +382,7 @@ int scan_files() {
     if (ef_counter) {
         if (!file_has_data(ef_counter)) {
             uint32_t v = 0;
-            flash_write_data_to_file(ef_counter, (uint8_t *) &v, sizeof(v));
+            file_put_data(ef_counter, (uint8_t *) &v, sizeof(v));
         }
     }
     else {
@@ -390,7 +394,7 @@ int scan_files() {
         if (!file_has_data(ef_authtoken)) {
             uint8_t t[32];
             random_gen(NULL, t, sizeof(t));
-            flash_write_data_to_file(ef_authtoken, t, sizeof(t));
+            file_put_data(ef_authtoken, t, sizeof(t));
         }
         paut.data = file_get_data(ef_authtoken);
         paut.len = file_get_size(ef_authtoken);
@@ -400,7 +404,7 @@ int scan_files() {
     }
     ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     if (!file_has_data(ef_largeblob)) {
-        flash_write_data_to_file(ef_largeblob,
+        file_put_data(ef_largeblob,
                                  (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c",
                                  17);
     }
@@ -462,7 +466,7 @@ uint8_t get_opts() {
 
 void set_opts(uint8_t opts) {
     file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
-    flash_write_data_to_file(ef, &opts, sizeof(uint8_t));
+    file_put_data(ef, &opts, sizeof(uint8_t));
     low_flash_available();
 }
 

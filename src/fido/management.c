@@ -43,7 +43,7 @@ int man_select(app_t *a) {
     return CCID_OK;
 }
 
-void __attribute__((constructor)) man_ctor() {
+INITIALIZER ( man_ctor ) {
     register_app(man_select, man_aid);
 }
 
@@ -54,10 +54,12 @@ int man_unload() {
 bool cap_supported(uint16_t cap) {
     file_t *ef = search_dynamic_file(EF_DEV_CONF);
     if (file_has_data(ef)) {
-        uint16_t tag = 0x0, data_len = file_get_size(ef);
-        uint8_t *tag_data = NULL, *p = NULL, *data = file_get_data(ef);
-        size_t tag_len = 0;
-        while (walk_tlv(data, data_len, &p, &tag, &tag_len, &tag_data)) {
+        uint16_t tag = 0x0;
+        uint8_t *tag_data = NULL, *p = NULL;
+        uint16_t tag_len = 0;
+        asn1_ctx_t ctxi;
+        asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+        while (walk_tlv(&ctxi, &p, &tag, &tag_len, &tag_data)) {
             if (tag == TAG_USB_ENABLED) {
                 uint16_t ecaps = tag_data[0];
                 if (tag_len == 2) {
@@ -80,9 +82,7 @@ int man_get_config() {
     res_APDU[res_APDU_size++] = CAP_OTP | CAP_U2F | CAP_OATH;
     res_APDU[res_APDU_size++] = TAG_SERIAL;
     res_APDU[res_APDU_size++] = 4;
-#ifndef ENABLE_EMULATION
-    pico_get_unique_board_id_string((char *) res_APDU + res_APDU_size, 4);
-#endif
+    memcpy(res_APDU + res_APDU_size, pico_serial.id, 4);
     res_APDU_size += 4;
     res_APDU[res_APDU_size++] = TAG_FORM_FACTOR;
     res_APDU[res_APDU_size++] = 1;
@@ -128,7 +128,7 @@ int cmd_write_config() {
         return SW_WRONG_DATA();
     }
     file_t *ef = file_new(EF_DEV_CONF);
-    flash_write_data_to_file(ef, apdu.data + 1, apdu.nc - 1);
+    file_put_data(ef, apdu.data + 1, apdu.nc - 1);
     low_flash_available();
     return SW_OK();
 }

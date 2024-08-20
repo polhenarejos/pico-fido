@@ -120,7 +120,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
     }
 
-    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
     if (subcommand == 0x01) {
         if (verify(pinUvAuthProtocol, paut.data, (const uint8_t *) "\x01", 1,
                    pinUvAuthParam.data) != CborNoError) {
@@ -380,7 +380,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                             delete_file(rp_ef);
                         }
                         else {
-                            flash_write_data_to_file(rp_ef, rp_data, file_get_size(rp_ef));
+                            file_put_data(rp_ef, rp_data, file_get_size(rp_ef));
                         }
                         free(rp_data);
                         break;
@@ -442,7 +442,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
 

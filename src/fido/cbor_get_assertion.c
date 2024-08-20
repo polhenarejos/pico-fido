@@ -17,7 +17,7 @@
 
 #include "cbor.h"
 #include "ctap.h"
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"
@@ -606,7 +606,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
         lfields++;
     }
-    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
@@ -659,9 +659,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
     mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
     ctr++;
-    flash_write_data_to_file(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
+    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
     low_flash_available();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);

@@ -15,7 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "pico/stdlib.h"
 #endif
 #include "hid/ctap_hid.h"
@@ -122,7 +122,7 @@ void cbor_thread() {
         }
         else {
             res_APDU[0] = apdu.sw;
-            apdu.sw = 0;
+            //apdu.sw = 0;
         }
 
         finished_data_size = res_APDU_size + 1;
@@ -130,6 +130,9 @@ void cbor_thread() {
         uint32_t flag = EV_EXEC_FINISHED;
         queue_add_blocking(&card_to_usb_q, &flag);
     }
+#ifdef ESP_PLATFORM
+    vTaskDelete(NULL);
+#endif
 }
 #endif
 
@@ -139,7 +142,7 @@ int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     cmd = last_cmd;
     res_APDU = ctap_resp->init.data + 1;
     res_APDU_size = 0;
-    return 1;
+    return 2; // CBOR processing
 }
 
 CborError COSE_key_params(int crv,

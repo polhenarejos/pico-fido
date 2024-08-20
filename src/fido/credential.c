@@ -18,7 +18,7 @@
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
-#ifndef ENABLE_EMULATION
+#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"
@@ -306,7 +306,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     memcpy(data, rp_id_hash, 32);
     memcpy(data + 32, cred_id, cred_id_len);
     file_t *ef = file_new(EF_CRED + sloti);
-    flash_write_data_to_file(ef, data, cred_id_len + 32);
+    file_put_data(ef, data, cred_id_len + 32);
     free(data);
 
     if (new_record == true) { //increase rps
@@ -332,7 +332,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
             data = (uint8_t *) calloc(1, file_get_size(ef));
             memcpy(data, file_get_data(ef), file_get_size(ef));
             data[0] += 1;
-            flash_write_data_to_file(ef, data, file_get_size(ef));
+            file_put_data(ef, data, file_get_size(ef));
             free(data);
         }
         else {
@@ -341,7 +341,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
             data[0] = 1;
             memcpy(data + 1, rp_id_hash, 32);
             memcpy(data + 1 + 32, cred.rpId.data, cred.rpId.len);
-            flash_write_data_to_file(ef, data, 1 + 32 + cred.rpId.len);
+            file_put_data(ef, data, 1 + 32 + cred.rpId.len);
             free(data);
         }
     }

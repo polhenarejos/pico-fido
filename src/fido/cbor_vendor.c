@@ -101,7 +101,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
 
     if (cmd == CTAP_VENDOR_BACKUP) {
         if (vendorCmd == 0x01) {
@@ -121,9 +121,9 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             uint8_t zeros[32];
             memset(zeros, 0, sizeof(zeros));
-            flash_write_data_to_file(ef_keydev_enc, vendorParam.data, vendorParam.len);
-            flash_write_data_to_file(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
-            flash_write_data_to_file(ef_keydev, NULL, 0); // Set ef to 0 bytes
+            file_put_data(ef_keydev_enc, vendorParam.data, vendorParam.len);
+            file_put_data(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
+            file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
             low_flash_available();
             goto err;
         }
@@ -256,27 +256,11 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
-#ifndef ENABLE_EMULATION
-            pico_unique_board_id_t rpiid;
-            pico_get_unique_board_id(&rpiid);
-#else
-            struct {
-                uint8_t id[8];
-            } rpiid = { 0 };
-#endif
             mbedtls_x509write_csr ctx;
             mbedtls_x509write_csr_init(&ctx);
             snprintf((char *) buffer,
                      sizeof(buffer),
-                     "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %02x%02x%02x%02x%02x%02x%02x%02x",
-                     rpiid.id[0],
-                     rpiid.id[1],
-                     rpiid.id[2],
-                     rpiid.id[3],
-                     rpiid.id[4],
-                     rpiid.id[5],
-                     rpiid.id[6],
-                     rpiid.id[7]);
+                     "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %s", pico_serial_str);
             mbedtls_x509write_csr_set_subject_name(&ctx, (char *) buffer);
             mbedtls_pk_context key;
             mbedtls_pk_init(&key);
@@ -306,7 +290,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             file_t *ef_ee_ea = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
             if (ef_ee_ea) {
-                flash_write_data_to_file(ef_ee_ea, vendorParam.data, vendorParam.len);
+                file_put_data(ef_ee_ea, vendorParam.data, vendorParam.len);
             }
             low_flash_available();
             goto err;
@@ -316,7 +300,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
 
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

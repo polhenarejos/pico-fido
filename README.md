@@ -1,8 +1,8 @@
 # Pico FIDO
-This project aims at transforming your Raspberry Pico into a FIDO key integrated. The Pico works as a FIDO key, like a normal USB key for authentication.
+This project transforms your Raspberry Pi Pico into an integrated FIDO key, functioning like a standard USB key for authentication.
 
 ## Features
-Pico FIDO has implemented the following features:
+Pico FIDO includes the following features:
 
 - CTAP 2.1 / CTAP 1
 - WebAuthn
@@ -10,16 +10,16 @@ Pico FIDO has implemented the following features:
 - HMAC-Secret extension
 - CredProtect extension
 - User presence enforcement through physical button
-- User Verification with PIN
+- User verification with PIN
 - Discoverable credentials
 - Credential management
 - ECDSA and EDDSA authentication
-- Authentication with SECP256R1, SECP384R1, SECP521R1, SECP256K1 and Ed25519 curves
+- Support for SECP256R1, SECP384R1, SECP521R1, SECP256K1 and Ed25519 curves
 - App registration and login
 - Device selection
-- Support for vendor Config
+- Support for vendor configuration
 - Backup with 24 words
-- Secure lock to protect the device from flash dumpings
+- Secure lock to protect the device from flash dumps
 - Permissions support (MC, GA, CM, ACFG, LBW)
 - Authenticator configuration
 - minPinLength extension
@@ -27,50 +27,54 @@ Pico FIDO has implemented the following features:
 - Enterprise attestation
 - credBlobs extension
 - largeBlobKey extension
-- largeBlobs support (2048 bytes máx.)
+- Large blobs support (2048 bytes max)
 - OATH (based on YKOATH protocol specification)
 - TOTP / HOTP
 - Yubikey OTP
 - Challenge-response generation
 - Emulated keyboard interface
-- Button press generates an OTP that is written directly is it was typed
+- Button press generates an OTP that is directly typed
 - Yubico YKMAN compatible
 - Nitrokey nitropy and nitroapp compatible
 
-All these features are compliant with the specification. Therefore, if you detect some behaviour that is not expected or it does not follow the rules of specs, please open an issue.
+All features comply with the specifications. If you encounter unexpected behavior or deviations from the specifications, please open an issue.
 
-## Security considerations
-Pico FIDO is an open platform so be careful. The contents in the flash memory may be easily dumpled and obtain the private/master keys. Therefore, it is not possible to encrypt the content. At least, one key (the master, the supreme key) must be stored in clear text.
+## Security Considerations
 
-If the Pico is stolen the contents of private and secret keys can be read.
+Pico FIDO is an open platform, so exercise caution. The flash memory contents can be easily dumped, potentially revealing private/master keys. It is not feasible to encrypt the content, meaning at least one key (the master key) must be stored in clear text.
+
+If the Pico is stolen, the private and secret keys can be accessed.
 
 ## Download
-Please, go to the [Release page](https://github.com/polhenarejos/pico-fido/releases "Release page") and download the UF2 file for your board.
+Please visit the [Release page](https://github.com/polhenarejos/pico-fido/releases "Release page") to download the UF2 file for your board.
 
-Note that UF2 files are shiped with a dummy VID/PID to avoid license issues (FEFF:FCFD). If you are planning to use it with OpenSC or similar, you should modify Info.plist of CCID driver to add these VID/PID or use the [Pico Patcher tool](https://www.picokeys.com/pico-patcher/).
+Note that UF2 files are shipped with a dummy VID/PID to avoid license issues (FEFF:FCFD). If you plan to use it with OpenSC or similar software, you will need to modify the Info.plist of the CCID driver to add these VID/PID values or use the [Pico Patcher tool](https://www.picokeys.com/pico-patcher/).
 
-Alternatively you can use the legacy VID/PID patcher as follows:
-`./patch_vidpid.sh VID:PID input_hsm_file.uf2 output_hsm_file.uf2`
+Alternatively, you can use the legacy VID/PID patcher with the following command:
+```sh
+./patch_vidpid.sh VID:PID input_hsm_file.uf2 output_hsm_file.uf2
+```
+You can use any VID/PID (e.g., 234b:0000 from FISJ), but remember that you are not authorized to distribute the binary with a VID/PID that you do not own.
 
-You can use whatever VID/PID (i.e., 234b:0000 from FISJ), but remember that you are not authorized to distribute the binary with a VID/PID that you do not own.
-
-Note that the pure-browser option [Pico Patcher tool](https://www.picokeys.com/pico-patcher/) is the most recommended.
+For ease of use, the pure-browser option [Pico Patcher tool](https://www.picokeys.com/pico-patcher/) is highly recommended.
 
 ## Build
-Before building, ensure you have installed the toolchain for the Pico and the Pico SDK is properly located in your drive.
+Before building, ensure you have installed the toolchain for the Pico and that the Pico SDK is properly located on your drive.
 
-    git clone https://github.com/polhenarejos/pico-fido
-    cd pico-fido
-    mkdir build
-    cd build
-    PICO_SDK_PATH=/path/to/pico-sdk cmake .. -DPICO_BOARD=board_type -DUSB_VID=0x1234 -DUSB_PID=0x5678
-    make
+```sh
+git clone https://github.com/polhenarejos/pico-fido
+cd pico-fido
+mkdir build
+cd build
+PICO_SDK_PATH=/path/to/pico-sdk cmake .. -DPICO_BOARD=board_type -DUSB_VID=0x1234 -DUSB_PID=0x5678
+make
+```
 
-Note that PICO_BOARD, USB_VID and USB_PID are optional. If not provided, pico board and VID/PID FEFF:FCFD will be used.
+Note that `PICO_BOARD`, `USB_VID`, and `USB_PID` are optional. If not provided, the default Pico board and VID/PID `FEFF:FCFD` will be used.
 
-After make ends, the binary file pico_fido.uf2 will be generated. Put your pico board into loading mode, by pushing BOOTSEL button while pluging on, and copy the UF2 to the new fresh usb mass storage Pico device. Once copied, the pico mass storage will be disconnected automatically and the pico board will reset with the new firmware. A blinking led will indicate the device is ready to work.
+After `make` finishes, the binary file `pico_fido.uf2` will be generated. Put your Pico board into loading mode by holding the BOOTSEL button while plugging it in, then copy the UF2 file to the new USB mass storage Pico device. Once copied, the Pico mass storage will disconnect automatically, and the Pico board will reset with the new firmware. A blinking LED will indicate that the device is ready to work.
 
-**Remark:** Pico Fido uses HID interface and thus, VID/PID values are irrelevant in terms of operativity. You can safely use any arbitrary value or the default ones.
+**Remark:** Pico FIDO uses the HID interface, so VID/PID values are irrelevant in terms of operativity. You can safely use any arbitrary values or the default ones.
 
 ## Led blink
 Pico FIDO uses the led to indicate the current status. Four states are available:
@@ -96,20 +100,21 @@ While processing, the Pico FIDO is busy and cannot receive additional commands u
 
 ## Driver
 
-Pico FIDO uses the `HID` driver, present in all OS. It should be detected by all OS and browser/applications, like normal USB FIDO keys.
+Pico FIDO uses the `HID` driver, which is present in all operating systems. It should be detected by all OS and browser/applications just like normal USB FIDO keys.
 
 ## Tests
 
-Tests can be found at `tests` folder. It is based on [FIDO2 tests](https://github.com/solokeys/fido2-tests "FIDO2 tests") from Solokeys, but adapted to [python-fido2](https://github.com/Yubico/python-fido2 "python-fido2") v1.0 package, which is a major refactor from previous 0.8 version and includes latests improvements from CTAP 2.1.
+Tests can be found in the `tests` folder. They are based on [FIDO2 tests](https://github.com/solokeys/fido2-tests "FIDO2 tests") from Solokeys but adapted to the [python-fido2](https://github.com/Yubico/python-fido2 "python-fido2") v1.0 package, which is a major refactor from the previous 0.8 version and includes the latest improvements from CTAP 2.1.
 
-All tests can be run by
+To run all tests, use:
 
-```
+```sh
 pytest
 ```
 
-or by selecting a subset with `-k <test>` flag:
-```
+To run a subset of tests, use the `-k <test>` flag:
+
+```sh
 pytest -k test_credprotect
 ```
 

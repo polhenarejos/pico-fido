@@ -106,7 +106,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
 
     if (pinUvAuthParam.present == false) {
         CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
@@ -142,9 +142,9 @@ int cbor_config(const uint8_t *data, size_t len) {
             if (has_keydev_dec == false) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             }
-            flash_write_data_to_file(ef_keydev, keydev_dec, sizeof(keydev_dec));
+            file_put_data(ef_keydev, keydev_dec, sizeof(keydev_dec));
             mbedtls_platform_zeroize(keydev_dec, sizeof(keydev_dec));
-            flash_write_data_to_file(ef_keydev_enc, NULL, 0); // Set ef to 0 bytes
+            file_put_data(ef_keydev_enc, NULL, 0); // Set ef to 0 bytes
             low_flash_available();
         }
         else if (vendorCommandId == CTAP_CONFIG_AUT_ENABLE) {
@@ -178,10 +178,10 @@ int cbor_config(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
 
-            flash_write_data_to_file(ef_keydev_enc, key_dev_enc, sizeof(key_dev_enc));
+            file_put_data(ef_keydev_enc, key_dev_enc, sizeof(key_dev_enc));
             mbedtls_platform_zeroize(key_dev_enc, sizeof(key_dev_enc));
-            flash_write_data_to_file(ef_keydev, key_dev_enc, file_get_size(ef_keydev)); // Overwrite ef with 0
-            flash_write_data_to_file(ef_keydev, NULL, 0); // Set ef to 0 bytes
+            file_put_data(ef_keydev, key_dev_enc, file_get_size(ef_keydev)); // Overwrite ef with 0
+            file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
             low_flash_available();
         }
         else {
@@ -216,7 +216,7 @@ int cbor_config(const uint8_t *data, size_t len) {
                            data + 2 + m * 32,
                            0);
         }
-        flash_write_data_to_file(ef_minpin, data, 2 + minPinLengthRPIDs_len * 32);
+        file_put_data(ef_minpin, data, 2 + minPinLengthRPIDs_len * 32);
         low_flash_available();
         goto err; //No return
     }
@@ -228,7 +228,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
 
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
