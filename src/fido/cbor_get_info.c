@@ -133,6 +133,6 @@ err:
     if (error != CborNoError) {
         return -CTAP2_ERR_INVALID_CBOR;
     }
-    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    res_APDU_size = (uint16_t)cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     return 0;
 }

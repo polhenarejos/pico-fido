@@ -53,16 +53,8 @@ extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
 extern int mbedtls_curve_to_fido(mbedtls_ecp_group_id id);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key);
 extern int load_keydev(uint8_t *key);
-extern int encrypt(uint8_t protocol,
-                   const uint8_t *key,
-                   const uint8_t *in,
-                   size_t in_len,
-                   uint8_t *out);
-extern int decrypt(uint8_t protocol,
-                   const uint8_t *key,
-                   const uint8_t *in,
-                   size_t in_len,
-                   uint8_t *out);
+extern int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out);
+extern int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out);
 extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret);
 
 #define FIDO2_ALG_ES256     -7 //ECDSA-SHA256 P256
@@ -136,10 +128,6 @@ typedef struct pinUvAuthToken {
 extern uint32_t user_present_time_limit;
 
 extern pinUvAuthToken_t paut;
-extern int verify(uint8_t protocol,
-                  const uint8_t *key,
-                  const uint8_t *data,
-                  size_t len,
-                  uint8_t *sign);
+extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *sign);
 
 #endif //_FIDO_H

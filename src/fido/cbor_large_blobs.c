@@ -129,13 +129,12 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         uint8_t verify_data[70] = { 0 };
         memset(verify_data, 0xff, 32);
         verify_data[32] = 0x0C;
-        verify_data[34] = offset & 0xff;
-        verify_data[35] = offset >> 8;
-        verify_data[36] = offset >> 16;
-        verify_data[37] = offset >> 24;
+        verify_data[34] = offset & 0xFF;
+        verify_data[35] = (offset >> 8) & 0xFF;
+        verify_data[36] = (offset >> 16) & 0xFF;
+        verify_data[37] = (offset >> 24) & 0xFF;
         mbedtls_sha256(set.data, set.len, verify_data + 38, 0);
-        if (verify(pinUvAuthProtocol, paut.data, verify_data, sizeof(verify_data),
-                   pinUvAuthParam.data) != 0) {
+        if (verify((uint8_t)pinUvAuthProtocol, paut.data, verify_data, (uint16_t)sizeof(verify_data), pinUvAuthParam.data) != 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
         if (!(paut.permissions & CTAP_PERMISSION_LBW)) {
@@ -155,7 +154,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
             if (expectedLength > 17 && memcmp(sha, temp_lba + expectedLength - 16, 16) != 0) {
                 CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
             }
-            file_put_data(ef_largeblob, temp_lba, expectedLength);
+            file_put_data(ef_largeblob, temp_lba, (uint16_t)expectedLength);
             low_flash_available();
         }
         goto err;
@@ -168,6 +167,6 @@ err:
     if (error != CborNoError) {
         return -CTAP2_ERR_INVALID_CBOR;
     }
-    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
+    res_APDU_size = (uint16_t)cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     return 0;
 }

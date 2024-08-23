@@ -260,7 +260,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         if (cinfo->bit_size % 8 != 0) {
             outk[0] >>= 8 - (cinfo->bit_size % 8);
         }
-        r = mbedtls_ecp_read_key(curve, key, outk, ceil((float) cinfo->bit_size / 8));
+        r = mbedtls_ecp_read_key(curve, key, outk, (size_t)ceil((float) cinfo->bit_size / 8));
         mbedtls_platform_zeroize(outk, sizeof(outk));
         if (r != 0) {
             return r;
@@ -291,7 +291,7 @@ int scan_files() {
             if (ret != CCID_OK) {
                 return ret;
             }
-            ret = file_put_data(ef_keydev, kdata, key_size);
+            ret = file_put_data(ef_keydev, kdata, (uint16_t)key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             mbedtls_ecdsa_free(&ecdsa);
             if (ret != CCID_OK) {
@@ -324,7 +324,7 @@ int scan_files() {
             if (ret <= 0) {
                 return ret;
             }
-            file_put_data(ef_certdev, cert + sizeof(cert) - ret, ret);
+            file_put_data(ef_certdev, cert + sizeof(cert) - ret, (uint16_t)ret);
         }
     }
     else {

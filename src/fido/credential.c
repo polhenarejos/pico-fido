@@ -273,7 +273,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         credential_free(&cred);
         return ret;
     }
-    for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+    for (uint16_t i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
         file_t *ef = search_dynamic_file(EF_CRED + i);
         Credential rcred = { 0 };
         if (!file_has_data(ef)) {
@@ -290,8 +290,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
             credential_free(&rcred);
             continue;
         }
-        if (memcmp(rcred.userId.data, cred.userId.data,
-                   MIN(rcred.userId.len, cred.userId.len)) == 0) {
+        if (memcmp(rcred.userId.data, cred.userId.data, MIN(rcred.userId.len, cred.userId.len)) == 0) {
             sloti = i;
             credential_free(&rcred);
             new_record = false;
@@ -305,13 +304,13 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     uint8_t *data = (uint8_t *) calloc(1, cred_id_len + 32);
     memcpy(data, rp_id_hash, 32);
     memcpy(data + 32, cred_id, cred_id_len);
-    file_t *ef = file_new(EF_CRED + sloti);
-    file_put_data(ef, data, cred_id_len + 32);
+    file_t *ef = file_new((uint16_t)(EF_CRED + sloti));
+    file_put_data(ef, data, (uint16_t)cred_id_len + 32);
     free(data);
 
     if (new_record == true) { //increase rps
         sloti = -1;
-        for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+        for (uint16_t i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             ef = search_dynamic_file(EF_RP + i);
             if (!file_has_data(ef)) {
                 if (sloti == -1) {
@@ -327,7 +326,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         if (sloti == -1) {
             return -1;
         }
-        ef = search_dynamic_file(EF_RP + sloti);
+        ef = search_dynamic_file((uint16_t)(EF_RP + sloti));
         if (file_has_data(ef)) {
             data = (uint8_t *) calloc(1, file_get_size(ef));
             memcpy(data, file_get_data(ef), file_get_size(ef));
@@ -336,12 +335,12 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
             free(data);
         }
         else {
-            ef = file_new(EF_RP + sloti);
+            ef = file_new((uint16_t)(EF_RP + sloti));
             data = (uint8_t *) calloc(1, 1 + 32 + cred.rpId.len);
             data[0] = 1;
             memcpy(data + 1, rp_id_hash, 32);
             memcpy(data + 1 + 32, cred.rpId.data, cred.rpId.len);
-            file_put_data(ef, data, 1 + 32 + cred.rpId.len);
+            file_put_data(ef, data, (uint16_t)(1 + 32 + cred.rpId.len));
             free(data);
         }
     }

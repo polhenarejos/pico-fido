@@ -96,6 +96,7 @@
 
 static uint8_t config_seq = { 1 };
 
+PACK(
 typedef struct otp_config {
     uint8_t fixed_data[FIXED_SIZE];
     uint8_t uid[UID_SIZE];
@@ -107,9 +108,9 @@ typedef struct otp_config {
     uint8_t cfg_flags;
     uint8_t rfu[2];
     uint16_t crc;
-} __attribute__((packed)) otp_config_t;
+}) otp_config_t;
 
-static const size_t otp_config_size = sizeof(otp_config_t);
+#define otp_config_size sizeof(otp_config_t)
 uint16_t otp_status();
 
 int otp_process_apdu();
@@ -151,7 +152,7 @@ int otp_select(app_t *a, uint8_t force) {
 uint8_t modhex_tab[] =
 { 'c', 'b', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'n', 'r', 't', 'u', 'v' };
 int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
-    for (int l = 0; l < len; l++) {
+    for (size_t l = 0; l < len; l++) {
         *out++ = modhex_tab[in[l] >> 4];
         *out++ = modhex_tab[in[l] & 0xf];
     }
@@ -162,7 +163,7 @@ extern void scan_all();
 void init_otp() {
     if (scanned == false) {
         scan_all();
-        for (int i = 0; i < 2; i++) {
+        for (uint8_t i = 0; i < 2; i++) {
             file_t *ef = search_dynamic_file(EF_OTP_SLOT1 + i);
             uint8_t *data = file_get_data(ef);
             otp_config_t *otp_config = (otp_config_t *) data;
@@ -331,6 +332,8 @@ int otp_button_pressed(uint8_t slot) {
             low_flash_available();
         }
     }
+#else
+    (void) slot;
 #endif
     return 0;
 }
