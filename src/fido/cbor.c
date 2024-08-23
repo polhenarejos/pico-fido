@@ -103,12 +103,13 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     return CTAP1_ERR_INVALID_CMD;
 }
 
-#ifndef ENABLE_EMULATION
 void cbor_thread(void) {
     card_init_core1();
     while (1) {
         uint32_t m;
         queue_remove_blocking(&usb_to_card_q, &m);
+        uint32_t flag = m + 1;
+        queue_add_blocking(&card_to_usb_q, &flag);
 
         if (m == EV_EXIT) {
             break;
@@ -124,14 +125,13 @@ void cbor_thread(void) {
 
         finished_data_size = res_APDU_size + 1;
 
-        uint32_t flag = EV_EXEC_FINISHED;
+        flag = EV_EXEC_FINISHED;
         queue_add_blocking(&card_to_usb_q, &flag);
     }
 #ifdef ESP_PLATFORM
     vTaskDelete(NULL);
 #endif
 }
-#endif
 
 int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     cbor_data = data;
