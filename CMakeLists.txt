@@ -127,31 +127,37 @@ target_include_directories(pico_fido PUBLIC ${INCLUDES})
 
 target_compile_options(pico_fido PUBLIC
     -Wall
+    )
+if (NOT MSVC)
+target_compile_options(pico_fido PUBLIC
     -Werror
     )
+
 string(FIND ${CMAKE_C_COMPILER} ":" COMPILER_COLON)
 if (${COMPILER_COLON} GREATER_EQUAL 0)
         target_compile_options(pico_fido PUBLIC
         -Wno-error=use-after-free
         )
 endif()
+endif(NOT MSVC)
 
 if(ENABLE_EMULATION)
-
-target_compile_options(pico_fido PUBLIC
-        -fdata-sections
-        -ffunction-sections
-        )
-        if(APPLE)
-        target_link_options(pico_fido PUBLIC
-                -Wl,-dead_strip
-                )
-        else()
-        target_link_options(pico_fido PUBLIC
-                -Wl,--gc-sections
-                )
-        target_link_libraries(pico_fido PRIVATE m)
-        endif (APPLE)
+    if(NOT MSVC)
+    target_compile_options(pico_fido PUBLIC
+            -fdata-sections
+            -ffunction-sections
+            )
+    endif(NOT MSVC)
+    if(APPLE)
+    target_link_options(pico_fido PUBLIC
+            -Wl,-dead_strip
+            )
+    else()
+    target_link_options(pico_fido PUBLIC
+            -Wl,--gc-sections
+            )
+    target_link_libraries(pico_fido PRIVATE m)
+    endif (APPLE)
 else()
 pico_add_extra_outputs(pico_fido)
 target_link_libraries(pico_fido PRIVATE pico_keys_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id hardware_rtc tinyusb_device tinyusb_board)
