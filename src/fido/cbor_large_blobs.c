@@ -79,7 +79,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
 
-    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     if (get > 0) {
         if (length != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -168,6 +168,6 @@ err:
     if (error != CborNoError) {
         return -CTAP2_ERR_INVALID_CBOR;
     }
-    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
+    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     return 0;
 }

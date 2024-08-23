@@ -26,7 +26,7 @@
 int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
-    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 15));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
@@ -133,6 +133,6 @@ err:
     if (error != CborNoError) {
         return -CTAP2_ERR_INVALID_CBOR;
     }
-    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
+    res_APDU_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     return 0;
 }

@@ -202,7 +202,7 @@ int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, size_t in_l
         return aes_decrypt(key, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len);
     }
     else if (protocol == 2) {
-        memcpy(out, in + IV_SIZE, in_len);
+        memcpy(out, in + IV_SIZE, in_len - IV_SIZE);
         return aes_decrypt(key + 32, in, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len - IV_SIZE);
     }
 
@@ -336,7 +336,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     if (subcommand == 0x0) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
     }
@@ -516,7 +516,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (pin_len < minPin) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
-        uint8_t hsh[33];
+        uint8_t hsh[34];
         hsh[0] = MAX_PIN_RETRIES;
         hsh[1] = pin_len;
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, hsh + 2);
@@ -632,7 +632,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
+    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(newPinEnc);

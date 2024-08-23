@@ -61,7 +61,8 @@ uint8_t fido_get_version_minor() {
     return PICO_FIDO_VERSION_MINOR;
 }
 
-int fido_select(app_t *a) {
+int fido_select(app_t *a, uint8_t force) {
+    (void) force;
     if (cap_supported(CAP_FIDO2)) {
         a->process_apdu = fido_process_apdu;
         a->unload = fido_unload;
@@ -72,11 +73,6 @@ int fido_select(app_t *a) {
 
 extern uint8_t (*get_version_major)();
 extern uint8_t (*get_version_minor)();
-extern void (*init_fido_cb)();
-extern void (*cbor_thread_func)();
-extern int (*cbor_process_cb)(uint8_t, const uint8_t *, size_t);
-extern void cbor_thread();
-extern int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len);
 
 INITIALIZER ( fido_ctor ) {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
@@ -84,11 +80,6 @@ INITIALIZER ( fido_ctor ) {
 #endif
     get_version_major = fido_get_version_major;
     get_version_minor = fido_get_version_minor;
-    init_fido_cb = init_fido;
-#ifndef ENABLE_EMULATION
-    cbor_thread_func = cbor_thread;
-#endif
-    cbor_process_cb = cbor_process;
     register_app(fido_select, fido_aid);
 }
 
@@ -224,26 +215,17 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_con
     uint8_t key_base[CTAP_APPID_SIZE + KEY_PATH_LEN];
     memcpy(key_base, appId, CTAP_APPID_SIZE);
     memcpy(key_base + CTAP_APPID_SIZE, keyHandle, KEY_PATH_LEN);
-    ret =
-        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                        d,
-                        32,
-                        key_base,
-                        sizeof(key_base),
-                        hmac);
+    ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
     mbedtls_platform_zeroize(d, sizeof(d));
     return memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
 }
 
-int derive_key(const uint8_t *app_id,
-               bool new_key,
-               uint8_t *key_handle,
-               int curve,
-               mbedtls_ecdsa_context *key) {
+int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecdsa_context *key) {
     uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
     int r = 0;
     memset(outk, 0, sizeof(outk));
     if ((r = load_keydev(outk)) != CCID_OK) {
+        printf("Error loading keydev: %d\n", r);
         return r;
     }
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
@@ -254,15 +236,7 @@ int derive_key(const uint8_t *app_id,
             val |= 0x80000000;
             memcpy(&key_handle[i * sizeof(uint32_t)], &val, sizeof(uint32_t));
         }
-        r = mbedtls_hkdf(md_info,
-                         &key_handle[i * sizeof(uint32_t)],
-                         sizeof(uint32_t),
-                         outk,
-                         32,
-                         outk + 32,
-                         32,
-                         outk,
-                         sizeof(outk));
+        r = mbedtls_hkdf(md_info, &key_handle[i * sizeof(uint32_t)], sizeof(uint32_t), outk, 32, outk + 32, 32, outk, sizeof(outk));
         if (r != 0) {
             mbedtls_platform_zeroize(outk, sizeof(outk));
             return r;
@@ -272,9 +246,7 @@ int derive_key(const uint8_t *app_id,
         uint8_t key_base[CTAP_APPID_SIZE + KEY_PATH_LEN];
         memcpy(key_base, app_id, CTAP_APPID_SIZE);
         memcpy(key_base + CTAP_APPID_SIZE, key_handle, KEY_PATH_LEN);
-        if ((r =
-                 mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, key_base,
-                                 sizeof(key_base), key_handle + 32)) != 0) {
+        if ((r = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, key_base, sizeof(key_base), key_handle + 32)) != 0) {
             mbedtls_platform_zeroize(outk, sizeof(outk));
             return r;
         }
@@ -337,10 +309,7 @@ int scan_files() {
             uint8_t cert[2048];
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
-            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1,
-                                           &key,
-                                           file_get_data(ef_keydev),
-                                           file_get_size(ef_keydev));
+            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), file_get_size(ef_keydev));
             if (ret != 0) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
@@ -387,9 +356,7 @@ int scan_files() {
     }
     ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     if (!file_has_data(ef_largeblob)) {
-        file_put_data(ef_largeblob,
-                                 (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c",
-                                 17);
+        file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
     }
     low_flash_available();
     return CCID_OK;

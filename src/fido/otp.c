@@ -127,7 +127,8 @@ const uint8_t otp_aid[] = {
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x20, 0x01
 };
 
-int otp_select(app_t *a) {
+int otp_select(app_t *a, uint8_t force) {
+    (void) force;
     if (cap_supported(CAP_OTP)) {
         a->process_apdu = otp_process_apdu;
         a->unload = otp_unload;

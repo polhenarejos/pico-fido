@@ -58,7 +58,6 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
         DEBUG_DATA(data + 1, len - 1);
     }
     if (cap_supported(CAP_FIDO2)) {
-        driver_prepare_response_hid();
         if (cmd == CTAPHID_CBOR) {
             if (data[0] == CTAP_MAKE_CREDENTIAL) {
                 return cbor_make_credential(data + 1, len - 1);
@@ -96,6 +95,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
         }
         else if (cmd == 0xC2) {
             if (cmd_read_config() == 0x9000) {
+                memmove(res_APDU-1, res_APDU, res_APDU_size);
                 res_APDU_size -= 1;
                 return 0;
             }
@@ -106,14 +106,12 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
 
 #ifndef ENABLE_EMULATION
 void cbor_thread() {
-
     card_init_core1();
     while (1) {
         uint32_t m;
         queue_remove_blocking(&usb_to_card_q, &m);
 
         if (m == EV_EXIT) {
-
             break;
         }
         apdu.sw = cbor_parse(cmd, cbor_data, cbor_len);
@@ -140,6 +138,7 @@ int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     cbor_data = data;
     cbor_len = len;
     cmd = last_cmd;
+    ctap_resp->init.data[0] = 0;
     res_APDU = ctap_resp->init.data + 1;
     res_APDU_size = 0;
     return 2; // CBOR processing

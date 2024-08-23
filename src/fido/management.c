@@ -32,14 +32,16 @@ const uint8_t man_aid[] = {
 };
 extern void scan_all();
 extern void init_otp();
-int man_select(app_t *a) {
+int man_select(app_t *a, uint8_t force) {
     a->process_apdu = man_process_apdu;
     a->unload = man_unload;
     sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
     res_APDU_size = strlen((char *) res_APDU);
     apdu.ne = res_APDU_size;
-    scan_all();
-    init_otp();
+    if (force) {
+        scan_all();
+        init_otp();
+    }
     return CCID_OK;
 }
 

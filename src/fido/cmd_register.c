@@ -32,7 +32,8 @@ const uint8_t u2f_aid[] = {
 int u2f_unload();
 int u2f_process_apdu();
 
-int u2f_select(app_t *a) {
+int u2f_select(app_t *a, uint8_t force) {
+    (void) force;
     if (cap_supported(CAP_U2F)) {
         a->process_apdu = u2f_process_apdu;
         a->unload = u2f_unload;

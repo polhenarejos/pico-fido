@@ -68,7 +68,8 @@ const uint8_t oath_aid[] = {
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01
 };
 
-int oath_select(app_t *a) {
+int oath_select(app_t *a, uint8_t force) {
+    (void) force;
     if (cap_supported(CAP_OATH)) {
         a->process_apdu = oath_process_apdu;
         a->unload = oath_unload;
