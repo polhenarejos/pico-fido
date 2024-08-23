@@ -156,7 +156,6 @@ if(ENABLE_EMULATION)
     target_link_options(pico_fido PUBLIC
             -Wl,--gc-sections
             )
-    target_link_libraries(pico_fido PRIVATE m)
     endif (APPLE)
 else()
 pico_add_extra_outputs(pico_fido)
