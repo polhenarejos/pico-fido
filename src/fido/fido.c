@@ -168,6 +168,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
                                         MBEDTLS_X509_KU_DIGITAL_SIGNATURE |
                                         MBEDTLS_X509_KU_KEY_CERT_SIGN);
     int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_gen, NULL);
+    mbedtls_x509write_crt_free(&ctx);
     /* pk cannot be freed, as it is freed later */
     //mbedtls_pk_free(&key);
     return ret;
@@ -206,7 +207,7 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_con
     uint8_t hmac[32], d[32];
     size_t olen = 0;
     int ret = mbedtls_ecp_write_key_ext(key, &olen, d, sizeof(d));
-    if (key == NULL) {
+    if (key == &ctx) {
         mbedtls_ecdsa_free(&ctx);
     }
     if (ret != 0) {

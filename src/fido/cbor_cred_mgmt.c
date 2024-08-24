@@ -435,6 +435,7 @@ err:
     CBOR_FREE_BYTE_STRING(user.displayName);
     CBOR_FREE_BYTE_STRING(user.parent.name);
     CBOR_FREE_BYTE_STRING(credentialId.type);
+    CBOR_FREE_BYTE_STRING(credentialId.id);
     for (size_t n = 0; n < credentialId.transports_len; n++) {
         CBOR_FREE_BYTE_STRING(credentialId.transports[n]);
     }

@@ -397,16 +397,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         flags = flagsx;
         selcred = &credsx[credentialCounter];
     }
-    mbedtls_ecdsa_context ekey;
-    mbedtls_ecdsa_init(&ekey);
-    int ret = fido_load_key((int)selcred->curve, selcred->id.data, &ekey);
-    if (ret != 0) {
-        if (derive_key(rp_id_hash, false, selcred->id.data, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
-            mbedtls_ecdsa_free(&ekey);
-            CBOR_ERROR(CTAP1_ERR_OTHER);
-        }
-    }
 
+    int ret = 0;
     uint8_t largeBlobKey[32];
     if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
         ret = credential_derive_large_blob_key(selcred->id.data, selcred->id.len, largeBlobKey);
@@ -529,6 +521,15 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     memcpy(pa, clientDataHash.data, clientDataHash.len);
     uint8_t hash[64], sig[MBEDTLS_ECDSA_MAX_LEN];
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    mbedtls_ecdsa_context ekey;
+    mbedtls_ecdsa_init(&ekey);
+    ret = fido_load_key((int)selcred->curve, selcred->id.data, &ekey);
+    if (ret != 0) {
+        if (derive_key(rp_id_hash, false, selcred->id.data, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
+            mbedtls_ecdsa_free(&ekey);
+            CBOR_ERROR(CTAP1_ERR_OTHER);
+        }
+    }
     if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
     }
@@ -611,16 +612,20 @@ err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(rpId);
+    CBOR_FREE_BYTE_STRING(kax);
+    CBOR_FREE_BYTE_STRING(kay);
+    CBOR_FREE_BYTE_STRING(salt_enc);
+    CBOR_FREE_BYTE_STRING(salt_auth);
     if (asserted == false) {
         for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
             credential_free(&creds[i]);
         }
     }
 
-    for (size_t m = 0; m < allowList_len; m++) {
+    for (size_t m = 0; m < MAX_CREDENTIAL_COUNT_IN_LIST; m++) {
         CBOR_FREE_BYTE_STRING(allowList[m].type);
         CBOR_FREE_BYTE_STRING(allowList[m].id);
-        for (size_t n = 0; n < allowList[m].transports_len; n++) {
+        for (size_t n = 0; n < 8; n++) {
             CBOR_FREE_BYTE_STRING(allowList[m].transports[n]);
         }
     }

@@ -41,14 +41,7 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
-    int ret = mbedtls_chachapoly_auth_decrypt(&chatx,
-                                              cred_id_len - (4 + 12 + 16),
-                                              iv,
-                                              rp_id_hash,
-                                              32,
-                                              tag,
-                                              cipher,
-                                              cipher);
+    int ret = mbedtls_chachapoly_auth_decrypt(&chatx, cred_id_len - (4 + 12 + 16), iv, rp_id_hash, 32, tag, cipher, cipher);
     mbedtls_chachapoly_free(&chatx);
     return ret;
 }
@@ -83,8 +76,7 @@ int credential_create(CborCharString *rpId,
         if (extensions->credBlob.present == true &&
             extensions->credBlob.len < MAX_CREDBLOB_LENGTH) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credBlob"));
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, extensions->credBlob.data,
-                                               extensions->credBlob.len));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, extensions->credBlob.data, extensions->credBlob.len));
         }
         if (extensions->credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "credProtect"));
@@ -130,11 +122,7 @@ int credential_create(CborCharString *rpId,
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
-    int ret = mbedtls_chachapoly_encrypt_and_tag(&chatx,
-                                                 rs,
-                                                 iv,
-                                                 rp_id_hash,
-                                                 32,
+    int ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, rs, iv, rp_id_hash, 32,
                                                  cred_id + 4 + 12,
                                                  cred_id + 4 + 12,
                                                  cred_id + 4 + 12 + rs);
@@ -155,10 +143,7 @@ err:
     return 0;
 }
 
-int credential_load(const uint8_t *cred_id,
-                    size_t cred_id_len,
-                    const uint8_t *rp_id_hash,
-                    Credential *cred) {
+int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred) {
     int ret = 0;
     CborError error = CborNoError;
     uint8_t *copy_cred_id = (uint8_t *) calloc(1, cred_id_len);
@@ -205,9 +190,7 @@ int credential_load(const uint8_t *cred_id,
                     CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
                     CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
                     CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", cred->extensions.largeBlobKey);
-                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2,
-                                                 "thirdPartyPayment",
-                                                 cred->extensions.thirdPartyPayment);
+                    CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", cred->extensions.thirdPartyPayment);
                     CBOR_ADVANCE(2);
                 }
                 CBOR_PARSE_MAP_END(_f1, 2);
@@ -258,6 +241,9 @@ void credential_free(Credential *cred) {
     CBOR_FREE_BYTE_STRING(cred->userName);
     CBOR_FREE_BYTE_STRING(cred->userDisplayName);
     CBOR_FREE_BYTE_STRING(cred->id);
+    if (cred->extensions.present) {
+        CBOR_FREE_BYTE_STRING(cred->extensions.credBlob);
+    }
     cred->present = false;
     cred->extensions.present = false;
     cred->opts.present = false;

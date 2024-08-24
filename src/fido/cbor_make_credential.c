@@ -291,8 +291,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                             &ecred) == 0 &&
             (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED ||
              (flags & FIDO2_AUT_FLAG_UV))) {
+                credential_free(&ecred);
             CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
         }
+        credential_free(&ecred);
     }
 
     if (extensions.largeBlobKey == pfalse ||
@@ -510,11 +512,14 @@ err:
     CBOR_FREE_BYTE_STRING(user.id);
     CBOR_FREE_BYTE_STRING(user.displayName);
     CBOR_FREE_BYTE_STRING(user.parent.name);
-    for (size_t n = 0; n < pubKeyCredParams_len; n++) {
+    if (extensions.present == true) {
+        CBOR_FREE_BYTE_STRING(extensions.credBlob);
+    }
+    for (size_t n = 0; n < MAX_CREDENTIAL_COUNT_IN_LIST; n++) {
         CBOR_FREE_BYTE_STRING(pubKeyCredParams[n].type);
     }
 
-    for (size_t m = 0; m < excludeList_len; m++) {
+    for (size_t m = 0; m < MAX_CREDENTIAL_COUNT_IN_LIST; m++) {
         CBOR_FREE_BYTE_STRING(excludeList[m].type);
         CBOR_FREE_BYTE_STRING(excludeList[m].id);
         for (size_t n = 0; n < excludeList[m].transports_len; n++) {

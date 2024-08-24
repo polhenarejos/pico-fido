@@ -50,6 +50,7 @@ int cmd_authenticate() {
         ret = derive_key(req->appId, false, req->keyHandle, MBEDTLS_ECP_DP_SECP256R1, &key);
         if (verify_key(req->appId, req->keyHandle, &key) != 0) {
             mbedtls_ecdsa_free(&key);
+            free(tmp_kh);
             return SW_INCORRECT_PARAMS();
         }
     }

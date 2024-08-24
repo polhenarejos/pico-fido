@@ -205,6 +205,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         file_put_data(ef_minpin, dataf, (uint16_t)(2 + minPinLengthRPIDs_len * 32));
         low_flash_available();
+        free(dataf);
         goto err; //No return
     }
     else if (subcommand == 0x01) {
