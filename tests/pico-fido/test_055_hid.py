@@ -196,15 +196,12 @@ class TestHID(object):
 
         device.set_cid(cid2)  # send ping on 2nd channel
         device.send_raw("\x81\x00\x39")
-        time.sleep(0.1)
-        device.send_raw("\x00")
-
         cmd, r = device.recv_raw()  # busy response
+        time.sleep(0.1)
+
 
         device.set_cid(cid1)  # finish 1st channel ping
         device.send_raw("\x00")
-
-        device.set_cid(cid2)
 
         assert cmd == 0xBF
         assert r[0] == CtapError.ERR.CHANNEL_BUSY
@@ -213,9 +210,11 @@ class TestHID(object):
         cmd, r = device.recv_raw()  # ping response
         assert cmd == 0x81
         assert len(r) == 0x39
+        cmd, r = device.recv_raw()  # ping response
 
     def test_cid_0(self, device):
         device.reset()
+        time.sleep(0.1)
         device.set_cid(b"\x00\x00\x00\x00")
         device.send_raw(
             "\x86\x00\x08\x11\x22\x33\x44\x55\x66\x77\x88", cid="\x00\x00\x00\x00"
