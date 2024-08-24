@@ -20,6 +20,8 @@
 
 from fido2.client import CtapError
 from fido2.cose import ES256, ES384, ES512
+import fido2.features
+fido2.features.webauthn_json_mapping.enabled = False
 from utils import ES256K
 import pytest
 
