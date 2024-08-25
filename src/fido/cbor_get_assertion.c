@@ -203,7 +203,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
 
     uint8_t flags = 0;
-    uint8_t rp_id_hash[32];
+    uint8_t rp_id_hash[32] = {0};
     mbedtls_sha256((uint8_t *) rpId.data, rpId.len, rp_id_hash, 0);
 
     bool resident = false;
@@ -323,11 +323,21 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                         credential_free(&creds[i]);
                     }
                     else {
-                        creds[numberOfCredentials++] = creds[i];
+                        if (numberOfCredentials != i) {
+                            creds[numberOfCredentials++] = creds[i];
+                        }
+                        else {
+                            numberOfCredentials++;
+                        }
                     }
                 }
                 else {
-                    creds[numberOfCredentials++] = creds[i];
+                    if (numberOfCredentials != i) {
+                        creds[numberOfCredentials++] = creds[i];
+                    }
+                    else {
+                        numberOfCredentials++;
+                    }
                 }
             }
         }
@@ -399,7 +409,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
 
     int ret = 0;
-    uint8_t largeBlobKey[32];
+    uint8_t largeBlobKey[32] = {0};
     if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
         ret = credential_derive_large_blob_key(selcred->id.data, selcred->id.len, largeBlobKey);
         if (ret != 0) {
@@ -408,7 +418,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
 
     size_t ext_len = 0;
-    uint8_t ext[512];
+    uint8_t ext[512] = {0};
     if (extensions.present == true) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
         int l = 0;
@@ -439,7 +449,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
 
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
 
-            uint8_t sharedSecret[64];
+            uint8_t sharedSecret[64] = {0};
             mbedtls_ecp_point Qp;
             mbedtls_ecp_point_init(&Qp);
             mbedtls_mpi_lset(&Qp.Z, 1);
@@ -461,13 +471,13 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
                 CBOR_ERROR(CTAP2_ERR_EXTENSION_FIRST);
             }
-            uint8_t salt_dec[64], poff = ((uint8_t)hmacSecretPinUvAuthProtocol - 1) * IV_SIZE;
+            uint8_t salt_dec[64] = {0}, poff = ((uint8_t)hmacSecretPinUvAuthProtocol - 1) * IV_SIZE;
             ret = decrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, (uint16_t)salt_enc.len, salt_dec);
             if (ret != 0) {
                 mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
-            uint8_t cred_random[64], *crd = NULL;
+            uint8_t cred_random[64] = {0}, *crd = NULL;
             ret = credential_derive_hmac_key(selcred->id.data, selcred->id.len, cred_random);
             if (ret != 0) {
                 mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
@@ -479,7 +489,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             else {
                 crd = cred_random;
             }
-            uint8_t out1[64], hmac_res[80];
+            uint8_t out1[64] = {0}, hmac_res[80] = {0};
             mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec, 32, out1);
             if ((uint8_t)salt_enc.len == 64 + poff) {
                 mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec + 32, 32, out1 + 32);
@@ -519,7 +529,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
 
     memcpy(pa, clientDataHash.data, clientDataHash.len);
-    uint8_t hash[64], sig[MBEDTLS_ECDSA_MAX_LEN];
+    uint8_t hash[64] = {0}, sig[MBEDTLS_ECDSA_MAX_LEN] = {0};
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);

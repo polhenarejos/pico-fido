@@ -159,7 +159,7 @@ typedef struct CborCharString {
 
 #define CBOR_FIELD_GET_KEY_TEXT(_n) \
     CBOR_ASSERT(cbor_value_is_text_string(&(_f##_n)) == true); \
-    char _fd##_n[64]; \
+    char _fd##_n[64] = {0}; \
     size_t _fdl##_n = sizeof(_fd##_n); \
     CBOR_CHECK(cbor_value_copy_text_string(&(_f##_n), _fd##_n, &_fdl##_n, &(_f##_n)))
 

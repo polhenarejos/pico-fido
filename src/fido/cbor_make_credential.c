@@ -162,7 +162,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_PARSE_MAP_END(map, 1);
 
     uint8_t flags = FIDO2_AUT_FLAG_AT;
-    uint8_t rp_id_hash[32];
+    uint8_t rp_id_hash[32] = {0};
     mbedtls_sha256((uint8_t *) rp.id.data, rp.id.len, rp_id_hash, 0);
 
     if (pinUvAuthParam.present == true) {
@@ -320,7 +320,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
 
-    uint8_t cred_id[MAX_CRED_ID_LENGTH];
+    uint8_t cred_id[MAX_CRED_ID_LENGTH] = {0};
     size_t cred_id_len = 0;
 
     CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &options,
@@ -331,7 +331,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         flags |= FIDO2_AUT_FLAG_UV;
     }
     size_t ext_len = 0;
-    uint8_t ext[512];
+    uint8_t ext[512] = {0};
     CborEncoder encoder, mapEncoder, mapEncoder2;
     if (extensions.present == true) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
@@ -400,7 +400,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     size_t olen = 0;
     uint32_t ctr = get_sign_counter();
-    uint8_t cbor_buf[1024];
+    uint8_t cbor_buf[1024] = {0};
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
     CBOR_CHECK(COSE_key(&ekey, &encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
@@ -426,7 +426,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
 
     memcpy(pa, clientDataHash.data, clientDataHash.len);
-    uint8_t hash[64], sig[MBEDTLS_ECDSA_MAX_LEN];
+    uint8_t hash[64] = {0}, sig[MBEDTLS_ECDSA_MAX_LEN] = {0};
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
@@ -447,7 +447,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
     mbedtls_ecdsa_free(&ekey);
 
-    uint8_t largeBlobKey[32];
+    uint8_t largeBlobKey[32] = {0};
     if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
         ret = credential_derive_large_blob_key(cred_id, cred_id_len, largeBlobKey);
         if (ret != 0) {
