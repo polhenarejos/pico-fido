@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VERSION_MAJOR="5"
-VERSION_MINOR="10"
+VERSION_MINOR="12"
 
 rm -rf release/*
 cd build_release
