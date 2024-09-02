@@ -43,12 +43,11 @@ int cbor_large_blobs(const uint8_t *data, size_t len);
 
 extern int cmd_read_config();
 
-const uint8_t aaguid[16] =
-{ 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45 };                          // First 16 bytes of SHA256("Pico FIDO2")
+const uint8_t aaguid[16] = { 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45 }; // First 16 bytes of SHA256("Pico FIDO2")
 
 const uint8_t *cbor_data = NULL;
 size_t cbor_len = 0;
-uint8_t cmd = 0;
+uint8_t cbor_cmd = 0;
 
 int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len == 0 && cmd == CTAPHID_CBOR) {
@@ -58,7 +57,6 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
         DEBUG_DATA(data + 1, len - 1);
     }
     if (cap_supported(CAP_FIDO2)) {
-        driver_prepare_response_hid();
         if (cmd == CTAPHID_CBOR) {
             if (data[0] == CTAP_MAKE_CREDENTIAL) {
                 return cbor_make_credential(data + 1, len - 1);
@@ -96,6 +94,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
         }
         else if (cmd == 0xC2) {
             if (cmd_read_config() == 0x9000) {
+                memmove(res_APDU-1, res_APDU, res_APDU_size);
                 res_APDU_size -= 1;
                 return 0;
             }
@@ -104,19 +103,18 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     return CTAP1_ERR_INVALID_CMD;
 }
 
-#ifndef ENABLE_EMULATION
-void cbor_thread() {
-
+void cbor_thread(void) {
     card_init_core1();
     while (1) {
         uint32_t m;
         queue_remove_blocking(&usb_to_card_q, &m);
+        uint32_t flag = m + 1;
+        queue_add_blocking(&card_to_usb_q, &flag);
 
         if (m == EV_EXIT) {
-
             break;
         }
-        apdu.sw = cbor_parse(cmd, cbor_data, cbor_len);
+        apdu.sw = cbor_parse(cbor_cmd, cbor_data, cbor_len);
         if (apdu.sw == 0) {
             DEBUG_DATA(res_APDU + 1, res_APDU_size);
         }
@@ -127,30 +125,25 @@ void cbor_thread() {
 
         finished_data_size = res_APDU_size + 1;
 
-        uint32_t flag = EV_EXEC_FINISHED;
+        flag = EV_EXEC_FINISHED;
         queue_add_blocking(&card_to_usb_q, &flag);
     }
 #ifdef ESP_PLATFORM
     vTaskDelete(NULL);
 #endif
 }
-#endif
 
 int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     cbor_data = data;
     cbor_len = len;
-    cmd = last_cmd;
+    cbor_cmd = last_cmd;
+    ctap_resp->init.data[0] = 0;
     res_APDU = ctap_resp->init.data + 1;
     res_APDU_size = 0;
     return 2; // CBOR processing
 }
 
-CborError COSE_key_params(int crv,
-                          int alg,
-                          mbedtls_ecp_group *grp,
-                          mbedtls_ecp_point *Q,
-                          CborEncoder *mapEncoderParent,
-                          CborEncoder *mapEncoder) {
+CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedtls_ecp_point *Q, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
     CborError error = CborNoError;
     int kty = 1;
     if (crv == FIDO2_CURVE_P256 || crv == FIDO2_CURVE_P384 || crv == FIDO2_CURVE_P521 ||
@@ -220,12 +213,7 @@ CborError COSE_key_shared(mbedtls_ecdh_context *key,
                           CborEncoder *mapEncoderParent,
                           CborEncoder *mapEncoder) {
     int crv = mbedtls_curve_to_fido(key->ctx.mbed_ecdh.grp.id), alg = FIDO2_ALG_ECDH_ES_HKDF_256;
-    return COSE_key_params(crv,
-                           alg,
-                           &key->ctx.mbed_ecdh.grp,
-                           &key->ctx.mbed_ecdh.Q,
-                           mapEncoderParent,
-                           mapEncoder);
+    return COSE_key_params(crv, alg, &key->ctx.mbed_ecdh.grp, &key->ctx.mbed_ecdh.Q, mapEncoderParent, mapEncoder);
 }
 CborError COSE_public_key(int alg, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
     CborError error = CborNoError;
@@ -238,12 +226,7 @@ CborError COSE_public_key(int alg, CborEncoder *mapEncoderParent, CborEncoder *m
 err:
     return error;
 }
-CborError COSE_read_key(CborValue *f,
-                        int64_t *kty,
-                        int64_t *alg,
-                        int64_t *crv,
-                        CborByteString *kax,
-                        CborByteString *kay) {
+CborError COSE_read_key(CborValue *f, int64_t *kty, int64_t *alg, int64_t *crv, CborByteString *kax, CborByteString *kay) {
     int64_t kkey = 0;
     CborError error = CborNoError;
     CBOR_PARSE_MAP_START(*f, 0)

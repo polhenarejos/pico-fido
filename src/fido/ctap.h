@@ -18,16 +18,9 @@
 #ifndef _CTAP_H_
 #define _CTAP_H_
 
-#ifdef _MSC_VER  // Windows
-typedef unsigned char     uint8_t;
-typedef unsigned short    uint16_t;
-typedef unsigned int      uint32_t;
-typedef unsigned long int uint64_t;
-#else
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
-#endif
 
 #ifdef __cplusplus
 extern "C" {

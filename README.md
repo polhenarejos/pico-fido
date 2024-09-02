@@ -1,5 +1,5 @@
 # Pico FIDO
-This project transforms your Raspberry Pi Pico into an integrated FIDO key, functioning like a standard USB key for authentication.
+This project transforms your Raspberry Pi Pico into an integrated FIDO Passkey, functioning like a standard USB Passkey for authentication.
 
 ## Features
 Pico FIDO includes the following features:
@@ -11,7 +11,7 @@ Pico FIDO includes the following features:
 - CredProtect extension
 - User presence enforcement through physical button
 - User verification with PIN
-- Discoverable credentials
+- Discoverable credentials (resident keys)
 - Credential management
 - ECDSA and EDDSA authentication
 - Support for SECP256R1, SECP384R1, SECP521R1, SECP256K1 and Ed25519 curves
@@ -74,7 +74,7 @@ Note that `PICO_BOARD`, `USB_VID`, and `USB_PID` are optional. If not provided, 
 
 After `make` finishes, the binary file `pico_fido.uf2` will be generated. Put your Pico board into loading mode by holding the BOOTSEL button while plugging it in, then copy the UF2 file to the new USB mass storage Pico device. Once copied, the Pico mass storage will disconnect automatically, and the Pico board will reset with the new firmware. A blinking LED will indicate that the device is ready to work.
 
-**Remark:** Pico FIDO uses the HID interface, so VID/PID values are irrelevant in terms of operativity. You can safely use any arbitrary values or the default ones.
+**Remark:** Pico FIDO uses the HID interface, so VID/PID values are irrelevant in terms of operativity. You can safely use any arbitrary values or the default ones. They are only necessary in case you need to use 3rd-party tools from other vendors.
 
 ## Led blink
 Pico FIDO uses the led to indicate the current status. Four states are available:

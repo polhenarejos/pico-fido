@@ -50,6 +50,7 @@ int cmd_authenticate() {
         ret = derive_key(req->appId, false, req->keyHandle, MBEDTLS_ECP_DP_SECP256R1, &key);
         if (verify_key(req->appId, req->keyHandle, &key) != 0) {
             mbedtls_ecdsa_free(&key);
+            free(tmp_kh);
             return SW_INCORRECT_PARAMS();
         }
     }
@@ -65,36 +66,27 @@ int cmd_authenticate() {
     resp->flags = 0;
     resp->flags |= P1(apdu) == CTAP_AUTH_ENFORCE ? CTAP_AUTH_FLAG_TUP : 0x0;
     uint32_t ctr = get_sign_counter();
-    resp->ctr[0] = ctr >> 24;
-    resp->ctr[1] = ctr >> 16;
-    resp->ctr[2] = ctr >> 8;
-    resp->ctr[3] = ctr & 0xff;
+    resp->ctr[0] = (ctr >> 24) & 0xFF;
+    resp->ctr[1] = (ctr >> 16) & 0xFF;
+    resp->ctr[2] = (ctr >> 8) & 0xFF;
+    resp->ctr[3] = ctr & 0xFF;
     uint8_t hash[32], sig_base[CTAP_APPID_SIZE + 1 + 4 + CTAP_CHAL_SIZE];
     memcpy(sig_base, req->appId, CTAP_APPID_SIZE);
     memcpy(sig_base + CTAP_APPID_SIZE, &resp->flags, sizeof(uint8_t));
     memcpy(sig_base + CTAP_APPID_SIZE + 1, resp->ctr, 4);
     memcpy(sig_base + CTAP_APPID_SIZE + 1 + 4, req->chal, CTAP_CHAL_SIZE);
-    ret =
-        mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), sig_base, sizeof(sig_base), hash);
+    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), sig_base, sizeof(sig_base), hash);
     if (ret != 0) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
     size_t olen = 0;
-    ret = mbedtls_ecdsa_write_signature(&key,
-                                        MBEDTLS_MD_SHA256,
-                                        hash,
-                                        32,
-                                        (uint8_t *) resp->sig,
-                                        CTAP_MAX_EC_SIG_SIZE,
-                                        &olen,
-                                        random_gen,
-                                        NULL);
+    ret = mbedtls_ecdsa_write_signature(&key, MBEDTLS_MD_SHA256, hash, 32, (uint8_t *) resp->sig, CTAP_MAX_EC_SIG_SIZE, &olen, random_gen, NULL);
     mbedtls_ecdsa_free(&key);
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
-    res_APDU_size = 1 + 4 + olen;
+    res_APDU_size = 1 + 4 + (uint16_t)olen;
 
     ctr++;
     file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));

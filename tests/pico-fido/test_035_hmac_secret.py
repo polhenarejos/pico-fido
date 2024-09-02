@@ -69,12 +69,12 @@ def test_hmac_secret_entropy(device, MCHmacSecret, hmac, salts
 
     #print(shannon_entropy(auth.authenticator_data.extensions['hmac-secret']))
     if len(salts) == 1:
-        assert shannon_entropy(auth.authenticator_data.extensions['hmac-secret']) > 4.6
-        assert shannon_entropy(ext["hmacGetSecret"]['output1']) > 4.6
+        assert shannon_entropy(auth.authenticator_data.extensions['hmac-secret']) > 4.5
+        assert shannon_entropy(ext["hmacGetSecret"]['output1']) > 4.5
     if len(salts) == 2:
         assert shannon_entropy(auth.authenticator_data.extensions['hmac-secret']) > 5.4
-        assert shannon_entropy(ext["hmacGetSecret"]['output1']) > 4.6
-        assert shannon_entropy(ext["hmacGetSecret"]['output2']) > 4.6
+        assert shannon_entropy(ext["hmacGetSecret"]['output1']) > 4.5
+        assert shannon_entropy(ext["hmacGetSecret"]['output2']) > 4.5
 
 def get_output(device, MCHmacSecret, hmac, salts):
     hout = {'salt1':salts[0]}

@@ -32,14 +32,16 @@ const uint8_t man_aid[] = {
 };
 extern void scan_all();
 extern void init_otp();
-int man_select(app_t *a) {
+int man_select(app_t *a, uint8_t force) {
     a->process_apdu = man_process_apdu;
     a->unload = man_unload;
     sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
-    res_APDU_size = strlen((char *) res_APDU);
+    res_APDU_size = (uint16_t)strlen((char *) res_APDU);
     apdu.ne = res_APDU_size;
-    scan_all();
-    init_otp();
+    if (force) {
+        scan_all();
+        init_otp();
+    }
     return CCID_OK;
 }
 
@@ -114,7 +116,7 @@ int man_get_config() {
         memcpy(res_APDU + res_APDU_size, file_get_data(ef), file_get_size(ef));
         res_APDU_size += file_get_size(ef);
     }
-    res_APDU[0] = res_APDU_size - 1;
+    res_APDU[0] = (uint8_t)(res_APDU_size - 1);
     return 0;
 }
 
@@ -128,7 +130,7 @@ int cmd_write_config() {
         return SW_WRONG_DATA();
     }
     file_t *ef = file_new(EF_DEV_CONF);
-    file_put_data(ef, apdu.data + 1, apdu.nc - 1);
+    file_put_data(ef, apdu.data + 1, (uint16_t)(apdu.nc - 1));
     low_flash_available();
     return SW_OK();
 }

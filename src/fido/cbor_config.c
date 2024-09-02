@@ -39,7 +39,8 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborByteString pinUvAuthParam = { 0 }, vendorAutCt = { 0 };
     CborCharString minPinLengthRPIDs[32] = { 0 };
     size_t resp_size = 0, raw_subpara_len = 0, minPinLengthRPIDs_len = 0;
-    CborEncoder encoder, mapEncoder;
+    CborEncoder encoder;
+    //CborEncoder mapEncoder;
     uint8_t *raw_subpara = NULL;
     const bool *forceChangePin = NULL;
 
@@ -106,7 +107,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
 
     if (pinUvAuthParam.present == false) {
         CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
@@ -118,13 +119,9 @@ int cbor_config(const uint8_t *data, size_t len) {
     uint8_t *verify_payload = (uint8_t *) calloc(1, 32 + 1 + 1 + raw_subpara_len);
     memset(verify_payload, 0xff, 32);
     verify_payload[32] = 0x0d;
-    verify_payload[33] = subcommand;
+    verify_payload[33] = (uint8_t)subcommand;
     memcpy(verify_payload + 34, raw_subpara, raw_subpara_len);
-    error = verify(pinUvAuthProtocol,
-                   paut.data,
-                   verify_payload,
-                   32 + 1 + 1 + raw_subpara_len,
-                   pinUvAuthParam.data);
+    error = verify((uint8_t)pinUvAuthProtocol, paut.data, verify_payload, (uint16_t)(32 + 1 + 1 + raw_subpara_len), pinUvAuthParam.data);
     free(verify_payload);
     if (error != CborNoError) {
         CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
@@ -165,14 +162,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             random_gen(NULL, key_dev_enc, 12);
             mbedtls_chachapoly_init(&chatx);
             mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
-            ret = mbedtls_chachapoly_encrypt_and_tag(&chatx,
-                                                     file_get_size(ef_keydev),
-                                                     key_dev_enc,
-                                                     NULL,
-                                                     0,
-                                                     file_get_data(ef_keydev),
-                                                     key_dev_enc + 12,
-                                                     key_dev_enc + 12 + file_get_size(ef_keydev));
+            ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, file_get_size(ef_keydev), key_dev_enc, NULL, 0, file_get_data(ef_keydev), key_dev_enc + 12, key_dev_enc + 12 + file_get_size(ef_keydev));
             mbedtls_chachapoly_free(&chatx);
             if (ret != 0) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -207,17 +197,15 @@ int cbor_config(const uint8_t *data, size_t len) {
         if (file_has_data(ef_pin) && file_get_data(ef_pin)[1] < newMinPinLength) {
             forceChangePin = ptrue;
         }
-        uint8_t *data = (uint8_t *) calloc(1, 2 + minPinLengthRPIDs_len * 32);
-        data[0] = newMinPinLength;
-        data[1] = forceChangePin == ptrue ? 1 : 0;
-        for (int m = 0; m < minPinLengthRPIDs_len; m++) {
-            mbedtls_sha256((uint8_t *) minPinLengthRPIDs[m].data,
-                           minPinLengthRPIDs[m].len,
-                           data + 2 + m * 32,
-                           0);
+        uint8_t *dataf = (uint8_t *) calloc(1, 2 + minPinLengthRPIDs_len * 32);
+        dataf[0] = (uint8_t)newMinPinLength;
+        dataf[1] = forceChangePin == ptrue ? 1 : 0;
+        for (size_t m = 0; m < minPinLengthRPIDs_len; m++) {
+            mbedtls_sha256((uint8_t *) minPinLengthRPIDs[m].data, minPinLengthRPIDs[m].len, dataf + 2 + m * 32, 0);
         }
-        file_put_data(ef_minpin, data, 2 + minPinLengthRPIDs_len * 32);
+        file_put_data(ef_minpin, dataf, (uint16_t)(2 + minPinLengthRPIDs_len * 32));
         low_flash_available();
+        free(dataf);
         goto err; //No return
     }
     else if (subcommand == 0x01) {
@@ -227,13 +215,13 @@ int cbor_config(const uint8_t *data, size_t len) {
     else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
-    CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
+    //CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+    //resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(vendorAutCt);
-    for (int i = 0; i < minPinLengthRPIDs_len; i++) {
+    for (size_t i = 0; i < minPinLengthRPIDs_len; i++) {
         CBOR_FREE_BYTE_STRING(minPinLengthRPIDs[i]);
     }
 
@@ -243,6 +231,6 @@ err:
         }
         return error;
     }
-    res_APDU_size = resp_size;
+    res_APDU_size = (uint16_t)resp_size;
     return 0;
 }

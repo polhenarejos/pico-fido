@@ -101,7 +101,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    cbor_encoder_init(&encoder, res_APDU + 1, CTAP_MAX_PACKET_SIZE, 0);
+    cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
 
     if (cmd == CTAP_VENDOR_BACKUP) {
         if (vendorCmd == 0x01) {
@@ -121,7 +121,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             uint8_t zeros[32];
             memset(zeros, 0, sizeof(zeros));
-            file_put_data(ef_keydev_enc, vendorParam.data, vendorParam.len);
+            file_put_data(ef_keydev_enc, vendorParam.data, (uint16_t)vendorParam.len);
             file_put_data(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
             file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
             low_flash_available();
@@ -223,14 +223,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         size_t keyenc_len = file_get_size(ef_keydev_enc);
         mbedtls_chachapoly_init(&chatx);
         mbedtls_chachapoly_setkey(&chatx, vendorParam.data);
-        ret = mbedtls_chachapoly_auth_decrypt(&chatx,
-                                              sizeof(keydev_dec),
-                                              keyenc,
-                                              NULL,
-                                              0,
-                                              keyenc + keyenc_len - 16,
-                                              keyenc + 12,
-                                              keydev_dec);
+        ret = mbedtls_chachapoly_auth_decrypt(&chatx, sizeof(keydev_dec), keyenc, NULL, 0, keyenc + keyenc_len - 16, keyenc + 12, keydev_dec);
         mbedtls_chachapoly_free(&chatx);
         if (ret != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -243,10 +236,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             uint8_t buffer[1024];
             mbedtls_ecdsa_context ekey;
             mbedtls_ecdsa_init(&ekey);
-            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1,
-                                           &ekey,
-                                           file_get_data(ef_keydev),
-                                           file_get_size(ef_keydev));
+            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), file_get_size(ef_keydev));
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
@@ -290,7 +280,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             file_t *ef_ee_ea = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
             if (ef_ee_ea) {
-                file_put_data(ef_ee_ea, vendorParam.data, vendorParam.len);
+                file_put_data(ef_ee_ea, vendorParam.data, (uint16_t)vendorParam.len);
             }
             low_flash_available();
             goto err;
@@ -300,7 +290,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-    resp_size = cbor_encoder_get_buffer_size(&encoder, res_APDU + 1);
+    resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
@@ -312,7 +302,7 @@ err:
         }
         return error;
     }
-    res_APDU_size = resp_size;
+    res_APDU_size = (uint16_t)resp_size;
     return 0;
 }
 
