@@ -96,7 +96,9 @@ for board in 0xcb_helios \
     wiznet_w5100s_evb_pico
 do
     rm -rf *
-    PICO_SDK_PATH=../../pico-sdk cmake .. -DPICO_BOARD=$board
+    # PICO_SDK_PATH=../../pico-sdk cmake .. -DPICO_BOARD=$board
+    PICO_SDK_PATH=../pico-sdk cmake .. -DPICO_BOARD=$board
+
     make -kj20
     mv pico_fido.uf2 ../release/pico_fido_$board-$VERSION_MAJOR.$VERSION_MINOR.uf2
 
