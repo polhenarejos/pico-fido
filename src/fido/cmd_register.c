@@ -100,7 +100,13 @@ int cmd_register() {
         return SW_EXEC_ERROR();
     }
     mbedtls_ecdsa_init(&key);
-    ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);
+    uint8_t key_dev[32] = {0};
+    ret = load_keydev(key_dev);
+    if (ret != CCID_OK) {
+        return SW_EXEC_ERROR();
+    }
+    ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, key_dev, 32);
+    mbedtls_platform_zeroize(key_dev, sizeof(key_dev));
     if (ret != CCID_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();

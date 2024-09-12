@@ -440,7 +440,12 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (enterpriseAttestation == 2 || (ka && ka->use_self_attestation == pfalse)) {
         mbedtls_ecdsa_free(&ekey);
         mbedtls_ecdsa_init(&ekey);
-        ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), 32);
+        uint8_t key[32] = {0};
+        if (load_keydev(key) != 0) {
+            CBOR_ERROR(CTAP1_ERR_OTHER);
+        }
+        ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, key, 32);
+        mbedtls_platform_zeroize(key, sizeof(key));
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
         self_attestation = false;
     }

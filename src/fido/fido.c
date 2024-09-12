@@ -34,6 +34,8 @@
 #include "management.h"
 #include "hid/ctap_hid.h"
 #include "version.h"
+#include "crypto_utils.h"
+#include "otp.h"
 
 int fido_process_apdu();
 int fido_unload();
@@ -178,12 +180,19 @@ int load_keydev(uint8_t *key) {
     if (has_keydev_dec == false && !file_has_data(ef_keydev)) {
         return CCID_ERR_MEMORY_FATAL;
     }
+
     if (has_keydev_dec == true) {
         memcpy(key, keydev_dec, sizeof(keydev_dec));
     }
     else {
         memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+#ifdef PICO_RP2350
+        if (aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != CCID_OK) {
+            return CCID_EXEC_ERROR;
+        }
+#endif
     }
+
     //return mkek_decrypt(key, file_get_size(ef_keydev));
     return CCID_OK;
 }
@@ -292,6 +301,9 @@ int scan_files() {
             if (ret != CCID_OK) {
                 return ret;
             }
+#ifdef PICO_RP2350
+            ret = aes_encrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, kdata, 32);
+#endif
             ret = file_put_data(ef_keydev, kdata, (uint16_t)key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             mbedtls_ecdsa_free(&ecdsa);
