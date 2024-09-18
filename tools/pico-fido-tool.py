@@ -77,11 +77,15 @@ class VendorConfig(Config):
     class PARAM(IntEnum):
         VENDOR_COMMAND_ID         = 0x01
         VENDOR_AUT_CT             = 0x02
+        VENDOR_PARAM              = 0x02
 
     class CMD(IntEnum):
-        CONFIG_AUT_ENABLE    = 0x03e43f56b34285e2
-        CONFIG_AUT_DISABLE   = 0x1831a40f04a25ed9
+        CONFIG_AUT_ENABLE       = 0x03e43f56b34285e2
+        CONFIG_AUT_DISABLE      = 0x1831a40f04a25ed9
         CONFIG_VENDOR_PROTOTYPE = 0x7f
+        CONFIG_VENDOR_PHY       = 0x1b
+        CONFIG_PHY_VIDPID       = 0x6fcb19b0cbe3acfa
+        CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -103,6 +107,15 @@ class VendorConfig(Config):
             VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_DISABLE
+            },
+        )
+
+    def vidpid(self, vid, pid):
+        self._call(
+            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_VIDPID,
+                VendorConfig.PARAM.VENDOR_PARAM: (vid & 0xFFFF) << 16 | pid
             },
         )
 
@@ -393,6 +406,9 @@ class Vendor:
             }
         )
 
+    def vidpid(self, vid, pid):
+        return self.vcfg.vidpid(vid, pid)
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -407,6 +423,11 @@ def parse_args():
     parser_attestation = subparser.add_parser('attestation', help='Manages Enterprise Attestation')
     parser_attestation.add_argument('subcommand', choices=['csr'])
     parser_attestation.add_argument('--filename', help='Uploads the certificate filename to the device as enterprise attestation certificate. If not provided, it will generate an enterprise attestation certificate automatically.')
+
+    parser_phy = subparser.add_parser('phy', help='Set PHY options.')
+    subparser_phy = parser_phy.add_subparsers(title='commands', dest='subcommand', required=True)
+    parser_phy_vp = subparser_phy.add_parser('vidpid', help='Sets VID/PID. Use VID:PID format (e.g. 1234:5678)')
+    parser_phy_vp.add_argument('value', help='Value of the PHY option.', metavar='VAL', nargs='?')
 
     args = parser.parse_args()
     return args
@@ -441,8 +462,22 @@ def attestation(vdr, args):
                     cert = x509.load_pem_x509_certificate(dataf)
         vdr.upload_ea(cert.public_bytes(Encoding.DER))
 
+def phy(vdr, args):
+    val = args.value if 'value' in args else None
+    if (val):
+        if (args.subcommand == 'vidpid'):
+            sp = val.split(':')
+            if (len(sp) != 2):
+                print('ERROR: VID/PID have wrong format. Use VID:PID format (e.g. 1234:5678)')
+    ret = vdr.vidpid(int(sp[0],16), int(sp[1],16))
+    if (ret):
+        print(f'Current value: {hexlify(ret)}')
+    else:
+        print('Command executed successfully. Please, restart your Pico Key.')
+
+
 def main(args):
-    print('Pico Fido Tool v1.6')
+    print('Pico Fido Tool v1.8')
     print('Author: Pol Henarejos')
     print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
     print('')
@@ -460,6 +495,8 @@ def main(args):
         backup(vdr, args)
     elif (args.command == 'attestation'):
         attestation(vdr, args)
+    elif (args.command == 'phy'):
+        phy(vdr, args)
 
 def run():
     args = parse_args()
