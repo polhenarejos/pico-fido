@@ -27,6 +27,7 @@
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
+#include "file.h"
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
@@ -35,7 +36,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
-    uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0;
+    uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0, vendorParam = 0;
     CborByteString pinUvAuthParam = { 0 }, vendorAutCt = { 0 };
     CborCharString minPinLengthRPIDs[32] = { 0 };
     size_t resp_size = 0, raw_subpara_len = 0, minPinLengthRPIDs_len = 0;
@@ -65,7 +66,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             raw_subpara = (uint8_t *) cbor_value_get_next_byte(&_f1);
             CBOR_PARSE_MAP_START(_f1, 2)
             {
-                if (subcommand == 0x7f) {
+                if (subcommand == 0x7f) { // Config Aut
                     CBOR_FIELD_GET_UINT(subpara, 2);
                     if (subpara == 0x01) {
                         CBOR_FIELD_GET_UINT(vendorCommandId, 2);
@@ -74,7 +75,7 @@ int cbor_config(const uint8_t *data, size_t len) {
                         CBOR_FIELD_GET_BYTES(vendorAutCt, 2);
                     }
                 }
-                else if (subcommand == 0x03) {
+                else if (subcommand == 0x03) { // Extensions
                     CBOR_FIELD_GET_UINT(subpara, 2);
                     if (subpara == 0x01) {
                         CBOR_FIELD_GET_UINT(newMinPinLength, 2);
@@ -92,6 +93,15 @@ int cbor_config(const uint8_t *data, size_t len) {
                     }
                     else if (subpara == 0x03) {
                         CBOR_FIELD_GET_BOOL(forceChangePin, 2);
+                    }
+                }
+                else  if (subcommand == 0x1B) { // PHY
+                    CBOR_FIELD_GET_UINT(subpara, 2);
+                    if (subpara == 0x01) {
+                        CBOR_FIELD_GET_UINT(vendorCommandId, 2);
+                    }
+                    else if (subpara == 0x02) {
+                        CBOR_FIELD_GET_UINT(vendorParam, 2);
                     }
                 }
             }
@@ -212,6 +222,45 @@ int cbor_config(const uint8_t *data, size_t len) {
         set_opts(get_opts() | FIDO2_OPT_EA);
         goto err;
     }
+#ifndef ENABLE_EMULATION
+    else if (subcommand == 0x1B) {
+        uint8_t tmp[PHY_MAX_SIZE];
+        memset(tmp, 0, sizeof(tmp));
+        uint16_t opts = 0;
+        if (file_has_data(ef_phy)) {
+            memcpy(tmp, file_get_data(ef_phy), MIN(sizeof(tmp), file_get_size(ef_phy)));
+            if (file_get_size(ef_phy) >= 8) {
+                opts = (tmp[PHY_OPTS] << 8) | tmp[PHY_OPTS + 1];
+            }
+        }
+        if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
+            if (vendorParam != 0) {
+                uint8_t d[4] = { (vendorParam >> 24) & 0xFF, (vendorParam >> 16) & 0xFF, (vendorParam >> 8) & 0xFF, vendorParam & 0xFF };
+                memcpy(tmp + PHY_VID, d, sizeof(d));
+                opts |= PHY_OPT_VPID;
+            }
+            else {
+                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            }
+        }
+        else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
+            if (vendorParam != 0) {
+                uint16_t opt = (uint16_t)vendorParam;
+                opts = (opts & ~PHY_OPT_MASK) | (opt & PHY_OPT_MASK);
+            }
+            else {
+                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            }
+        }
+        else {
+            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        }
+        tmp[PHY_OPTS] = opts >> 8;
+        tmp[PHY_OPTS + 1] = opts & 0xff;
+        file_put_data(ef_phy, tmp, sizeof(tmp));
+        low_flash_available();
+    }
+#endif
     else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }

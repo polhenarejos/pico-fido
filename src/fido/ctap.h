@@ -114,6 +114,8 @@ typedef struct {
 
 #define CTAP_CONFIG_AUT_ENABLE      0x03e43f56b34285e2
 #define CTAP_CONFIG_AUT_DISABLE     0x1831a40f04a25ed9
+#define CTAP_CONFIG_PHY_VIDPID      0x6fcb19b0cbe3acfa
+#define CTAP_CONFIG_PHY_OPTS        0x969f3b09eceb805f
 
 #define CTAP_VENDOR_CBOR            (CTAPHID_VENDOR_FIRST + 1)
 
