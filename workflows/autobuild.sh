@@ -7,7 +7,7 @@ git clone https://github.com/raspberrypi/pico-sdk
 cd pico-sdk
 git submodule update --init
 cd ..
-mkdir build
-cd build
+mkdir build_pico
+cd build_pico
 cmake -DPICO_SDK_PATH=../pico-sdk ..
 make

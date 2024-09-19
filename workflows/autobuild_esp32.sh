@@ -8,6 +8,5 @@ cd esp-idf
 ./install.sh esp32s3
 . ./export.sh
 cd ..
-rm -rf build
 idf.py set-target esp32s3
 idf.py all
