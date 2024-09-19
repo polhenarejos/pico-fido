@@ -8,6 +8,4 @@ cd esp-idf
 ./install.sh esp32s3
 . ./export.sh
 cd ..
-mkdir build_esp
-cd build_esp
 idf.py all
