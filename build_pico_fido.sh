@@ -2,6 +2,12 @@
 
 VERSION_MAJOR="5"
 VERSION_MINOR="12"
+SUFFIX="${VERSION_MAJOR}.${VERSION_MINOR}"
+if [[ -z "${GITHUB_SHA}" ]]; then
+;
+else
+    SUFFIX="${SUFFIX}.${GITHUB_SHA}"
+fi
 
 rm -rf release/*
 mkdir -p build_release
@@ -99,7 +105,6 @@ for board in 0xcb_helios \
 do
     rm -rf *
     PICO_SDK_PATH="${PICO_SDK_PATH:-../../pico-sdk}" cmake .. -DPICO_BOARD=$board
-    make -kj20
-    mv pico_fido.uf2 ../release/pico_fido_$board-$VERSION_MAJOR.$VERSION_MINOR.uf2
-
+    make -j`nproc`
+    mv pico_fido.uf2 ../release/pico_fido_$board-$SUFFIX.uf2
 done
