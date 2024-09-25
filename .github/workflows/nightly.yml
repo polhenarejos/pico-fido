@@ -1,0 +1,34 @@
+name: "Nightly deploy"
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    name: Deploy nightly
+    strategy:
+      fail-fast: false
+      matrix:
+        refs: [main, development]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.refs }}
+          submodules: 'recursive'
+      - name : Build
+        env:
+          PICO_SDK_PATH: ../pico-sdk
+        run: |
+           ./workflows/autobuild.sh
+           ./build_pico_fido.sh
+      - name: Update nightly release
+        uses: pyTooling/Actions/releaser@main
+        with:
+          tag: nightly-${{ matrix.refs }}
+          rm: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: release/*.*
