@@ -3,9 +3,9 @@
 VERSION_MAJOR="5"
 VERSION_MINOR="12"
 SUFFIX="${VERSION_MAJOR}.${VERSION_MINOR}"
-if ! [[ -z "${GITHUB_SHA}" ]]; then
-    SUFFIX="${SUFFIX}.${GITHUB_SHA}"
-fi
+#if ! [[ -z "${GITHUB_SHA}" ]]; then
+#    SUFFIX="${SUFFIX}.${GITHUB_SHA}"
+#fi
 
 rm -rf release/*
 mkdir -p build_release

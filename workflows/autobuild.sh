@@ -12,7 +12,7 @@ cd picotool
 git submodule update --init
 mkdir build
 cd build
-cmake ..
+cmake -DPICO_SDK_PATH=../pico-sdk ..
 make -j`nproc`
 sudo make install
 cd ../..
