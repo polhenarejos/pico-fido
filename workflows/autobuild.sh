@@ -9,7 +9,7 @@ git submodule update --init
 cd ..
 git clone https://github.com/raspberrypi/picotool
 cd picotool
-git submodule update --init lib/mbedtls
+git submodule update --init
 mkdir build
 cd build
 cmake ..

@@ -3,9 +3,7 @@
 VERSION_MAJOR="5"
 VERSION_MINOR="12"
 SUFFIX="${VERSION_MAJOR}.${VERSION_MINOR}"
-if [[ -z "${GITHUB_SHA}" ]]; then
-;
-else
+if ! [[ -z "${GITHUB_SHA}" ]]; then
     SUFFIX="${SUFFIX}.${GITHUB_SHA}"
 fi
 
