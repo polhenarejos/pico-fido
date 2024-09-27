@@ -243,6 +243,21 @@ int cbor_config(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
             }
         }
+        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO || vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
+            if (vendorParam != 0) {
+                if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
+                    tmp[PHY_LED_GPIO] = (uint8_t)vendorParam;
+                    opts |= PHY_OPT_GPIO;
+                }
+                else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
+                    tmp[PHY_LED_BTNESS] = (uint8_t)vendorParam;
+                    opts |= PHY_OPT_BTNESS;
+                }
+            }
+            else {
+                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            }
+        }
         else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
             if (vendorParam != 0) {
                 uint16_t opt = (uint16_t)vendorParam;
