@@ -86,6 +86,8 @@ class VendorConfig(Config):
         CONFIG_VENDOR_PHY       = 0x1b
         CONFIG_PHY_VIDPID       = 0x6fcb19b0cbe3acfa
         CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
+        CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
+        CONFIG_PHY_LED_BTNESS   = 0x76a85945985d02fd
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -116,6 +118,33 @@ class VendorConfig(Config):
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_VIDPID,
                 VendorConfig.PARAM.VENDOR_PARAM: (vid & 0xFFFF) << 16 | pid
+            },
+        )
+
+    def led_gpio(self, gpio):
+        self._call(
+            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_GPIO,
+                VendorConfig.PARAM.VENDOR_PARAM: gpio
+            },
+        )
+
+    def led_brightness(self, brightness):
+        self._call(
+            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_BTNESS,
+                VendorConfig.PARAM.VENDOR_PARAM: brightness
+            },
+        )
+
+    def phy_opts(self, opts):
+        self._call(
+            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_OPTS,
+                VendorConfig.PARAM.VENDOR_PARAM: opts
             },
         )
 
@@ -203,6 +232,7 @@ class Vendor:
         VENDOR_MSE       = 0x02
         VENDOR_UNLOCK    = 0x03
         VENDOR_EA        = 0x04
+        VENDOR_PHY       = 0x05
 
     @unique
     class PARAM(IntEnum):
@@ -219,6 +249,10 @@ class Vendor:
     class RESP(IntEnum):
         PARAM       = 0x01
         COSE_KEY    = 0x02
+
+    class PHY_OPTS(IntEnum):
+        PHY_OPT_WCID = 0x1
+        PHY_OPT_DIMM = 0x10
 
     def __init__(
         self,
@@ -409,6 +443,38 @@ class Vendor:
     def vidpid(self, vid, pid):
         return self.vcfg.vidpid(vid, pid)
 
+    def led_gpio(self, gpio):
+        return self.vcfg.led_gpio(gpio)
+
+    def led_brightness(self, brightness):
+        if (brightness > 15):
+            print('ERROR: Brightness must be between 0 and 15')
+            return
+        return self.vcfg.led_brightness(brightness)
+
+    def led_dimmable(self, onoff):
+        opts = self.phy_opts()
+        if (onoff):
+            opts |= Vendor.PHY_OPTS.PHY_OPT_DIMM
+        else:
+            opts &= ~Vendor.PHY_OPTS.PHY_OPT_DIMM
+        print(f'opts: {opts}')
+        return self.vcfg.phy_opts(opts)
+
+    def wcid(self, onoff):
+        opts = self.phy_opts()
+        if (onoff):
+            opts |= Vendor.PHY_OPTS.PHY_OPT_WCID
+        else:
+            opts &= ~Vendor.PHY_OPTS.PHY_OPT_WCID
+        return self.vcfg.phy_opts(opts)
+
+    def phy_opts(self):
+        return self._call(
+                Vendor.CMD.VENDOR_PHY,
+                Vendor.SUBCMD.ENABLE,
+            )[Vendor.RESP.PARAM]
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -428,6 +494,14 @@ def parse_args():
     subparser_phy = parser_phy.add_subparsers(title='commands', dest='subcommand', required=True)
     parser_phy_vp = subparser_phy.add_parser('vidpid', help='Sets VID/PID. Use VID:PID format (e.g. 1234:5678)')
     parser_phy_vp.add_argument('value', help='Value of the PHY option.', metavar='VAL', nargs='?')
+    parser_phy_ledn = subparser_phy.add_parser('led_gpio', help='Sets LED GPIO number.')
+    parser_phy_ledn.add_argument('value', help='Value of the PHY option.', metavar='VAL', nargs='?')
+    parser_phy_optwcid = subparser_phy.add_parser('wcid', help='Enable/Disable Web CCID interface.')
+    parser_phy_optwcid.add_argument('value', choices=['enable', 'disable'], help='Enable/Disable Web CCID interface.', nargs='?')
+    parser_phy_ledbtness = subparser_phy.add_parser('led_brightness', help='Sets LED max. brightness.')
+    parser_phy_ledbtness.add_argument('value', help='Value of the max. brightness.', metavar='VAL', nargs='?')
+    parser_phy_optdimm = subparser_phy.add_parser('led_dimmable', help='Enable/Disable LED dimming.')
+    parser_phy_optdimm.add_argument('value', choices=['enable', 'disable'], help='Enable/Disable LED dimming.', nargs='?')
 
     args = parser.parse_args()
     return args
@@ -469,7 +543,18 @@ def phy(vdr, args):
             sp = val.split(':')
             if (len(sp) != 2):
                 print('ERROR: VID/PID have wrong format. Use VID:PID format (e.g. 1234:5678)')
-    ret = vdr.vidpid(int(sp[0],16), int(sp[1],16))
+            ret = vdr.vidpid(int(sp[0],16), int(sp[1],16))
+        elif (args.subcommand == 'led_gpio'):
+            val = int(val)
+            ret = vdr.led_gpio(val)
+        elif (args.subcommand == 'led_brightness'):
+            val = int(val)
+            ret = vdr.led_brightness(val)
+        elif (args.subcommand == 'led_dimmable'):
+            ret = vdr.led_dimmable(val == 'enable')
+        elif (args.subcommand == 'wcid'):
+            ret = vdr.wcid(val == 'enable')
+
     if (ret):
         print(f'Current value: {hexlify(ret)}')
     else:

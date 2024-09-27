@@ -125,6 +125,7 @@ typedef struct {
 #define CTAP_VENDOR_MSE                 0x02
 #define CTAP_VENDOR_UNLOCK              0x03
 #define CTAP_VENDOR_EA                  0x04
+#define CTAP_VENDOR_PHY_OPTS            0x05
 
 #define CTAP_PERMISSION_MC              0x01  // MakeCredential
 #define CTAP_PERMISSION_GA              0x02  // GetAssertion
