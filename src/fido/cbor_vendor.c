@@ -249,6 +249,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             goto err;
         }
     }
+#ifndef ENABLE_EMULATION
     else if (cmd == CTAP_VENDOR_PHY_OPTS) {
         if (vendorCmd == 0x01) {
             uint16_t opts = 0;
@@ -264,6 +265,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
         }
     }
+ #endif
     else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
