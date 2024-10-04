@@ -23,7 +23,7 @@ jobs:
         env:
           PICO_SDK_PATH: ../pico-sdk
         run: |
-           ./workflows/autobuild.sh
+           ./workflows/autobuild.sh pico
            ./build_pico_fido.sh
       - name: Update nightly release
         uses: pyTooling/Actions/releaser@main

@@ -68,7 +68,6 @@ jobs:
     - run: |
        echo "Run, Build Application using script"
        ./workflows/autobuild.sh
-       ./workflows/autobuild_esp32.sh
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
