@@ -62,7 +62,7 @@ For ease of use, the pure-browser option [Pico Patcher tool](https://www.picokey
 Before building, ensure you have installed the toolchain for the Pico and that the Pico SDK is properly located on your drive.
 
 ```sh
-git clone https://github.com/polhenarejos/pico-fido
+git clone --recursive https://github.com/polhenarejos/pico-fido
 cd pico-fido
 mkdir build
 cd build
