@@ -77,6 +77,7 @@ endif(ENABLE_OTP_APP)
 
 if(ENABLE_OTP_APP OR ENABLE_OATH_APP)
     set(USB_ITF_CCID 1)
+    set(USB_ITF_WCID 1)
 else()
     set(USB_ITF_CCID 0)
 endif()
