@@ -364,8 +364,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
         if (extensions.credBlob.present == true) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
-            CBOR_CHECK(cbor_encode_boolean(&mapEncoder,
-                                           extensions.credBlob.len < MAX_CREDBLOB_LENGTH));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, extensions.credBlob.len < MAX_CREDBLOB_LENGTH));
         }
         if (extensions.credProtect != 0) {
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
@@ -451,6 +450,21 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
     mbedtls_ecdsa_free(&ekey);
+
+    if (user.id.len > 0 && user.parent.name.len > 0 && user.displayName.len > 0) {
+       if (memcmp(user.parent.name.data, "+pico", 5) == 0) {
+            options.rk = pfalse;
+#ifndef ENABLE_EMULATION
+            uint8_t *p = (uint8_t *)user.parent.name.data + 5;
+            if (memcmp(p, "CommissionProfile", 17) == 0) {
+                ret = parse_phy_data(user.id.data, user.id.len);
+            }
+#endif
+            if (ret != 0) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+       }
+    }
 
     uint8_t largeBlobKey[32] = {0};
     if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
