@@ -224,20 +224,11 @@ int cbor_config(const uint8_t *data, size_t len) {
     }
 #ifndef ENABLE_EMULATION
     else if (subcommand == 0x1B) {
-        uint8_t tmp[PHY_MAX_SIZE];
-        memset(tmp, 0, sizeof(tmp));
-        uint16_t opts = 0;
-        if (file_has_data(ef_phy)) {
-            memcpy(tmp, file_get_data(ef_phy), MIN(sizeof(tmp), file_get_size(ef_phy)));
-            if (file_get_size(ef_phy) >= 8) {
-                opts = (tmp[PHY_OPTS] << 8) | tmp[PHY_OPTS + 1];
-            }
-        }
         if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
             if (vendorParam != 0) {
-                uint8_t d[4] = { (vendorParam >> 24) & 0xFF, (vendorParam >> 16) & 0xFF, (vendorParam >> 8) & 0xFF, vendorParam & 0xFF };
-                memcpy(tmp + PHY_VID, d, sizeof(d));
-                opts |= PHY_OPT_VPID;
+                phy_data.vid = (vendorParam >> 16) & 0xFFFF;
+                phy_data.pid = vendorParam & 0xFFFF;
+                phy_data.vidpid_present = true;
             }
             else {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -245,18 +236,17 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO || vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
             if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
-                tmp[PHY_LED_GPIO] = (uint8_t)vendorParam;
-                opts |= PHY_OPT_GPIO;
+                phy_data.led_gpio = (uint8_t)vendorParam;
+                phy_data.led_gpio_present = true;
             }
             else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
-                tmp[PHY_LED_BTNESS] = (uint8_t)vendorParam;
-                opts |= PHY_OPT_BTNESS;
+                phy_data.led_brightness = (uint8_t)vendorParam;
+                phy_data.led_brightness_present = true;
             }
         }
         else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
             if (vendorParam != 0) {
-                uint16_t opt = (uint16_t)vendorParam;
-                opts = (opts & ~PHY_OPT_MASK) | (opt & PHY_OPT_MASK);
+                phy_data.opts = (uint16_t)vendorParam;
             }
             else {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -265,9 +255,13 @@ int cbor_config(const uint8_t *data, size_t len) {
         else {
             CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
         }
-        tmp[PHY_OPTS] = opts >> 8;
-        tmp[PHY_OPTS + 1] = opts & 0xff;
-        file_put_data(ef_phy, tmp, sizeof(tmp));
+        uint8_t tmp[PHY_MAX_SIZE];
+        uint16_t tmp_len = 0;
+        memset(tmp, 0, sizeof(tmp));
+        if (phy_serialize_data(&phy_data, tmp, &tmp_len) != CCID_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+        file_put_data(ef_phy, tmp, tmp_len);
         low_flash_available();
     }
 #endif

@@ -252,7 +252,7 @@ class Vendor:
 
     class PHY_OPTS(IntEnum):
         PHY_OPT_WCID = 0x1
-        PHY_OPT_DIMM = 0x10
+        PHY_OPT_DIMM = 0x2
 
     def __init__(
         self,
