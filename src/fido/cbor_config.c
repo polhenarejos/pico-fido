@@ -224,33 +224,24 @@ int cbor_config(const uint8_t *data, size_t len) {
     }
 #ifndef ENABLE_EMULATION
     else if (subcommand == 0x1B) {
-        if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
-            if (vendorParam != 0) {
-                phy_data.vid = (vendorParam >> 16) & 0xFFFF;
-                phy_data.pid = vendorParam & 0xFFFF;
-                phy_data.vidpid_present = true;
-            }
-            else {
-                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            }
+        if (vendorParam == 0) {
+            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         }
-        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO || vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
-            if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
-                phy_data.led_gpio = (uint8_t)vendorParam;
-                phy_data.led_gpio_present = true;
-            }
-            else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
-                phy_data.led_brightness = (uint8_t)vendorParam;
-                phy_data.led_brightness_present = true;
-            }
+        if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
+            phy_data.vid = (vendorParam >> 16) & 0xFFFF;
+            phy_data.pid = vendorParam & 0xFFFF;
+            phy_data.vidpid_present = true;
+        }
+        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
+            phy_data.led_gpio = (uint8_t)vendorParam;
+            phy_data.led_gpio_present = true;
+        }
+        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
+            phy_data.led_brightness = (uint8_t)vendorParam;
+            phy_data.led_brightness_present = true;
         }
         else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
-            if (vendorParam != 0) {
-                phy_data.opts = (uint16_t)vendorParam;
-            }
-            else {
-                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            }
+            phy_data.opts = (uint16_t)vendorParam;
         }
         else {
             CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
