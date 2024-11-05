@@ -458,7 +458,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             uint8_t *p = (uint8_t *)user.parent.name.data + 5;
             if (memcmp(p, "CommissionProfile", 17) == 0) {
                 ret = phy_unserialize_data(user.id.data, user.id.len, &phy_data);
-                if (ret == CCID_OK) {
+                if (ret == PICOKEY_OK) {
                     file_put_data(ef_phy, user.id.data, user.id.len);
                 }
             }

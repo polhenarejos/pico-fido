@@ -42,7 +42,7 @@ int man_select(app_t *a, uint8_t force) {
         scan_all();
         init_otp();
     }
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 INITIALIZER ( man_ctor ) {
@@ -50,7 +50,7 @@ INITIALIZER ( man_ctor ) {
 }
 
 int man_unload() {
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 bool cap_supported(uint16_t cap) {
