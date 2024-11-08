@@ -135,12 +135,20 @@ int cmd_write_config() {
     return SW_OK();
 }
 
+extern int cbor_reset();
+int cmd_factory_reset() {
+    cbor_reset();
+    return SW_OK();
+}
+
 #define INS_READ_CONFIG             0x1D
 #define INS_WRITE_CONFIG            0x1C
+#define INS_RESET                   0x1E    // Reset device
 
 static const cmd_t cmds[] = {
     { INS_READ_CONFIG, cmd_read_config },
     { INS_WRITE_CONFIG, cmd_write_config },
+    { INS_RESET, cmd_factory_reset },
     { 0x00, 0x0 }
 };
 
