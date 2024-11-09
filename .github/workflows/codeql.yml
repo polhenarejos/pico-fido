@@ -36,6 +36,7 @@ jobs:
         language: [ 'cpp', 'python' ]
         # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
         # Learn more about CodeQL language support at https://aka.ms/codeql-docs/language-support
+        mode: [ 'pico', 'esp32', 'local' ]
 
     steps:
     - name: Checkout repository
@@ -67,7 +68,7 @@ jobs:
 
     - run: |
        echo "Run, Build Application using script"
-       ./workflows/autobuild.sh
+       ./workflows/autobuild.sh ${{ matrix.mode }}
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3

@@ -26,7 +26,7 @@
 int cmd_authenticate() {
     CTAP_AUTHENTICATE_REQ *req = (CTAP_AUTHENTICATE_REQ *) apdu.data;
     CTAP_AUTHENTICATE_RESP *resp = (CTAP_AUTHENTICATE_RESP *) res_APDU;
-    //if (scan_files(true) != CCID_OK)
+    //if (scan_files(true) != PICOKEY_OK)
     //    return SW_EXEC_ERROR();
     if (apdu.nc < CTAP_CHAL_SIZE + CTAP_APPID_SIZE + 1 + 1) {
         return SW_WRONG_DATA();
@@ -55,7 +55,7 @@ int cmd_authenticate() {
         }
     }
     free(tmp_kh);
-    if (ret != CCID_OK) {
+    if (ret != PICOKEY_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
