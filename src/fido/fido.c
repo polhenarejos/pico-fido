@@ -188,11 +188,9 @@ int load_keydev(uint8_t *key) {
     }
     else {
         memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
-#ifdef PICO_RP2350
-        if (aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != PICOKEY_OK) {
+        if (otp_key_1 && aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != PICOKEY_OK) {
             return PICOKEY_EXEC_ERROR;
         }
-#endif
     }
 
     //return mkek_decrypt(key, file_get_size(ef_keydev));
@@ -303,9 +301,9 @@ int scan_files() {
             if (ret != PICOKEY_OK) {
                 return ret;
             }
-#ifdef PICO_RP2350
-            ret = aes_encrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, kdata, 32);
-#endif
+            if (otp_key_1) {
+                ret = aes_encrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, kdata, 32);
+            }
             ret = file_put_data(ef_keydev, kdata, (uint16_t)key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             mbedtls_ecdsa_free(&ecdsa);
