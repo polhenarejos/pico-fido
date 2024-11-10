@@ -100,9 +100,9 @@ int oath_select(app_t *a, uint8_t force) {
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = ALG_HMAC_SHA1;
         apdu.ne = res_APDU_size;
-        return CCID_OK;
+        return PICOKEY_OK;
     }
-    return CCID_ERR_FILE_NOT_FOUND;
+    return PICOKEY_ERR_FILE_NOT_FOUND;
 }
 
 INITIALIZER ( oath_ctor ) {
@@ -110,7 +110,7 @@ INITIALIZER ( oath_ctor ) {
 }
 
 int oath_unload() {
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
@@ -337,7 +337,7 @@ int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const u
     int r = mbedtls_md_hmac(md_info, key + 2, key_len - 2, chal, chal_len, hmac);
     size_t hmac_size = mbedtls_md_get_size(md_info);
     if (r != 0) {
-        return CCID_EXEC_ERROR;
+        return PICOKEY_EXEC_ERROR;
     }
     if (truncate == 0x01) {
         res_APDU[res_APDU_size++] = 4 + 1;
@@ -354,7 +354,7 @@ int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const u
         memcpy(res_APDU + res_APDU_size, hmac, hmac_size); res_APDU_size += (uint16_t)hmac_size;
     }
     apdu.ne = res_APDU_size;
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 int cmd_calculate() {
@@ -391,7 +391,7 @@ int cmd_calculate() {
     res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
 
     int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
-    if (ret != CCID_OK) {
+    if (ret != PICOKEY_OK) {
         return SW_EXEC_ERROR();
     }
     if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
@@ -466,7 +466,7 @@ int cmd_calculate_all() {
             else {
                 res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
                 int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
-                if (ret != CCID_OK) {
+                if (ret != PICOKEY_OK) {
                     res_APDU[res_APDU_size++] = 1;
                     res_APDU[res_APDU_size++] = key.data[1];
                 }
@@ -581,7 +581,7 @@ int cmd_verify_hotp() {
     }
 
     int ret = calculate_oath(0x01, key.data, key.len, chal.data, chal.len);
-    if (ret != CCID_OK) {
+    if (ret != PICOKEY_OK) {
         return SW_EXEC_ERROR();
     }
     uint32_t res_int = (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];

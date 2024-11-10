@@ -1,5 +1,5 @@
 # Pico FIDO
-This project transforms your Raspberry Pi Pico into an integrated FIDO Passkey, functioning like a standard USB Passkey for authentication.
+This project transforms your Raspberry Pi Pico or ESP32 microcontroller into an integrated FIDO Passkey, functioning like a standard USB Passkey for authentication.
 
 ## Features
 Pico FIDO includes the following features:
@@ -30,51 +30,68 @@ Pico FIDO includes the following features:
 - Large blobs support (2048 bytes max)
 - OATH (based on YKOATH protocol specification)
 - TOTP / HOTP
-- Yubikey OTP
+- Yubikey One Time Password
 - Challenge-response generation
 - Emulated keyboard interface
 - Button press generates an OTP that is directly typed
 - Yubico YKMAN compatible
 - Nitrokey nitropy and nitroapp compatible
+- Secure Boot and Secure Lock in RP2350 and ESP32-S3 MCUs
+- One Time Programming to store the master key that encrypts all resident keys and seeds.
+- Rescue interface to allow recovery of the device if it becomes unresponsive or undetectable.
+- LED customization with Pico Commissioner.
 
 All features comply with the specifications. If you encounter unexpected behavior or deviations from the specifications, please open an issue.
 
 ## Security Considerations
+Microcontrollers RP2350 and ESP32-S3 are designed to support secure environments when Secure Boot is enabled, and optionally, Secure Lock. These features allow a master key encryption key (MKEK) to be stored in a one-time programmable (OTP) memory region, which is inaccessible from outside secure code. This master key is then used to encrypt all private and secret keys on the device, protecting sensitive data from potential flash memory dumps.
 
-Pico FIDO is an open platform, so exercise caution. The flash memory contents can be easily dumped, potentially revealing private/master keys. It is not feasible to encrypt the content, meaning at least one key (the master key) must be stored in clear text.
-
-If the Pico is stolen, the private and secret keys can be accessed.
+**However**, the RP2040 microcontroller lacks this level of security hardware, meaning that it cannot provide the same protection. Data stored on its flash memory, including private or master keys, can be easily accessed or dumped, as encryption of the master key itself is not feasible. Consequently, if an RP2040 device is stolen, any stored private or secret keys may be exposed.
 
 ## Download
-Please visit the [Release page](https://github.com/polhenarejos/pico-fido/releases "Release page") to download the UF2 file for your board.
+**If you own an ESP32-S3 board, go to [ESP32 Flasher](https://www.picokeys.com/esp32-flasher/) for flashing your Pico FIDO.**
 
-Note that UF2 files are shipped with a dummy VID/PID to avoid license issues (FEFF:FCFD). If you plan to use it with OpenSC or similar software, you will need to modify the Info.plist of the CCID driver to add these VID/PID values or use the [Pico Patcher tool](https://www.picokeys.com/pico-patcher/).
+If you own a Raspberry Pico (RP2040 or RP2350), go to [Download page](https://www.picokeys.com/getting-started/), select your vendor and model and download the proper firmware; or go to [Release page](https://www.github.com/polhenarejos/pico-fido/releases/) and download the UF2 file for your board.
 
-Alternatively, you can use the legacy VID/PID patcher with the following command:
-```sh
-./patch_vidpid.sh VID:PID input_hsm_file.uf2 output_hsm_file.uf2
-```
-You can use any VID/PID (e.g., 234b:0000 from FISJ), but remember that you are not authorized to distribute the binary with a VID/PID that you do not own.
+Note that UF2 files are shiped with a dummy VID/PID to avoid license issues (FEFF:FCFD). If you plan to use it with other proprietary tools, you should modify Info.plist of CCID driver to add these VID/PID or use the [Pico Commissioner](https://www.picokeys.com/pico-commissioner/ "Pico Commissioner").
 
-For ease of use, the pure-browser option [Pico Patcher tool](https://www.picokeys.com/pico-patcher/) is highly recommended.
+You can use whatever VID/PID (i.e., 234b:0000 from FISJ), but remember that you are not authorized to distribute the binary with a VID/PID that you do not own.
 
-## Build
+Note that the pure-browser option [Pico Commissioner](https://www.picokeys.com/pico-commissioner/ "Pico Commissioner") is the most recommended.
+
+## Build for Raspberry Pico
 Before building, ensure you have installed the toolchain for the Pico and that the Pico SDK is properly located on your drive.
 
 ```sh
 git clone https://github.com/polhenarejos/pico-fido
+git submodule update --init --recursive
 cd pico-fido
 mkdir build
 cd build
 PICO_SDK_PATH=/path/to/pico-sdk cmake .. -DPICO_BOARD=board_type -DUSB_VID=0x1234 -DUSB_PID=0x5678
 make
 ```
+Note that `PICO_BOARD`, `USB_VID` and `USB_PID` are optional. If not provided, `pico` board and VID/PID `FEFF:FCFD` will be used.
 
-Note that `PICO_BOARD`, `USB_VID`, and `USB_PID` are optional. If not provided, the default Pico board and VID/PID `FEFF:FCFD` will be used.
+Additionally, you can pass the `VIDPID=value` parameter to build the firmware with a known VID/PID. The supported values are:
 
-After `make` finishes, the binary file `pico_fido.uf2` will be generated. Put your Pico board into loading mode by holding the BOOTSEL button while plugging it in, then copy the UF2 file to the new USB mass storage Pico device. Once copied, the Pico mass storage will disconnect automatically, and the Pico board will reset with the new firmware. A blinking LED will indicate that the device is ready to work.
+- `NitroHSM`
+- `NitroFIDO2`
+- `NitroStart`
+- `NitroPro`
+- `Nitro3`
+- `Yubikey5`
+- `YubikeyNeo`
+- `YubiHSM`
+- `Gnuk`
+- `GnuPG`
 
-**Remark:** Pico FIDO uses the HID interface, so VID/PID values are irrelevant in terms of operativity. You can safely use any arbitrary values or the default ones. They are only necessary in case you need to use 3rd-party tools from other vendors.
+After running `make`, the binary file `pico_fido.uf2` will be generated. To load this onto your Pico board:
+
+1. Put the Pico board into loading mode by holding the `BOOTSEL` button while plugging it in.
+2. Copy the `pico_fido.uf2` file to the new USB mass storage device that appears.
+3. Once the file is copied, the Pico mass storage device will automatically disconnect, and the Pico board will reset with the new firmware.
+4. A blinking LED will indicate that the device is ready to work.
 
 ## Led blink
 Pico FIDO uses the led to indicate the current status. Four states are available:

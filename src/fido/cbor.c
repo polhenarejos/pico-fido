@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
 #include "pico/stdlib.h"
 #endif
@@ -119,8 +120,13 @@ void cbor_thread(void) {
             DEBUG_DATA(res_APDU + 1, res_APDU_size);
         }
         else {
-            res_APDU[0] = apdu.sw;
-            //apdu.sw = 0;
+            if (apdu.sw >= CTAP1_ERR_INVALID_CHANNEL) {
+                res_APDU[-1] = apdu.sw;
+                apdu.sw = 0;
+            }
+            else {
+                res_APDU[0] = apdu.sw;
+            }
         }
 
         finished_data_size = res_APDU_size + 1;

@@ -34,9 +34,13 @@
 #include "management.h"
 #include "hid/ctap_hid.h"
 #include "version.h"
+#include "crypto_utils.h"
+#include "otp.h"
 
 int fido_process_apdu();
 int fido_unload();
+
+uint8_t PICO_PRODUCT = 2; // Pico FIDO
 
 pinUvAuthToken_t paut = { 0 };
 
@@ -66,9 +70,9 @@ int fido_select(app_t *a, uint8_t force) {
     if (cap_supported(CAP_FIDO2)) {
         a->process_apdu = fido_process_apdu;
         a->unload = fido_unload;
-        return CCID_OK;
+        return PICOKEY_OK;
     }
-    return CCID_ERR_FILE_NOT_FOUND;
+    return PICOKEY_ERR_FILE_NOT_FOUND;
 }
 
 extern uint8_t (*get_version_major)();
@@ -84,7 +88,7 @@ INITIALIZER ( fido_ctor ) {
 }
 
 int fido_unload() {
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
@@ -188,16 +192,21 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
 
 int load_keydev(uint8_t *key) {
     if (has_keydev_dec == false && !file_has_data(ef_keydev)) {
-        return CCID_ERR_MEMORY_FATAL;
+        return PICOKEY_ERR_MEMORY_FATAL;
     }
+
     if (has_keydev_dec == true) {
         memcpy(key, keydev_dec, sizeof(keydev_dec));
     }
     else {
         memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+        if (otp_key_1 && aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != PICOKEY_OK) {
+            return PICOKEY_EXEC_ERROR;
+        }
     }
+
     //return mkek_decrypt(key, file_get_size(ef_keydev));
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *key) {
@@ -237,7 +246,8 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
     int r = 0;
     memset(outk, 0, sizeof(outk));
-    if ((r = load_keydev(outk)) != CCID_OK) {
+    if ((r = load_keydev(outk)) != PICOKEY_OK) {
+        printf("Error loading keydev: %d\n", r);
         return r;
     }
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
@@ -303,13 +313,16 @@ int scan_files() {
             uint8_t kdata[64];
             size_t key_size = 0;
             ret = mbedtls_ecp_write_key_ext(&ecdsa, &key_size, kdata, sizeof(kdata));
-            if (ret != CCID_OK) {
+            if (ret != PICOKEY_OK) {
                 return ret;
+            }
+            if (otp_key_1) {
+                ret = aes_encrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, kdata, 32);
             }
             ret = file_put_data(ef_keydev, kdata, (uint16_t)key_size);
             mbedtls_platform_zeroize(kdata, sizeof(kdata));
             mbedtls_ecdsa_free(&ecdsa);
-            if (ret != CCID_OK) {
+            if (ret != PICOKEY_OK) {
                 return ret;
             }
             printf(" done!\n");
@@ -374,7 +387,7 @@ int scan_files() {
         file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
     }
     low_flash_available();
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 void scan_all() {

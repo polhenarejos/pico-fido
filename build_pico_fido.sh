@@ -1,9 +1,15 @@
 #!/bin/bash
 
-VERSION_MAJOR="5"
-VERSION_MINOR="12-eddsa1"
+VERSION_MAJOR="6"
+VERSION_MINOR="0-eddsa1"
+SUFFIX="${VERSION_MAJOR}.${VERSION_MINOR}"
+#if ! [[ -z "${GITHUB_SHA}" ]]; then
+#    SUFFIX="${SUFFIX}.${GITHUB_SHA}"
+#fi
 
 rm -rf release/*
+mkdir -p build_release
+mkdir -p release
 cd build_release
 
 for board in 0xcb_helios \
@@ -96,8 +102,7 @@ for board in 0xcb_helios \
     wiznet_w5100s_evb_pico
 do
     rm -rf *
-    PICO_SDK_PATH=../../pico-sdk cmake .. -DPICO_BOARD=$board
-    make -kj20
-    mv pico_fido.uf2 ../release/pico_fido_$board-$VERSION_MAJOR.$VERSION_MINOR.uf2
-
+    PICO_SDK_PATH="${PICO_SDK_PATH:-../../pico-sdk}" cmake .. -DPICO_BOARD=$board
+    make -j`nproc`
+    mv pico_fido.uf2 ../release/pico_fido_$board-$SUFFIX.uf2
 done

@@ -37,9 +37,9 @@ int u2f_select(app_t *a, uint8_t force) {
     if (cap_supported(CAP_U2F)) {
         a->process_apdu = u2f_process_apdu;
         a->unload = u2f_unload;
-        return CCID_OK;
+        return PICOKEY_OK;
     }
-    return CCID_ERR_FILE_NOT_FOUND;
+    return PICOKEY_ERR_FILE_NOT_FOUND;
 }
 
 INITIALIZER ( u2f_ctor ) {
@@ -47,7 +47,7 @@ INITIALIZER ( u2f_ctor ) {
 }
 
 int u2f_unload() {
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 const uint8_t *bogus_firefox = (const uint8_t *) "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
@@ -59,7 +59,7 @@ int cmd_register() {
     CTAP_REGISTER_RESP *resp = (CTAP_REGISTER_RESP *) res_APDU;
     resp->registerId = CTAP_REGISTER_ID;
     resp->keyHandleLen = KEY_HANDLE_LEN;
-    //if (scan_files(true) != CCID_OK)
+    //if (scan_files(true) != PICOKEY_OK)
     //    return SW_EXEC_ERROR();
     if (apdu.nc != CTAP_APPID_SIZE + CTAP_CHAL_SIZE) {
         return SW_WRONG_LENGTH();
@@ -77,7 +77,7 @@ int cmd_register() {
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
     int ret = derive_key(req->appId, true, resp->keyHandleCertSig, MBEDTLS_ECP_DP_SECP256R1, &key);
-    if (ret != CCID_OK) {
+    if (ret != PICOKEY_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
@@ -100,8 +100,14 @@ int cmd_register() {
         return SW_EXEC_ERROR();
     }
     mbedtls_ecdsa_init(&key);
-    ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), 32);
-    if (ret != CCID_OK) {
+    uint8_t key_dev[32] = {0};
+    ret = load_keydev(key_dev);
+    if (ret != PICOKEY_OK) {
+        return SW_EXEC_ERROR();
+    }
+    ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, key_dev, 32);
+    mbedtls_platform_zeroize(key_dev, sizeof(key_dev));
+    if (ret != PICOKEY_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }

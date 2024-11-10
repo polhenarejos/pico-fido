@@ -37,14 +37,7 @@ int mse_decrypt_ct(uint8_t *data, size_t len) {
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, mse.key_enc + 12);
-    int ret = mbedtls_chachapoly_auth_decrypt(&chatx,
-                                              len - 16,
-                                              mse.key_enc,
-                                              mse.Qpt,
-                                              65,
-                                              data + len - 16,
-                                              data,
-                                              data);
+    int ret = mbedtls_chachapoly_auth_decrypt(&chatx, len - 16, mse.key_enc, mse.Qpt, 65, data + len - 16, data, data);
     mbedtls_chachapoly_free(&chatx);
     return ret;
 }
@@ -112,8 +105,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
 
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_keydev_enc),
-                                               file_get_size(ef_keydev_enc)));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_keydev_enc), file_get_size(ef_keydev_enc)));
         }
         else if (vendorCmd == 0x02) {
             if (vendorParam.present == false) {
@@ -140,11 +132,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             mbedtls_ecdh_context hkey;
             mbedtls_ecdh_init(&hkey);
             mbedtls_ecdh_setup(&hkey, MBEDTLS_ECP_DP_SECP256R1);
-            int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp,
-                                              &hkey.ctx.mbed_ecdh.d,
-                                              &hkey.ctx.mbed_ecdh.Q,
-                                              random_gen,
-                                              NULL);
+            int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_gen, NULL);
             mbedtls_mpi_lset(&hkey.ctx.mbed_ecdh.Qp.Z, 1);
             if (ret != 0) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -160,37 +148,19 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
 
             uint8_t buf[MBEDTLS_ECP_MAX_BYTES];
             size_t olen = 0;
-            ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp,
-                                                 &hkey.ctx.mbed_ecdh.Qp,
-                                                 MBEDTLS_ECP_PF_UNCOMPRESSED,
-                                                 &olen,
-                                                 mse.Qpt,
-                                                 sizeof(mse.Qpt));
+            ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.Qp, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, mse.Qpt,sizeof(mse.Qpt));
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
 
-            ret = mbedtls_ecdh_calc_secret(&hkey,
-                                           &olen,
-                                           buf,
-                                           MBEDTLS_ECP_MAX_BYTES,
-                                           random_gen,
-                                           NULL);
+            ret = mbedtls_ecdh_calc_secret(&hkey, &olen, buf, MBEDTLS_ECP_MAX_BYTES, random_gen, NULL);
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
                 mbedtls_platform_zeroize(buf, sizeof(buf));
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
-            ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                               NULL,
-                               0,
-                               buf,
-                               olen,
-                               mse.Qpt,
-                               sizeof(mse.Qpt),
-                               mse.key_enc,
-                               sizeof(mse.key_enc));
+            ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0, buf, olen, mse.Qpt, sizeof(mse.Qpt), mse.key_enc, sizeof(mse.key_enc));
             mbedtls_platform_zeroize(buf, sizeof(buf));
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
@@ -248,9 +218,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             mbedtls_x509write_csr ctx;
             mbedtls_x509write_csr_init(&ctx);
-            snprintf((char *) buffer,
-                     sizeof(buffer),
-                     "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %s", pico_serial_str);
+            snprintf((char *) buffer, sizeof(buffer), "C=ES,O=Pico Keys,OU=Authenticator Attestation,CN=Pico Fido EE Serial %s", pico_serial_str);
             mbedtls_x509write_csr_set_subject_name(&ctx, (char *) buffer);
             mbedtls_pk_context key;
             mbedtls_pk_init(&key);
@@ -258,12 +226,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             key.pk_ctx = &ekey;
             mbedtls_x509write_csr_set_key(&ctx, &key);
             mbedtls_x509write_csr_set_md_alg(&ctx, MBEDTLS_MD_SHA256);
-            mbedtls_x509write_csr_set_extension(&ctx,
-                                                "\x2B\x06\x01\x04\x01\x82\xE5\x1C\x01\x01\x04",
-                                                0xB,
-                                                0,
-                                                aaguid,
-                                                sizeof(aaguid));
+            mbedtls_x509write_csr_set_extension(&ctx, "\x2B\x06\x01\x04\x01\x82\xE5\x1C\x01\x01\x04", 0xB, 0, aaguid, sizeof(aaguid));
             ret = mbedtls_x509write_csr_der(&ctx, buffer, sizeof(buffer), random_gen, NULL);
             mbedtls_ecdsa_free(&ekey);
             if (ret <= 0) {
@@ -286,6 +249,23 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             goto err;
         }
     }
+#ifndef ENABLE_EMULATION
+    else if (cmd == CTAP_VENDOR_PHY_OPTS) {
+        if (vendorCmd == 0x01) {
+            uint16_t opts = 0;
+            if (file_has_data(ef_phy)) {
+                uint8_t *data = file_get_data(ef_phy);
+                opts = (data[PHY_OPTS] << 8) | data[PHY_OPTS+1];
+            }
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, opts));
+        }
+        else {
+            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        }
+    }
+ #endif
     else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }

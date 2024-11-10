@@ -144,9 +144,9 @@ int otp_select(app_t *a, uint8_t force) {
         memmove(res_APDU, res_APDU + 1, 6);
         res_APDU_size = 6;
         apdu.ne = res_APDU_size;
-        return CCID_OK;
+        return PICOKEY_OK;
     }
-    return CCID_ERR_FILE_NOT_FOUND;
+    return PICOKEY_ERR_FILE_NOT_FOUND;
 }
 
 uint8_t modhex_tab[] =
@@ -243,7 +243,7 @@ int otp_button_pressed(uint8_t slot) {
         { imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff };
         res_APDU_size = 0;
         int ret = calculate_oath(1, tmp_key, sizeof(tmp_key), chal, sizeof(chal));
-        if (ret == CCID_OK) {
+        if (ret == PICOKEY_OK) {
             uint32_t base = otp_config->cfg_flags & OATH_HOTP8 ? 1e8 : 1e6;
             uint32_t number =
                 (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];
@@ -348,7 +348,7 @@ INITIALIZER( otp_ctor ) {
 }
 
 int otp_unload() {
-    return CCID_OK;
+    return PICOKEY_OK;
 }
 
 uint16_t otp_status() {
