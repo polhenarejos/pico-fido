@@ -24,13 +24,14 @@
 #ifdef ESP_PLATFORM
 #include "esp_compat.h"
 #endif
+#include "fs/phy.h"
 
 extern void scan_all();
 
 int cbor_reset() {
 #ifndef ENABLE_EMULATION
 #if defined(ENABLE_POWER_ON_RESET) && ENABLE_POWER_ON_RESET == 1
-    if (board_millis() > 10000) {
+    if (!(phy_data.opts & PHY_OPT_DISABLE_POWER_RESET) && board_millis() > 10000) {
         return CTAP2_ERR_NOT_ALLOWED;
     }
 #endif
