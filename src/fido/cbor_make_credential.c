@@ -286,7 +286,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (strcmp(excludeList[e].type.data, (char *)"public-key") != 0) {
             continue;
         }
-        Credential ecred;
+        Credential ecred = {0};
         if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash,
                             &ecred) == 0 &&
             (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED ||
