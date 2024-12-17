@@ -94,9 +94,6 @@ int man_get_config() {
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
     res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = TAG_NFC_SUPPORTED;
-    res_APDU[res_APDU_size++] = 1;
-    res_APDU[res_APDU_size++] = 0x00;
     if (!file_has_data(ef)) {
         res_APDU[res_APDU_size++] = TAG_USB_ENABLED;
         res_APDU[res_APDU_size++] = 2;
@@ -106,9 +103,6 @@ int man_get_config() {
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = FLAG_EJECT;
         res_APDU[res_APDU_size++] = TAG_CONFIG_LOCK;
-        res_APDU[res_APDU_size++] = 1;
-        res_APDU[res_APDU_size++] = 0x00;
-        res_APDU[res_APDU_size++] = TAG_NFC_ENABLED;
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = 0x00;
     }
