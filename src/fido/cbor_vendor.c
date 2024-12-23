@@ -266,6 +266,24 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         }
     }
  #endif
+    else if (cmd == CTAP_VENDOR_MEMORY) {
+        if (vendorCmd == 0x01) {
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 5));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, flash_free_space()));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, flash_used_space()));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, flash_total_space()));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, flash_num_files()));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, flash_size()));
+        }
+        else {
+            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        }
+    }
     else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
