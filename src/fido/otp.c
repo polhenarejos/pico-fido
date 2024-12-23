@@ -239,8 +239,8 @@ int otp_button_pressed(uint8_t slot) {
         if (imf == 0) {
             imf = ((otp_config->uid[4] << 8) | otp_config->uid[5]) << 4;
         }
-        uint8_t chal[8] =
-        { imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff };
+        uint8_t chal[8];
+        put_uint64_t_be(imf, chal);
         res_APDU_size = 0;
         int ret = calculate_oath(1, tmp_key, sizeof(tmp_key), chal, sizeof(chal));
         if (ret == PICOKEY_OK) {
@@ -258,9 +258,8 @@ int otp_button_pressed(uint8_t slot) {
                 add_keyboard_buffer((const uint8_t *) number_str, 6, true);
             }
             imf++;
-            uint8_t new_chal[8] =
-            { imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8,
-              imf & 0xff };
+            uint8_t new_chal[8];
+            put_uint64_t_be(imf, new_chal);
             uint8_t new_otp_config[otp_config_size + sizeof(new_chal)];
             memcpy(new_otp_config, otp_config, otp_config_size);
             memcpy(new_otp_config + otp_config_size, new_chal, sizeof(new_chal));

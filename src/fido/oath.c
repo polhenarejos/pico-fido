@@ -411,14 +411,7 @@ int cmd_calculate() {
         asn1_ctx_t ctxt;
         asn1_ctx_init(tmp, (uint16_t)ef_size, &ctxt);
         asn1_find_tag(&ctxt, TAG_IMF, &chal);
-        chal.data[0] = (v >> 56) & 0xFF;
-        chal.data[1] = (v >> 48) & 0xFF;
-        chal.data[2] = (v >> 40) & 0xFF;
-        chal.data[3] = (v >> 32) & 0xFF;
-        chal.data[4] = (v >> 24) & 0xFF;
-        chal.data[5] = (v >> 16) & 0xFF;
-        chal.data[6] = (v >> 8) & 0xFF;
-        chal.data[7] = v & 0xff;
+        put_uint64_t_be(v, chal.data);
         file_put_data(ef, tmp, (uint16_t)ef_size);
         low_flash_available();
         free(tmp);
