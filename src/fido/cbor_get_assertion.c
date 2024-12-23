@@ -519,7 +519,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     uint8_t *pa = aut_data;
     memcpy(pa, rp_id_hash, 32); pa += 32;
     *pa++ = flags;
-    put_uint32_t_be(ctr, pa); pa += 4;
+    pa += put_uint32_t_be(ctr, pa);
     memcpy(pa, ext, ext_len); pa += ext_len;
     if ((size_t)(pa - aut_data) != aut_data_len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);

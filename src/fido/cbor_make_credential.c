@@ -409,10 +409,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t *pa = aut_data;
     memcpy(pa, rp_id_hash, 32); pa += 32;
     *pa++ = flags;
-    put_uint32_t_be(ctr, pa); pa += 4;
+    pa += put_uint32_t_be(ctr, pa);
     memcpy(pa, aaguid, 16); pa += 16;
-    *pa++ = ((uint16_t)cred_id_len >> 8) & 0xFF;
-    *pa++ = (uint16_t)cred_id_len & 0xFF;
+    pa += put_uint16_t_be(cred_id_len, pa);
     memcpy(pa, cred_id, cred_id_len); pa += (uint16_t)cred_id_len;
     memcpy(pa, cbor_buf, rs); pa += (uint16_t)rs;
     memcpy(pa, ext, ext_len); pa += (uint16_t)ext_len;

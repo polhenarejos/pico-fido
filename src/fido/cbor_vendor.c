@@ -255,7 +255,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             uint16_t opts = 0;
             if (file_has_data(ef_phy)) {
                 uint8_t *data = file_get_data(ef_phy);
-                opts = (data[PHY_OPTS] << 8) | data[PHY_OPTS+1];
+                opts = get_uint16_t_be(data + PHY_OPTS);
             }
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));

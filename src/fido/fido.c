@@ -411,7 +411,7 @@ bool check_user_presence() {
 
 uint32_t get_sign_counter() {
     uint8_t *caddr = file_get_data(ef_counter);
-    return (*caddr) | (*(caddr + 1) << 8) | (*(caddr + 2) << 16) | (*(caddr + 3) << 24);
+    return get_uint32_t_le(caddr);
 }
 
 uint8_t get_opts() {

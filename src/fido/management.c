@@ -65,7 +65,7 @@ bool cap_supported(uint16_t cap) {
             if (tag == TAG_USB_ENABLED) {
                 uint16_t ecaps = tag_data[0];
                 if (tag_len == 2) {
-                    ecaps = (tag_data[0] << 8) | tag_data[1];
+                    ecaps = get_uint16_t_be(tag_data);
                 }
                 return ecaps & cap;
             }

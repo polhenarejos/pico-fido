@@ -395,15 +395,7 @@ int cmd_calculate() {
         return SW_EXEC_ERROR();
     }
     if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
-        uint64_t v =
-            ((uint64_t) chal.data[0] << 56) |
-            ((uint64_t) chal.data[1] << 48) |
-            ((uint64_t) chal.data[2] << 40) |
-            ((uint64_t) chal.data[3] << 32) |
-            ((uint64_t) chal.data[4] << 24) |
-            ((uint64_t) chal.data[5] << 16) |
-            ((uint64_t) chal.data[6] << 8) |
-            (uint64_t) chal.data[7];
+        uint64_t v = get_uint64_t_be(chal.data);
         size_t ef_size = file_get_size(ef);
         v++;
         uint8_t *tmp = (uint8_t *) calloc(1, ef_size);
@@ -570,14 +562,14 @@ int cmd_verify_hotp() {
         return SW_INCORRECT_PARAMS();
     }
     if (asn1_find_tag(&ctxi, TAG_RESPONSE, &code) == true) {
-        code_int = (code.data[0] << 24) | (code.data[1] << 16) | (code.data[2] << 8) | code.data[3];
+        code_int = get_uint32_t_be(code.data);
     }
 
     int ret = calculate_oath(0x01, key.data, key.len, chal.data, chal.len);
     if (ret != PICOKEY_OK) {
         return SW_EXEC_ERROR();
     }
-    uint32_t res_int = (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];
+    uint32_t res_int = get_uint32_t_be(res_APDU + 2);
     if (res_APDU[1] == 6) {
         res_int %= (uint32_t) 1e6;
     }
