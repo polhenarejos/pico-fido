@@ -25,6 +25,7 @@ jobs:
         run: |
            ./workflows/autobuild.sh pico
            ./build_pico_fido.sh
+           ./workflows/autobuild.sh esp32
       - name: Update nightly release
         uses: pyTooling/Actions/releaser@main
         with:
