@@ -16,6 +16,7 @@
  */
 
 #include "fido.h"
+#include "kek.h"
 #include "pico_keys.h"
 #include "apdu.h"
 #include "ctap.h"
@@ -46,6 +47,7 @@ pinUvAuthToken_t paut = { 0 };
 
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
+uint8_t session_pin[32] = { 0 };
 
 const uint8_t fido_aid[] = {
     8,
@@ -188,12 +190,15 @@ int load_keydev(uint8_t *key) {
     }
     else {
         memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+
+        if (mkek_decrypt(key, 32) != PICOKEY_OK) {
+            return PICOKEY_EXEC_ERROR;
+        }
         if (otp_key_1 && aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != PICOKEY_OK) {
             return PICOKEY_EXEC_ERROR;
         }
     }
 
-    //return mkek_decrypt(key, file_get_size(ef_keydev));
     return PICOKEY_OK;
 }
 
@@ -284,6 +289,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
 int scan_files() {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
+    ef_mkek = search_by_fid(EF_MKEK, NULL, SPECIFY_EF);
     if (ef_keydev) {
         if (!file_has_data(ef_keydev) && !file_has_data(ef_keydev_enc)) {
             printf("KEY DEVICE is empty. Generating SECP256R1 curve...");
@@ -354,6 +360,13 @@ int scan_files() {
         printf("FATAL ERROR: Global counter not found in memory!\r\n");
     }
     ef_pin = search_by_fid(EF_PIN, NULL, SPECIFY_EF);
+    if (file_get_size(ef_pin) == 18) { // Upgrade PIN storage
+        uint8_t pin_data[34] = { 0 }, dhash[32];
+        memcpy(pin_data, file_get_data(ef_pin), 18);
+        double_hash_pin(pin_data + 2, 16, dhash);
+        memcpy(pin_data + 2, dhash, 32);
+        file_put_data(ef_pin, pin_data, 34);
+    }
     ef_authtoken = search_by_fid(EF_AUTHTOKEN, NULL, SPECIFY_EF);
     if (ef_authtoken) {
         if (!file_has_data(ef_authtoken)) {
@@ -370,6 +383,22 @@ int scan_files() {
     ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     if (!file_has_data(ef_largeblob)) {
         file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
+    }
+
+    if (ef_mkek) { // No encrypted MKEK
+        if (!file_has_data(ef_mkek)) {
+            uint8_t mkek[MKEK_IV_SIZE + MKEK_KEY_SIZE];
+            random_gen(NULL, mkek, sizeof(mkek));
+            file_put_data(ef_mkek, mkek, sizeof(mkek));
+            int ret = aes_encrypt_cfb_256(MKEK_KEY(mkek), MKEK_IV(mkek), file_get_data(ef_keydev), 32);
+            mbedtls_platform_zeroize(mkek, sizeof(mkek));
+            if (ret != 0) {
+                printf("FATAL ERROR: MKEK encryption failed!\r\n");
+            }
+        }
+    }
+    else {
+        printf("FATAL ERROR: MKEK not found in memory!\r\n");
     }
     low_flash_available();
     return PICOKEY_OK;

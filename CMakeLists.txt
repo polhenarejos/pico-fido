@@ -18,6 +18,8 @@
 cmake_minimum_required(VERSION 3.13)
 
 if(ESP_PLATFORM)
+set(DEBUG_APDU 1)
+set(DENABLE_POWER_ON_RESET 0)
 set(EXTRA_COMPONENT_DIRS src pico-keys-sdk/src)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 else()
@@ -77,6 +79,7 @@ endif()
 set(SOURCES ${SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/kek.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_register.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_authenticate.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_version.c
