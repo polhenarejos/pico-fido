@@ -322,13 +322,33 @@ int scan_files() {
     else {
         printf("FATAL ERROR: KEY DEV not found in memory!\r\n");
     }
+    if (ef_mkek) { // No encrypted MKEK
+        if (!file_has_data(ef_mkek)) {
+            uint8_t mkek[MKEK_IV_SIZE + MKEK_KEY_SIZE];
+            random_gen(NULL, mkek, sizeof(mkek));
+            file_put_data(ef_mkek, mkek, sizeof(mkek));
+            int ret = aes_encrypt_cfb_256(MKEK_KEY(mkek), MKEK_IV(mkek), file_get_data(ef_keydev), 32);
+            mbedtls_platform_zeroize(mkek, sizeof(mkek));
+            if (ret != 0) {
+                printf("FATAL ERROR: MKEK encryption failed!\r\n");
+            }
+        }
+    }
+    else {
+        printf("FATAL ERROR: MKEK not found in memory!\r\n");
+    }
     ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
     if (ef_certdev) {
         if (!file_has_data(ef_certdev)) {
-            uint8_t cert[2048];
+            uint8_t cert[2048], outk[32];
+            memset(outk, 0, sizeof(outk));
+            int ret = 0;
+            if ((ret = load_keydev(outk)) != 0) {
+                return ret;
+            }
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
-            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+            ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, outk, sizeof(outk));
             if (ret != 0) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
@@ -385,21 +405,6 @@ int scan_files() {
         file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
     }
 
-    if (ef_mkek) { // No encrypted MKEK
-        if (!file_has_data(ef_mkek)) {
-            uint8_t mkek[MKEK_IV_SIZE + MKEK_KEY_SIZE];
-            random_gen(NULL, mkek, sizeof(mkek));
-            file_put_data(ef_mkek, mkek, sizeof(mkek));
-            int ret = aes_encrypt_cfb_256(MKEK_KEY(mkek), MKEK_IV(mkek), file_get_data(ef_keydev), 32);
-            mbedtls_platform_zeroize(mkek, sizeof(mkek));
-            if (ret != 0) {
-                printf("FATAL ERROR: MKEK encryption failed!\r\n");
-            }
-        }
-    }
-    else {
-        printf("FATAL ERROR: MKEK not found in memory!\r\n");
-    }
     low_flash_available();
     return PICOKEY_OK;
 }

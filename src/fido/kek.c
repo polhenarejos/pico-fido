@@ -56,13 +56,9 @@ void mkek_masked(uint8_t *mkek, const uint8_t *mask) {
         }
     }
 }
-#include <stdio.h>
+
 int load_mkek(uint8_t *mkek) {
-    if (paut.in_use == false) {
-        return PICOKEY_NO_LOGIN;
-    }
     file_t *tf = search_file(EF_MKEK);
-    printf("file_size = %d\n", file_get_size(tf));
     if (file_has_data(tf)) {
         memcpy(mkek, file_get_data(tf), MKEK_SIZE);
     }
@@ -78,9 +74,9 @@ int load_mkek(uint8_t *mkek) {
         if (crc32c(MKEK_KEY(mkek), MKEK_KEY_SIZE) != *(uint32_t *) MKEK_CHECKSUM(mkek)) {
             return PICOKEY_WRONG_DKEK;
         }
-    }
-    if (otp_key_1) {
-        mkek_masked(mkek, otp_key_1);
+        if (otp_key_1) {
+            mkek_masked(mkek, otp_key_1);
+        }
     }
     return PICOKEY_OK;
 }
@@ -97,6 +93,9 @@ int store_mkek(const uint8_t *mkek) {
     }
     else {
         memcpy(tmp_mkek, mkek, MKEK_SIZE);
+    }
+    if (otp_key_1) {
+        mkek_masked(tmp_mkek, otp_key_1);
     }
     *(uint32_t *) MKEK_CHECKSUM(tmp_mkek) = crc32c(MKEK_KEY(tmp_mkek), MKEK_KEY_SIZE);
     uint8_t tmp_mkek_pin[MKEK_SIZE];
