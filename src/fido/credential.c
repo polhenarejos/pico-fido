@@ -147,6 +147,10 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
     int ret = 0;
     CborError error = CborNoError;
     uint8_t *copy_cred_id = (uint8_t *) calloc(1, cred_id_len);
+    if (!cred) {
+        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+    }
+    memset(cred, 0, sizeof(Credential));
     memcpy(copy_cred_id, cred_id, cred_id_len);
     ret = credential_verify(copy_cred_id, cred_id_len, rp_id_hash);
     if (ret != 0) { // U2F?
@@ -236,17 +240,19 @@ err:
 }
 
 void credential_free(Credential *cred) {
-    CBOR_FREE_BYTE_STRING(cred->rpId);
-    CBOR_FREE_BYTE_STRING(cred->userId);
-    CBOR_FREE_BYTE_STRING(cred->userName);
-    CBOR_FREE_BYTE_STRING(cred->userDisplayName);
-    CBOR_FREE_BYTE_STRING(cred->id);
-    if (cred->extensions.present) {
-        CBOR_FREE_BYTE_STRING(cred->extensions.credBlob);
+    if (cred) {
+        CBOR_FREE_BYTE_STRING(cred->rpId);
+        CBOR_FREE_BYTE_STRING(cred->userId);
+        CBOR_FREE_BYTE_STRING(cred->userName);
+        CBOR_FREE_BYTE_STRING(cred->userDisplayName);
+        CBOR_FREE_BYTE_STRING(cred->id);
+        if (cred->extensions.present) {
+            CBOR_FREE_BYTE_STRING(cred->extensions.credBlob);
+        }
+        cred->present = false;
+        cred->extensions.present = false;
+        cred->opts.present = false;
     }
-    cred->present = false;
-    cred->extensions.present = false;
-    cred->opts.present = false;
 }
 
 int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash) {

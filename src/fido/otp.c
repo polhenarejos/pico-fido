@@ -169,12 +169,11 @@ void init_otp() {
             otp_config_t *otp_config = (otp_config_t *) data;
             if (file_has_data(ef) && !(otp_config->tkt_flags & OATH_HOTP) &&
                 !(otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET)) {
-                uint16_t counter = (data[otp_config_size] << 8) | data[otp_config_size + 1];
+                uint16_t counter = get_uint16_t_be(data + otp_config_size);
                 if (++counter <= 0x7fff) {
                     uint8_t new_data[otp_config_size + 8];
                     memcpy(new_data, data, sizeof(new_data));
-                    new_data[otp_config_size] = counter >> 8;
-                    new_data[otp_config_size + 1] = counter & 0xff;
+                    put_uint16_t_be(counter, new_data + otp_config_size);
                     file_put_data(ef, new_data, sizeof(new_data));
                 }
             }
@@ -228,25 +227,18 @@ int otp_button_pressed(uint8_t slot) {
         memcpy(tmp_key + 2, otp_config->aes_key, KEY_SIZE);
         uint64_t imf = 0;
         const uint8_t *p = data + otp_config_size;
-        imf |= (uint64_t) *p++ << 56;
-        imf |= (uint64_t) *p++ << 48;
-        imf |= (uint64_t) *p++ << 40;
-        imf |= (uint64_t) *p++ << 32;
-        imf |= *p++ << 24;
-        imf |= *p++ << 16;
-        imf |= *p++ << 8;
-        imf |= *p++;
+        imf = get_uint64_t_be(p);
+        p += 8;
         if (imf == 0) {
-            imf = ((otp_config->uid[4] << 8) | otp_config->uid[5]) << 4;
+            imf = get_uint16_t_be(otp_config->uid + 4);
         }
-        uint8_t chal[8] =
-        { imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8, imf & 0xff };
+        uint8_t chal[8];
+        put_uint64_t_be(imf, chal);
         res_APDU_size = 0;
         int ret = calculate_oath(1, tmp_key, sizeof(tmp_key), chal, sizeof(chal));
         if (ret == PICOKEY_OK) {
             uint32_t base = otp_config->cfg_flags & OATH_HOTP8 ? 1e8 : 1e6;
-            uint32_t number =
-                (res_APDU[2] << 24) | (res_APDU[3] << 16) | (res_APDU[4] << 8) | res_APDU[5];
+            uint32_t number = get_uint16_t_be(res_APDU + 2);
             number %= base;
             char number_str[9];
             if (otp_config->cfg_flags & OATH_HOTP8) {
@@ -258,9 +250,8 @@ int otp_button_pressed(uint8_t slot) {
                 add_keyboard_buffer((const uint8_t *) number_str, 6, true);
             }
             imf++;
-            uint8_t new_chal[8] =
-            { imf >> 56, imf >> 48, imf >> 40, imf >> 32, imf >> 24, imf >> 16, imf >> 8,
-              imf & 0xff };
+            uint8_t new_chal[8];
+            put_uint64_t_be(imf, new_chal);
             uint8_t new_otp_config[otp_config_size + sizeof(new_chal)];
             memcpy(new_otp_config, otp_config, otp_config_size);
             memcpy(new_otp_config + otp_config_size, new_chal, sizeof(new_chal));
@@ -284,7 +275,7 @@ int otp_button_pressed(uint8_t slot) {
     else {
         uint8_t otpk[22], *po = otpk;
         bool update_counter = false;
-        uint16_t counter = (data[otp_config_size] << 8) | data[otp_config_size + 1], crc = 0;
+        uint16_t counter = get_uint16_t_be(data + otp_config_size), crc = 0;
         uint32_t ts = board_millis() / 1000;
         if (counter == 0) {
             update_counter = true;
@@ -294,9 +285,8 @@ int otp_button_pressed(uint8_t slot) {
         po += 6;
         memcpy(po, otp_config->uid, UID_SIZE);
         po += UID_SIZE;
-        *po++ = counter & 0xff;
-        *po++ = counter >> 8;
-        ts >>= 3;
+        po += put_uint16_t_le(counter, po);
+        ts >>= 1;
         *po++ = ts & 0xff;
         *po++ = ts >> 8;
         *po++ = ts >> 16;
@@ -304,8 +294,7 @@ int otp_button_pressed(uint8_t slot) {
         random_gen(NULL, po, 2);
         po += 2;
         crc = calculate_crc(otpk + 6, 14);
-        *po++ = ~crc & 0xff;
-        *po++ = ~crc >> 8;
+        po += put_uint16_t_le(~crc, po);
         mbedtls_aes_context ctx;
         mbedtls_aes_init(&ctx);
         mbedtls_aes_setkey_enc(&ctx, otp_config->aes_key, 128);
@@ -326,8 +315,7 @@ int otp_button_pressed(uint8_t slot) {
         if (update_counter == true) {
             uint8_t new_data[otp_config_size + 8];
             memcpy(new_data, data, sizeof(new_data));
-            new_data[otp_config_size] = counter >> 8;
-            new_data[otp_config_size + 1] = counter & 0xff;
+            put_uint16_t_be(counter, new_data + otp_config_size);
             file_put_data(ef, new_data, sizeof(new_data));
             low_flash_available();
         }
@@ -532,9 +520,7 @@ extern uint16_t *get_send_buffer_size(uint8_t itf);
 
 int otp_send_frame(uint8_t *frame, size_t frame_len) {
     uint16_t crc = calculate_crc(frame, frame_len);
-    frame[frame_len] = ~crc & 0xff;
-    frame[frame_len + 1] = ~crc >> 8;
-    frame_len += 2;
+    frame_len += put_uint16_t_le(~crc, frame + frame_len);
     *get_send_buffer_size(ITF_KEYBOARD) = frame_len;
     otp_exp_seq = (frame_len / 7);
     if (frame_len % 7) {
@@ -567,7 +553,7 @@ int otp_hid_set_report_cb(uint8_t itf,
                     memcpy(otp_frame_rx + rseq * 7, buffer, 7);
                     if (rseq == 9) {
                         DEBUG_DATA(otp_frame_rx, sizeof(otp_frame_rx));
-                        uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = (otp_frame_rx[66] << 8 | otp_frame_rx[65]);
+                        uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = get_uint16_t_le(otp_frame_rx + 65);
                         uint8_t slot_id = otp_frame_rx[64];
                         if (residual_crc == rcrc) {
                             uint8_t hdr[5];

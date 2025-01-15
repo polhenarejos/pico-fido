@@ -16,6 +16,7 @@
  */
 
 #include "fido.h"
+#include "kek.h"
 #include "pico_keys.h"
 #include "apdu.h"
 #include "ctap.h"
@@ -46,6 +47,7 @@ pinUvAuthToken_t paut = { 0 };
 
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
+uint8_t session_pin[32] = { 0 };
 
 const uint8_t fido_aid[] = {
     8,
@@ -200,12 +202,15 @@ int load_keydev(uint8_t *key) {
     }
     else {
         memcpy(key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+
+        if (mkek_decrypt(key, 32) != PICOKEY_OK) {
+            return PICOKEY_EXEC_ERROR;
+        }
         if (otp_key_1 && aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != PICOKEY_OK) {
             return PICOKEY_EXEC_ERROR;
         }
     }
 
-    //return mkek_decrypt(key, file_get_size(ef_keydev));
     return PICOKEY_OK;
 }
 
@@ -299,6 +304,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
 int scan_files() {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
+    ef_mkek = search_by_fid(EF_MKEK, NULL, SPECIFY_EF);
     if (ef_keydev) {
         if (!file_has_data(ef_keydev) && !file_has_data(ef_keydev_enc)) {
             printf("KEY DEVICE is empty. Generating SECP256R1 curve...");
@@ -331,13 +337,33 @@ int scan_files() {
     else {
         printf("FATAL ERROR: KEY DEV not found in memory!\r\n");
     }
+    if (ef_mkek) { // No encrypted MKEK
+        if (!file_has_data(ef_mkek)) {
+            uint8_t mkek[MKEK_IV_SIZE + MKEK_KEY_SIZE];
+            random_gen(NULL, mkek, sizeof(mkek));
+            file_put_data(ef_mkek, mkek, sizeof(mkek));
+            int ret = aes_encrypt_cfb_256(MKEK_KEY(mkek), MKEK_IV(mkek), file_get_data(ef_keydev), 32);
+            mbedtls_platform_zeroize(mkek, sizeof(mkek));
+            if (ret != 0) {
+                printf("FATAL ERROR: MKEK encryption failed!\r\n");
+            }
+        }
+    }
+    else {
+        printf("FATAL ERROR: MKEK not found in memory!\r\n");
+    }
     ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
     if (ef_certdev) {
         if (!file_has_data(ef_certdev)) {
-            uint8_t cert[2048];
+            uint8_t cert[2048], outk[32];
+            memset(outk, 0, sizeof(outk));
+            int ret = 0;
+            if ((ret = load_keydev(outk)) != 0) {
+                return ret;
+            }
             mbedtls_ecdsa_context key;
             mbedtls_ecdsa_init(&key);
-            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, file_get_data(ef_keydev), file_get_size(ef_keydev));
+            ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, outk, sizeof(outk));
             if (ret != 0) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
@@ -369,6 +395,13 @@ int scan_files() {
         printf("FATAL ERROR: Global counter not found in memory!\r\n");
     }
     ef_pin = search_by_fid(EF_PIN, NULL, SPECIFY_EF);
+    if (file_get_size(ef_pin) == 18) { // Upgrade PIN storage
+        uint8_t pin_data[34] = { 0 }, dhash[32];
+        memcpy(pin_data, file_get_data(ef_pin), 18);
+        double_hash_pin(pin_data + 2, 16, dhash);
+        memcpy(pin_data + 2, dhash, 32);
+        file_put_data(ef_pin, pin_data, 34);
+    }
     ef_authtoken = search_by_fid(EF_AUTHTOKEN, NULL, SPECIFY_EF);
     if (ef_authtoken) {
         if (!file_has_data(ef_authtoken)) {
@@ -386,6 +419,7 @@ int scan_files() {
     if (!file_has_data(ef_largeblob)) {
         file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
     }
+
     low_flash_available();
     return PICOKEY_OK;
 }
@@ -404,12 +438,10 @@ void init_fido() {
 bool wait_button_pressed() {
     uint32_t val = EV_PRESS_BUTTON;
 #ifndef ENABLE_EMULATION
-#if defined(ENABLE_UP_BUTTON) && ENABLE_UP_BUTTON == 1
     queue_try_add(&card_to_usb_q, &val);
     do {
         queue_remove_blocking(&usb_to_card_q, &val);
     } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT);
-#endif
 #endif
     return val == EV_BUTTON_TIMEOUT;
 }
@@ -417,21 +449,18 @@ bool wait_button_pressed() {
 uint32_t user_present_time_limit = 0;
 
 bool check_user_presence() {
-#if defined(ENABLE_UP_BUTTON) && ENABLE_UP_BUTTON == 1
-    if (user_present_time_limit == 0 ||
-        user_present_time_limit + TRANSPORT_TIME_LIMIT < board_millis()) {
+    if (user_present_time_limit == 0 || user_present_time_limit + TRANSPORT_TIME_LIMIT < board_millis()) {
         if (wait_button_pressed() == true) { //timeout
             return false;
         }
         //user_present_time_limit = board_millis();
     }
-#endif
     return true;
 }
 
 uint32_t get_sign_counter() {
     uint8_t *caddr = file_get_data(ef_counter);
-    return (*caddr) | (*(caddr + 1) << 8) | (*(caddr + 2) << 16) | (*(caddr + 3) << 24);
+    return get_uint32_t_le(caddr);
 }
 
 uint8_t get_opts() {

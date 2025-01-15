@@ -233,6 +233,7 @@ class Vendor:
         VENDOR_UNLOCK    = 0x03
         VENDOR_EA        = 0x04
         VENDOR_PHY       = 0x05
+        VENDOR_MEMORY    = 0x06
 
     @unique
     class PARAM(IntEnum):
@@ -475,6 +476,13 @@ class Vendor:
                 Vendor.SUBCMD.ENABLE,
             )[Vendor.RESP.PARAM]
 
+    def memory(self):
+        resp = self._call(
+                Vendor.CMD.VENDOR_MEMORY,
+                Vendor.SUBCMD.ENABLE,
+            )
+        return { 'free': resp[1], 'used': resp[2], 'total': resp[3], 'files': resp[4], 'size': resp[5] }
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -502,6 +510,8 @@ def parse_args():
     parser_phy_ledbtness.add_argument('value', help='Value of the max. brightness.', metavar='VAL', nargs='?')
     parser_phy_optdimm = subparser_phy.add_parser('led_dimmable', help='Enable/Disable LED dimming.')
     parser_phy_optdimm.add_argument('value', choices=['enable', 'disable'], help='Enable/Disable LED dimming.', nargs='?')
+
+    parser_mem = subparser.add_parser('memory', help='Get current memory usage.')
 
     args = parser.parse_args()
     return args
@@ -560,9 +570,17 @@ def phy(vdr, args):
     else:
         print('Command executed successfully. Please, restart your Pico Key.')
 
+def memory(vdr, args):
+    mem = vdr.memory()
+    print(f'Memory usage:')
+    print(f'\tFree: {mem["free"]/1024:.2f} kilobytes ({mem["free"]*100/mem["total"]:.2f}%)')
+    print(f'\tUsed: {mem["used"]/1024:.2f} kilobytes ({mem["used"]*100/mem["total"]:.2f}%)')
+    print(f'\tTotal: {mem["total"]/1024:.2f} kilobytes')
+    print(f'\tFlash size: {mem["size"]/1024:.2f} kilobytes')
+    print(f'\tFiles: {mem["files"]}')
 
 def main(args):
-    print('Pico Fido Tool v1.8')
+    print('Pico Fido Tool v1.10')
     print('Author: Pol Henarejos')
     print('Report bugs to https://github.com/polhenarejos/pico-fido/issues')
     print('')
@@ -582,6 +600,8 @@ def main(args):
         attestation(vdr, args)
     elif (args.command == 'phy'):
         phy(vdr, args)
+    elif (args.command == 'memory'):
+        memory(vdr, args)
 
 def run():
     args = parse_args()

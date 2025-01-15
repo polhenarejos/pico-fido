@@ -65,7 +65,7 @@ bool cap_supported(uint16_t cap) {
             if (tag == TAG_USB_ENABLED) {
                 uint16_t ecaps = tag_data[0];
                 if (tag_len == 2) {
-                    ecaps = (tag_data[0] << 8) | tag_data[1];
+                    ecaps = get_uint16_t_be(tag_data);
                 }
                 return ecaps & cap;
             }
@@ -94,9 +94,6 @@ int man_get_config() {
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
     res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = TAG_NFC_SUPPORTED;
-    res_APDU[res_APDU_size++] = 1;
-    res_APDU[res_APDU_size++] = 0x00;
     if (!file_has_data(ef)) {
         res_APDU[res_APDU_size++] = TAG_USB_ENABLED;
         res_APDU[res_APDU_size++] = 2;
@@ -106,9 +103,6 @@ int man_get_config() {
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = FLAG_EJECT;
         res_APDU[res_APDU_size++] = TAG_CONFIG_LOCK;
-        res_APDU[res_APDU_size++] = 1;
-        res_APDU[res_APDU_size++] = 0x00;
-        res_APDU[res_APDU_size++] = TAG_NFC_ENABLED;
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = 0x00;
     }
