@@ -130,4 +130,6 @@ extern uint32_t user_present_time_limit;
 extern pinUvAuthToken_t paut;
 extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *sign);
 
+extern uint8_t session_pin[32];
+
 #endif //_FIDO_H

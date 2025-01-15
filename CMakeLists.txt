@@ -18,6 +18,8 @@
 cmake_minimum_required(VERSION 3.13)
 
 if(ESP_PLATFORM)
+set(DEBUG_APDU 1)
+set(DENABLE_POWER_ON_RESET 0)
 set(EXTRA_COMPONENT_DIRS src pico-keys-sdk/src)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 else()
@@ -39,14 +41,6 @@ endif()
 
 add_executable(pico_fido)
 endif()
-option(ENABLE_UP_BUTTON "Enable/disable user presence button" ON)
-if(ENABLE_UP_BUTTON)
-    add_definitions(-DENABLE_UP_BUTTON=1)
-    message(STATUS "User presence with button: \t enabled")
-else()
-    add_definitions(-DENABLE_UP_BUTTON=0)
-    message(STATUS "User presence with button: \t disabled")
-endif(ENABLE_UP_BUTTON)
 
 option(ENABLE_POWER_ON_RESET "Enable/disable power cycle on reset" ON)
 if(ENABLE_POWER_ON_RESET)
@@ -85,6 +79,7 @@ endif()
 set(SOURCES ${SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/kek.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_register.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_authenticate.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_version.c
@@ -116,6 +111,7 @@ endif()
 
 set(USB_ITF_HID 1)
 include(pico-keys-sdk/pico_keys_sdk_import.cmake)
+SET_VERSION(ver_major ver_minor "${CMAKE_CURRENT_LIST_DIR}/src/fido/version.h" 1)
 if(ESP_PLATFORM)
     project(pico_fido)
 endif()
@@ -161,5 +157,6 @@ if(ENABLE_EMULATION)
     target_link_libraries(pico_fido PRIVATE pthread m)
 else()
 target_link_libraries(pico_fido PRIVATE pico_keys_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id pico_aon_timer tinyusb_device tinyusb_board)
+pico_add_extra_outputs(${CMAKE_PROJECT_NAME})
 endif()
 endif()

@@ -66,10 +66,7 @@ int cmd_authenticate() {
     resp->flags = 0;
     resp->flags |= P1(apdu) == CTAP_AUTH_ENFORCE ? CTAP_AUTH_FLAG_TUP : 0x0;
     uint32_t ctr = get_sign_counter();
-    resp->ctr[0] = (ctr >> 24) & 0xFF;
-    resp->ctr[1] = (ctr >> 16) & 0xFF;
-    resp->ctr[2] = (ctr >> 8) & 0xFF;
-    resp->ctr[3] = ctr & 0xFF;
+    put_uint32_t_be(ctr, resp->ctr);
     uint8_t hash[32], sig_base[CTAP_APPID_SIZE + 1 + 4 + CTAP_CHAL_SIZE];
     memcpy(sig_base, req->appId, CTAP_APPID_SIZE);
     memcpy(sig_base + CTAP_APPID_SIZE, &resp->flags, sizeof(uint8_t));
