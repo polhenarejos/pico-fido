@@ -391,10 +391,7 @@ int cmd_otp() {
         }
         // Delete slot
         delete_file(ef);
-        if (!file_has_data(search_dynamic_file(EF_OTP_SLOT1)) &&
-            !file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
-            config_seq = 0;
-        }
+        config_seq++;
         return otp_status();
     }
     else if (p1 == 0x04 || p1 == 0x05) {
