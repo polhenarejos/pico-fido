@@ -455,21 +455,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             if (memcmp(p, "CommissionProfile", 17) == 0) {
                 ret = phy_unserialize_data(user.id.data, user.id.len, &phy_data);
                 if (ret == PICOKEY_OK) {
-                    uint8_t tmp[PHY_MAX_SIZE];
-                    uint16_t tmp_len = 0;
-                    memset(tmp, 0, sizeof(tmp));
-                    if (phy_serialize_data(&phy_data, tmp, &tmp_len) != PICOKEY_OK) {
-                        CBOR_ERROR(CTAP2_ERR_PROCESSING);
-                    }
-                    DEBUG_DATA(tmp,tmp_len);
-                    file_put_data(ef_phy, tmp, tmp_len);
+                    ret = phy_save();
                 }
             }
 #endif
-            if (ret != 0) {
+            if (ret != PICOKEY_OK) {
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
-            low_flash_available();
        }
     }
 
