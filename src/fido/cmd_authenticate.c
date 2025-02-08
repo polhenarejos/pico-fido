@@ -43,7 +43,7 @@ int cmd_authenticate() {
     int ret = 0;
     uint8_t *tmp_kh = (uint8_t *) calloc(1, req->keyHandleLen);
     memcpy(tmp_kh, req->keyHandle, req->keyHandleLen);
-    if (credential_verify(tmp_kh, req->keyHandleLen, req->appId) == 0) {
+    if (credential_verify(tmp_kh, req->keyHandleLen, req->appId, false) == 0) {
         ret = fido_load_key(FIDO2_CURVE_P256, req->keyHandle, &key);
     }
     else {

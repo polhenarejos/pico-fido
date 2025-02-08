@@ -279,6 +279,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
         }
 
+        bool silent = (up == false && uv == false);
+
         if (allowList_len > 0) {
             for (size_t e = 0; e < allowList_len; e++) {
                 if (allowList[e].type.present == false || allowList[e].id.present == false) {
@@ -288,7 +290,6 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     continue;
                 }
                 if (credential_load(allowList[e].id.data, allowList[e].id.len, rp_id_hash, &creds[creds_len]) != 0) {
-                    CBOR_FREE_BYTE_STRING(allowList[e].id);
                     credential_free(&creds[creds_len]);
                 }
                 else {
@@ -342,15 +343,32 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
         }
         if (numberOfCredentials == 0) {
-            CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+            if (silent && allowList_len > 0) {
+                for (size_t e = 0; e < allowList_len; e++) {
+                    if (allowList[e].type.present == false || allowList[e].id.present == false) {
+                        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+                    }
+                    if (strcmp(allowList[e].type.data, "public-key") != 0) {
+                        continue;
+                    }
+                    if (credential_verify(allowList[e].id.data, allowList[e].id.len, rp_id_hash, true) == 0) {
+                        numberOfCredentials++;
+                    }
+                }
+            }
+            if (numberOfCredentials == 0) {
+                CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+            }
         }
 
-        for (int i = 0; i < numberOfCredentials; i++) {
-            for (int j = i + 1; j < numberOfCredentials; j++) {
-                if (creds[j].creation > creds[i].creation) {
-                    Credential tmp = creds[j];
-                    creds[j] = creds[i];
-                    creds[i] = tmp;
+        if (!silent) {
+            for (int i = 0; i < numberOfCredentials; i++) {
+                for (int j = i + 1; j < numberOfCredentials; j++) {
+                    if (creds[j].creation > creds[i].creation) {
+                        Credential tmp = creds[j];
+                        creds[j] = creds[i];
+                        creds[i] = tmp;
+                    }
                 }
             }
         }
@@ -380,8 +398,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
 
-        if (up == false && uv == false) {
-            selcred = &creds[0];
+        if (silent && !resident) {
+            // Silent authentication, do nothing
         }
         else {
             selcred = &creds[0];
@@ -410,16 +428,18 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
 
     int ret = 0;
     uint8_t largeBlobKey[32] = {0};
-    if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
-        ret = credential_derive_large_blob_key(selcred->id.data, selcred->id.len, largeBlobKey);
-        if (ret != 0) {
-            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+    if (selcred) {
+        if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
+            ret = credential_derive_large_blob_key(selcred->id.data, selcred->id.len, largeBlobKey);
+            if (ret != 0) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
         }
     }
 
     size_t ext_len = 0;
     uint8_t ext[512] = {0};
-    if (extensions.present == true) {
+    if (selcred && extensions.present == true) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
         int l = 0;
         if (options.up == pfalse) {
@@ -530,32 +550,39 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_ecdsa_context ekey;
     mbedtls_ecdsa_init(&ekey);
-    ret = fido_load_key((int)selcred->curve, selcred->id.data, &ekey);
-    if (ret != 0) {
-        if (derive_key(rp_id_hash, false, selcred->id.data, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
-            mbedtls_ecdsa_free(&ekey);
-            CBOR_ERROR(CTAP1_ERR_OTHER);
-        }
-    }
-    if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
-        md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
-    }
-    else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
-        md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
-    }
-    ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
     size_t olen = 0;
-    ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+    if (selcred) {
+        ret = fido_load_key((int)selcred->curve, selcred->id.data, &ekey);
+        if (ret != 0) {
+            if (derive_key(rp_id_hash, false, selcred->id.data, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
+                mbedtls_ecdsa_free(&ekey);
+                CBOR_ERROR(CTAP1_ERR_OTHER);
+            }
+        }
+        if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
+            md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
+        }
+        else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
+            md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+        }
+        ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
+        ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+    }
+    else {
+        // Bogus signature
+        olen = 64;
+        memset(sig, 0x0B, olen);
+    }
     mbedtls_ecdsa_free(&ekey);
 
     uint8_t lfields = 3;
-    if (selcred->opts.present == true && selcred->opts.rk == ptrue) {
+    if (selcred && selcred->opts.present == true && selcred->opts.rk == ptrue) {
         lfields++;
     }
     if (numberOfCredentials > 1 && next == false) {
         lfields++;
     }
-    if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
+    if (selcred && extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
         lfields++;
     }
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
@@ -564,7 +591,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 2));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
-    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->id.data, selcred->id.len));
+    if (selcred) {
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->id.data, selcred->id.len));
+    }
+    else {
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, (uint8_t *)"\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01", 16));
+    }
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
@@ -574,7 +606,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, sig, olen));
 
-    if (selcred->opts.present == true && selcred->opts.rk == ptrue) {
+    if (selcred && selcred->opts.present == true && selcred->opts.rk == ptrue) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
         uint8_t lu = 1;
         if (numberOfCredentials > 1 && allowList_len == 0) {
@@ -605,7 +637,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
     }
-    if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
+    if (selcred && extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, largeBlobKey, sizeof(largeBlobKey)));
     }

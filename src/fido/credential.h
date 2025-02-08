@@ -56,9 +56,23 @@ typedef struct Credential {
 #define CRED_PROT_UV_OPTIONAL_WITH_LIST     0x02
 #define CRED_PROT_UV_REQUIRED               0x03
 
-#define CRED_PROTO                          "\xf1\xd0\x02\x01"
+#define CRED_PROTO_21_S                     "\xf1\xd0\x02\x01"
+#define CRED_PROTO_22_S                     "\xf1\xd0\x02\x02"
 
-extern int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
+#define CRED_PROTO                          CRED_PROTO_22_S
+
+#define CRED_PROTO_LEN                      4
+#define CRED_IV_LEN                         12
+#define CRED_TAG_LEN                        16
+#define CRED_SILENT_TAG_LEN                 16
+
+typedef enum
+{
+    CRED_PROTO_21 = 0x01,
+    CRED_PROTO_22 = 0x02,
+} cred_proto_t;
+
+extern int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, bool silent);
 extern int credential_create(CborCharString *rpId,
                              CborByteString *userId,
                              CborCharString *userName,
