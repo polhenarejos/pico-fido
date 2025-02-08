@@ -213,10 +213,18 @@ def test_allow_list_missing_id(device, MCRes):
         ]
         )
 
-def test_user_presence_option_false(device, MCRes):
+def test_silent_ok(device, MCRes):
     res = device.GA(options={"up": False}, allow_list=[
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ])
+
+def test_silent_ko(device, MCRes):
+    cred = MCRes['res'].attestation_object.auth_data.credential_data.credential_id + b'\x00'
+    with pytest.raises(CtapError) as e:
+        res = device.GA(options={"up": False}, allow_list=[
+                {"id": cred, "type": "public-key"}
+            ])
+    assert e.value.code == CtapError.ERR.NO_CREDENTIALS
 
 def test_credential_resets(device, MCRes, GARes):
     device.reset()
