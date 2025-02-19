@@ -19,5 +19,5 @@ do
     rm -rf *
     PICO_SDK_PATH="${PICO_SDK_PATH}" cmake .. -DPICO_BOARD=$board_name
     make -j`nproc`
-    mv pico_fido.uf2 ../release/pico_fido_$board-$SUFFIX.uf2
+    mv pico_fido.uf2 ../release/pico_fido_$board_name-$SUFFIX.uf2
 done
