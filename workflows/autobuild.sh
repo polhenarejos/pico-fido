@@ -37,6 +37,16 @@ mkdir -p release
 cd build
 esptool.py --chip ESP32-S3 merge_bin -o ../release/pico_fido_esp32-s3.bin @flash_args
 cd ..
+cd esp-idf
+./install.sh esp32s2
+. ./export.sh
+cd ..
+idf.py set-target esp32s2
+idf.py all
+mkdir -p release
+cd build
+esptool.py --chip ESP32-S2 merge_bin -o ../release/pico_fido_esp32-s2.bin @flash_args
+cd ..
 else
 mkdir build
 cd build
