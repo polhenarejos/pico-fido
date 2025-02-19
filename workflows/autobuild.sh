@@ -7,7 +7,7 @@ if [[ $1 == "pico" ]]; then
 sudo apt install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 git clone https://github.com/raspberrypi/pico-sdk
 cd pico-sdk
-git checkout tags/2.1.0
+git checkout tags/2.1.1
 git submodule update --init
 cd ..
 git clone https://github.com/raspberrypi/picotool
