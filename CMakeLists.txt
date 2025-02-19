@@ -26,6 +26,7 @@ else()
 
 if(ENABLE_EMULATION)
 else()
+set(PICO_USE_FASTEST_SUPPORTED_CLOCK 1)
 include(pico_sdk_import.cmake)
 endif()
 
