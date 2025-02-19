@@ -111,7 +111,7 @@ typedef struct otp_config {
 }) otp_config_t;
 
 #define otp_config_size sizeof(otp_config_t)
-uint16_t otp_status();
+uint16_t otp_status(bool is_otp);
 
 int otp_process_apdu();
 int otp_unload();
@@ -140,10 +140,7 @@ int otp_select(app_t *a, uint8_t force) {
         else {
             config_seq = 0;
         }
-        otp_status();
-        memmove(res_APDU, res_APDU + 1, 6);
-        res_APDU_size = 6;
-        apdu.ne = res_APDU_size;
+        otp_status(false);
         return PICOKEY_OK;
     }
     return PICOKEY_ERR_FILE_NOT_FOUND;
@@ -339,22 +336,32 @@ int otp_unload() {
     return PICOKEY_OK;
 }
 
-uint16_t otp_status() {
+uint16_t otp_status(bool is_otp) {
     if (scanned == false) {
         scan_all();
         scanned = true;
     }
     res_APDU_size = 0;
-    res_APDU[1] = PICO_FIDO_VERSION_MAJOR;
-    res_APDU[2] = PICO_FIDO_VERSION_MINOR;
-    res_APDU[3] = 0;
-    res_APDU[4] = config_seq;
-    res_APDU[5] = (CONFIG2_TOUCH | CONFIG1_TOUCH) |
+    if (is_otp) {
+        res_APDU_size++;
+    }
+    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
+    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
+    res_APDU[res_APDU_size++] = 0;
+    res_APDU[res_APDU_size++] = config_seq;
+    res_APDU[res_APDU_size++] = (CONFIG2_TOUCH | CONFIG1_TOUCH) |
                   (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID :
                    0x00) |
                   (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID :
                    0x00);
-    res_APDU[6] = 0;
+    res_APDU[res_APDU_size++] = 0;
+    if (is_otp) {
+        res_APDU_size = 0;
+    }
+    else {
+        apdu.ne = res_APDU_size;
+    }
+
     return SW_OK();
 }
 
@@ -363,6 +370,7 @@ bool check_crc(const otp_config_t *data) {
     return crc == 0xF0B8;
 }
 
+bool _is_otp = false;
 int cmd_otp() {
     uint8_t p1 = P1(apdu), p2 = P2(apdu);
     if (p2 != 0x00) {
@@ -386,16 +394,13 @@ int cmd_otp() {
                 file_put_data(ef, apdu.data, otp_config_size + 8);
                 low_flash_available();
                 config_seq++;
-                return otp_status();
+                return otp_status(_is_otp);
             }
         }
         // Delete slot
         delete_file(ef);
-        if (!file_has_data(search_dynamic_file(EF_OTP_SLOT1)) &&
-            !file_has_data(search_dynamic_file(EF_OTP_SLOT2))) {
-            config_seq = 0;
-        }
-        return otp_status();
+        config_seq++;
+        return otp_status(_is_otp);
     }
     else if (p1 == 0x04 || p1 == 0x05) {
         otp_config_t *odata = (otp_config_t *) apdu.data;
@@ -419,6 +424,7 @@ int cmd_otp() {
             file_put_data(ef, apdu.data, otp_config_size);
             low_flash_available();
         }
+        return otp_status(_is_otp);
     }
     else if (p1 == 0x06) {
         uint8_t tmp[otp_config_size + 8];
@@ -442,6 +448,7 @@ int cmd_otp() {
             delete_file(ef2);
         }
         low_flash_available();
+        return otp_status(_is_otp);
     }
     else if (p1 == 0x10) {
         memcpy(res_APDU, pico_serial.id, 4);
@@ -459,12 +466,7 @@ int cmd_otp() {
             }
             int ret = 0;
             if (p1 == 0x30 || p1 == 0x38) {
-                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1),
-                                otp_config->aes_key,
-                                KEY_SIZE,
-                                apdu.data,
-                                8,
-                                res_APDU);
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, 8, res_APDU);
                 if (ret == 0) {
                     res_APDU_size = 20;
                 }
@@ -565,10 +567,12 @@ int otp_hid_set_report_cb(uint8_t itf,
                             apdu.header[1] = 0x01;
                             apdu.header[2] = slot_id;
                             apdu.header[3] = 0;
+                            _is_otp = true;
                             int ret = otp_process_apdu();
                             if (ret == 0x9000 && res_APDU_size > 0) {
                                 otp_send_frame(apdu.rdata, apdu.rlen);
                             }
+                            _is_otp = false;
                         }
                         else {
                             printf("[OTP] Bad CRC!\n");
@@ -610,7 +614,7 @@ uint16_t otp_hid_get_report_cb(uint8_t itf,
     }
     else {
         res_APDU = buffer;
-        otp_status();
+        otp_status(true);
     }
 
     return reqlen;

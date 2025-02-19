@@ -584,10 +584,52 @@ int cmd_verify_hotp() {
     return SW_OK();
 }
 
+int cmd_rename() {
+    asn1_ctx_t ctxi, name = { 0 }, new_name = { 0 };
+    if (apdu.data[0] != TAG_NAME) {
+        return SW_WRONG_DATA();
+    }
+    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+        return SW_WRONG_DATA();
+    }
+
+    asn1_ctx_init(name.data + name.len, (uint16_t)(apdu.nc - (name.data + name.len - apdu.data)), &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_NAME, &new_name) == false) {
+        return SW_WRONG_DATA();
+    }
+    file_t *ef = find_oath_cred(name.data, name.len);
+    if (file_has_data(ef) == false) {
+        return SW_DATA_INVALID();
+    }
+    uint8_t *fdata = file_get_data(ef);
+    uint16_t fsize = file_get_size(ef);
+    asn1_ctx_init(fdata, fsize, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+        return SW_WRONG_DATA();
+    }
+    uint8_t *new_data;
+    if (new_name.len > name.len) {
+        new_data = (uint8_t *) calloc(1, file_get_size(ef) + new_name.len - name.len);
+    }
+    else {
+        new_data = (uint8_t *) calloc(1, file_get_size(ef));
+    }
+    memcpy(new_data, fdata, name.data - fdata);
+    *(new_data + (name.data - fdata) - 1) = new_name.len;
+    memcpy(new_data + (name.data - fdata), new_name.data, new_name.len);
+    memcpy(new_data + (name.data - fdata) + new_name.len, name.data + name.len, fsize - (name.data + name.len - fdata));
+    file_put_data(ef, new_data, fsize + new_name.len - name.len);
+    low_flash_available();
+    free(new_data);
+    return SW_OK();
+}
+
 #define INS_PUT             0x01
 #define INS_DELETE          0x02
 #define INS_SET_CODE        0x03
 #define INS_RESET           0x04
+#define INS_RENAME          0x05
 #define INS_LIST            0xa1
 #define INS_CALCULATE       0xa2
 #define INS_VALIDATE        0xa3
@@ -603,6 +645,7 @@ static const cmd_t cmds[] = {
     { INS_DELETE, cmd_delete },
     { INS_SET_CODE, cmd_set_code },
     { INS_RESET, cmd_reset },
+    { INS_RENAME, cmd_rename },
     { INS_LIST, cmd_list },
     { INS_VALIDATE, cmd_validate },
     { INS_CALCULATE, cmd_calculate },

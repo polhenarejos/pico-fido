@@ -246,14 +246,9 @@ int cbor_config(const uint8_t *data, size_t len) {
         else {
             CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
         }
-        uint8_t tmp[PHY_MAX_SIZE];
-        uint16_t tmp_len = 0;
-        memset(tmp, 0, sizeof(tmp));
-        if (phy_serialize_data(&phy_data, tmp, &tmp_len) != PICOKEY_OK) {
+        if (phy_save() != PICOKEY_OK) {
             CBOR_ERROR(CTAP2_ERR_PROCESSING);
         }
-        file_put_data(ef_phy, tmp, tmp_len);
-        low_flash_available();
     }
 #endif
     else {

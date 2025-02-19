@@ -473,14 +473,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             if (memcmp(p, "CommissionProfile", 17) == 0) {
                 ret = phy_unserialize_data(user.id.data, user.id.len, &phy_data);
                 if (ret == PICOKEY_OK) {
-                    file_put_data(ef_phy, user.id.data, user.id.len);
+                    ret = phy_save();
                 }
             }
 #endif
-            if (ret != 0) {
+            if (ret != PICOKEY_OK) {
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
-            low_flash_available();
        }
     }
 
