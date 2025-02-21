@@ -221,6 +221,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_P256K1;
             }
+        }        
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_EDDSA) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_ED25519;
+            }
         }
         else if (pubKeyCredParams[i].alg <= FIDO2_ALG_RS256 && pubKeyCredParams[i].alg >= FIDO2_ALG_RS512) {
             // pass
@@ -385,16 +390,16 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
         flags |= FIDO2_AUT_FLAG_ED;
     }
-    mbedtls_ecdsa_context ekey;
-    mbedtls_ecdsa_init(&ekey);
+    mbedtls_ecp_keypair ekey;
+    mbedtls_ecp_keypair_init(&ekey);
     int ret = fido_load_key(curve, cred_id, &ekey);
     if (ret != 0) {
-        mbedtls_ecdsa_free(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
     const mbedtls_ecp_curve_info *cinfo = mbedtls_ecp_curve_info_from_grp_id(ekey.grp.id);
     if (cinfo == NULL) {
-        mbedtls_ecdsa_free(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
     size_t olen = 0;
@@ -416,7 +421,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     memcpy(pa, cbor_buf, rs); pa += (uint16_t)rs;
     memcpy(pa, ext, ext_len); pa += (uint16_t)ext_len;
     if ((size_t)(pa - aut_data) != aut_data_len) {
-        mbedtls_ecdsa_free(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
 
@@ -429,12 +434,17 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
     }
-    ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
+    else if (ekey.grp.id == MBEDTLS_ECP_DP_ED25519) {
+        md = NULL;
+    }
+    if (md != NULL) {
+        ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
+    }
 
     bool self_attestation = true;
     if (enterpriseAttestation == 2 || (ka && ka->use_self_attestation == pfalse)) {
-        mbedtls_ecdsa_free(&ekey);
-        mbedtls_ecdsa_init(&ekey);
+        mbedtls_ecp_keypair_free(&ekey);
+        mbedtls_ecp_keypair_init(&ekey);
         uint8_t key[32] = {0};
         if (load_keydev(key) != 0) {
             CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -444,8 +454,16 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
         self_attestation = false;
     }
-    ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
-    mbedtls_ecdsa_free(&ekey);
+    if (md != NULL) {
+        ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+    }
+    else {
+        ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_gen, NULL);
+    }
+    mbedtls_ecp_keypair_free(&ekey);
+    if (ret != 0) {
+        CBOR_ERROR(CTAP2_ERR_PROCESSING);
+    }
 
     if (user.id.len > 0 && user.parent.name.len > 0 && user.displayName.len > 0) {
        if (memcmp(user.parent.name.data, "+pico", 5) == 0) {

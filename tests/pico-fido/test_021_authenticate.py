@@ -19,7 +19,7 @@
 
 
 from fido2.client import CtapError
-from fido2.cose import ES256, ES384, ES512
+from fido2.cose import ES256, ES384, ES512, EdDSA
 from utils import verify, ES256K
 import pytest
 
@@ -49,7 +49,7 @@ def test_empty_allowList(device):
     assert e.value.code == CtapError.ERR.NO_CREDENTIALS
 
 @pytest.mark.parametrize(
-    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM, ES256K.ALGORITHM]
+    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM, ES256K.ALGORITHM, EdDSA.ALGORITHM]
 )
 def test_algorithms(device, info, alg):
     if ({'alg': alg, 'type': 'public-key'} in info.algorithms):

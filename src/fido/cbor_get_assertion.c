@@ -565,15 +565,27 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
             md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
         }
-        ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
-        ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+        else if (ekey.grp.id == MBEDTLS_ECP_DP_ED25519) {
+            md = NULL;
+        }
+        
+        if (md != NULL) {
+            ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
+            ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+        }
+        else {
+            ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_gen, NULL);
+        }
     }
     else {
         // Bogus signature
         olen = 64;
         memset(sig, 0x0B, olen);
     }
-    mbedtls_ecdsa_free(&ekey);
+    mbedtls_ecp_keypair_free(&ekey);
+    if (ret != 0) {
+        CBOR_ERROR(CTAP2_ERR_PROCESSING);
+    }
 
     uint8_t lfields = 3;
     if (selcred && selcred->opts.present == true && selcred->opts.rk == ptrue) {

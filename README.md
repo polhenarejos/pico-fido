@@ -13,8 +13,8 @@ Pico FIDO includes the following features:
 - User verification with PIN
 - Discoverable credentials (resident keys)
 - Credential management
-- ECDSA authentication
-- Support for SECP256R1, SECP384R1, SECP521R1, and SECP256K1 curves
+- ECDSA and EDDSA authentication
+- Support for SECP256R1, SECP384R1, SECP521R1, SECP256K1 and Ed25519 curves
 - App registration and login
 - Device selection
 - Support for vendor configuration

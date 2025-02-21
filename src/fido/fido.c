@@ -112,6 +112,12 @@ mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
     else if (curve == FIDO2_CURVE_X448) {
         return MBEDTLS_ECP_DP_CURVE448;
     }
+    else if (curve == FIDO2_CURVE_ED25519) {
+        return MBEDTLS_ECP_DP_ED25519;
+    }
+    else if (curve == FIDO2_CURVE_ED448) {
+        return MBEDTLS_ECP_DP_ED448;
+    }
     return MBEDTLS_ECP_DP_NONE;
 }
 int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
@@ -133,10 +139,16 @@ int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
     else if (id == MBEDTLS_ECP_DP_CURVE448) {
         return FIDO2_CURVE_X448;
     }
+    else if (id == MBEDTLS_ECP_DP_ED25519) {
+        return FIDO2_CURVE_ED25519;
+    }
+    else if (id == MBEDTLS_ECP_DP_ED448) {
+        return FIDO2_CURVE_ED448;
+    }
     return 0;
 }
 
-int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecdsa_context *key) {
+int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key) {
     mbedtls_ecp_group_id mbedtls_curve = fido_curve_to_mbedtls(curve);
     if (mbedtls_curve == MBEDTLS_ECP_DP_NONE) {
         return CTAP2_ERR_UNSUPPORTED_ALGORITHM;
@@ -202,7 +214,7 @@ int load_keydev(uint8_t *key) {
     return PICOKEY_OK;
 }
 
-int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_context *key) {
+int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *key) {
     for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
         uint32_t k = *(uint32_t *) &keyHandle[i * sizeof(uint32_t)];
         if (!(k & 0x80000000)) {
@@ -235,7 +247,7 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecdsa_con
     return memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
 }
 
-int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecdsa_context *key) {
+int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecp_keypair *key) {
     uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
     int r = 0;
     memset(outk, 0, sizeof(outk));
@@ -279,6 +291,9 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         mbedtls_platform_zeroize(outk, sizeof(outk));
         if (r != 0) {
             return r;
+        }
+        if (curve == MBEDTLS_ECP_DP_ED25519) {
+            return mbedtls_ecp_point_edwards(&key->grp, &key->Q, &key->d, random_gen, NULL);
         }
         return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL);
     }

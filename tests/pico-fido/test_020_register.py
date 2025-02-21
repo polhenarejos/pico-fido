@@ -19,7 +19,7 @@
 
 
 from fido2.client import CtapError
-from fido2.cose import ES256, ES384, ES512
+from fido2.cose import ES256, ES384, ES512, EdDSA
 import fido2.features
 fido2.features.webauthn_json_mapping.enabled = False
 from utils import ES256K
@@ -124,7 +124,7 @@ def test_bad_type_pubKeyCredParams(device):
         device.doMC(key_params=["wrong"])
 
 @pytest.mark.parametrize(
-    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM, ES256K.ALGORITHM]
+    "alg", [ES256.ALGORITHM, ES384.ALGORITHM, ES512.ALGORITHM, ES256K.ALGORITHM, EdDSA.ALGORITHM]
 )
 def test_algorithms(device, info, alg):
     if ({'alg': alg, 'type': 'public-key'} in info.algorithms):
