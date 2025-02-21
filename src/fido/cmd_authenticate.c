@@ -38,8 +38,8 @@ int cmd_authenticate() {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
 
-    mbedtls_ecdsa_context key;
-    mbedtls_ecdsa_init(&key);
+    mbedtls_ecp_keypair key;
+    mbedtls_ecp_keypair_init(&key);
     int ret = 0;
     uint8_t *tmp_kh = (uint8_t *) calloc(1, req->keyHandleLen);
     memcpy(tmp_kh, req->keyHandle, req->keyHandleLen);
@@ -49,18 +49,18 @@ int cmd_authenticate() {
     else {
         ret = derive_key(req->appId, false, req->keyHandle, MBEDTLS_ECP_DP_SECP256R1, &key);
         if (verify_key(req->appId, req->keyHandle, &key) != 0) {
-            mbedtls_ecdsa_free(&key);
+            mbedtls_ecp_keypair_free(&key);
             free(tmp_kh);
             return SW_INCORRECT_PARAMS();
         }
     }
     free(tmp_kh);
     if (ret != PICOKEY_OK) {
-        mbedtls_ecdsa_free(&key);
+        mbedtls_ecp_keypair_free(&key);
         return SW_EXEC_ERROR();
     }
     if (P1(apdu) == CTAP_AUTH_CHECK_ONLY) {
-        mbedtls_ecdsa_free(&key);
+        mbedtls_ecp_keypair_free(&key);
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     resp->flags = 0;
@@ -74,12 +74,12 @@ int cmd_authenticate() {
     memcpy(sig_base + CTAP_APPID_SIZE + 1 + 4, req->chal, CTAP_CHAL_SIZE);
     ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), sig_base, sizeof(sig_base), hash);
     if (ret != 0) {
-        mbedtls_ecdsa_free(&key);
+        mbedtls_ecp_keypair_free(&key);
         return SW_EXEC_ERROR();
     }
     size_t olen = 0;
     ret = mbedtls_ecdsa_write_signature(&key, MBEDTLS_MD_SHA256, hash, 32, (uint8_t *) resp->sig, CTAP_MAX_EC_SIG_SIZE, &olen, random_gen, NULL);
-    mbedtls_ecdsa_free(&key);
+    mbedtls_ecp_keypair_free(&key);
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }

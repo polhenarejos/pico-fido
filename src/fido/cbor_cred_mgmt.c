@@ -243,11 +243,11 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         }
 
-        mbedtls_ecdsa_context key;
-        mbedtls_ecdsa_init(&key);
+        mbedtls_ecp_keypair key;
+        mbedtls_ecp_keypair_init(&key);
         if (fido_load_key((int)cred.curve, cred.id.data, &key) != 0) {
             credential_free(&cred);
-            mbedtls_ecdsa_free(&key);
+            mbedtls_ecp_keypair_free(&key);
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         }
 
@@ -335,7 +335,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
         }
         credential_free(&cred);
-        mbedtls_ecdsa_free(&key);
+        mbedtls_ecp_keypair_free(&key);
     }
     else if (subcommand == 0x06) {
         if (credentialId.id.present == false) {

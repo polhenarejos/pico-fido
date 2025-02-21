@@ -28,7 +28,9 @@
 #endif
 
 #include "mbedtls/ecdsa.h"
+#ifdef MBEDTLS_EDDSA_C
 #include "mbedtls/eddsa.h"
+#endif
 #ifndef ENABLE_EMULATION
 #include "hid/ctap_hid.h"
 #else
