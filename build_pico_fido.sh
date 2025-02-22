@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VERSION_MAJOR="6"
-VERSION_MINOR="4-eddsa1"
+VERSION_MINOR="4"
 SUFFIX="${VERSION_MAJOR}.${VERSION_MINOR}"
 #if ! [[ -z "${GITHUB_SHA}" ]]; then
 #    SUFFIX="${SUFFIX}.${GITHUB_SHA}"
