@@ -31,13 +31,20 @@
 
 int credential_derive_chacha_key(uint8_t *outk, const uint8_t *);
 
-static int credential_silent_tag(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk) {
+static int credential_silent_tag(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, uint8_t *outk) {
+    mbedtls_sha256_context ctx;
+    mbedtls_sha256_init(&ctx);
+    mbedtls_sha256_starts(&ctx, 0);
     if (otp_key_1) {
-        memcpy(outk, otp_key_1, 32);
+        mbedtls_sha256_update(&ctx, otp_key_1, 32);
     }
     else {
-        mbedtls_sha256(pico_serial.id, PICO_UNIQUE_BOARD_ID_SIZE_BYTES, outk, 0);
+        mbedtls_sha256_update(&ctx, pico_serial.id, sizeof(pico_serial.id));
     }
+    mbedtls_sha256_update(&ctx, rp_id_hash, 32);
+    mbedtls_sha256_finish(&ctx, outk);
+    mbedtls_sha256_free(&ctx);
+
     return mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), outk, 32, cred_id, cred_id_len - CRED_SILENT_TAG_LEN, outk);
 }
 
@@ -70,7 +77,7 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
             return -1;
         }
         uint8_t outk[32];
-        ret = credential_silent_tag(cred_id, cred_id_len, outk);
+        ret = credential_silent_tag(cred_id, cred_id_len, rp_id_hash, outk);
         ret = memcmp(outk, cred_id + cred_id_len - CRED_SILENT_TAG_LEN, CRED_SILENT_TAG_LEN);
     }
     return ret;
@@ -161,7 +168,7 @@ int credential_create(CborCharString *rpId,
     }
     memcpy(cred_id, CRED_PROTO, CRED_PROTO_LEN);
     memcpy(cred_id + CRED_PROTO_LEN, iv, CRED_IV_LEN);
-    credential_silent_tag(cred_id, *cred_id_len, cred_id + CRED_PROTO_LEN + CRED_IV_LEN + rs + CRED_TAG_LEN);
+    credential_silent_tag(cred_id, *cred_id_len, rp_id_hash, cred_id + CRED_PROTO_LEN + CRED_IV_LEN + rs + CRED_TAG_LEN);
 
 err:
     if (error != CborNoError) {
