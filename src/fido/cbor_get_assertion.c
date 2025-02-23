@@ -93,7 +93,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     Credential creds[MAX_CREDENTIAL_COUNT_IN_LIST] = { 0 };
     size_t allowList_len = 0, creds_len = 0;
     uint8_t *aut_data = NULL;
-    bool asserted = false, up = true, uv = false;
+    bool asserted = false, up = false, uv = false;
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
     const bool *credBlob = NULL;
@@ -235,6 +235,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             if (options.uv == ptrue) { //4.3
                 CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
             }
+            if (options.uv == NULL || pinUvAuthParam.present == true) {
+                uv = false;
+            }
+            else {
+                uv = *options.uv;
+            }
             //if (options.up != NULL) { //4.5
             //    CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
             //}
@@ -243,11 +249,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
             //else if (options.up == NULL) //5.7
             //rup = ptrue;
-            if (options.uv != NULL) {
-                uv = *options.uv;
-            }
             if (options.up != NULL) {
                 up = *options.up;
+            }
+            else {
+                up = true;
             }
         }
 
@@ -294,6 +300,23 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 else {
                     creds_len++;
+                    silent = false;
+                    // Even we provide allowList, we need to check if the credential is resident
+                    if (!resident) {
+                        for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
+                            file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+                            if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
+                                continue;
+                            }
+                            if (memcmp(file_get_data(ef) + 32, allowList[e].id.data, allowList[e].id.len) == 0) {
+                                resident = true;
+                                break;
+                            }
+                        }
+                        if (resident) {
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -309,6 +332,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 else {
                     creds_len++;
+                    silent = false;
                 }
             }
             resident = true;
@@ -594,7 +618,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     if (selcred && selcred->opts.present == true && selcred->opts.rk == ptrue) {
         lfields++;
     }
-    if (numberOfCredentials > 1 && next == false) {
+    if (numberOfCredentials > 1 && next == false && (!resident || allowList_len <= 1)) {
         lfields++;
     }
     if (selcred && extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
@@ -648,7 +672,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
-    if (numberOfCredentials > 1 && next == false) {
+    if (numberOfCredentials > 1 && next == false && (!resident || allowList_len <= 1)) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, numberOfCredentials));
     }

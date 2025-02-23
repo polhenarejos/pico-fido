@@ -117,7 +117,7 @@ void cbor_thread(void) {
         }
         apdu.sw = cbor_parse(cbor_cmd, cbor_data, cbor_len);
         if (apdu.sw == 0) {
-            DEBUG_DATA(res_APDU + 1, res_APDU_size);
+            DEBUG_DATA(res_APDU, res_APDU_size);
         }
         else {
             if (apdu.sw >= CTAP1_ERR_INVALID_CHANNEL) {
