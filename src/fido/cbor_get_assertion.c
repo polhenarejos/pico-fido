@@ -300,7 +300,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 else {
                     creds_len++;
-                    silent = false;
+                    silent = false; // If we are able to load a credential, we are not silent
                     // Even we provide allowList, we need to check if the credential is resident
                     if (!resident) {
                         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
@@ -332,7 +332,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 else {
                     creds_len++;
-                    silent = false;
+                    silent = false; // If we are able to load a credential, we are not silent
                 }
             }
             resident = true;

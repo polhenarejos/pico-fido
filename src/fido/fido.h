@@ -85,6 +85,7 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #define FIDO2_AUT_FLAG_ED       0x80
 
 #define FIDO2_OPT_EA            0x01 // Enterprise Attestation
+#define FIDO2_OPT_AUV           0x02 // User Verification
 
 #define MAX_PIN_RETRIES 8
 extern bool getUserPresentFlagValue();
