@@ -98,9 +98,15 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
 
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 5));
+    uint8_t curves = 4;
+#ifdef MBEDTLS_EDDSA_C
+    curves++;
+#endif
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, curves));
     CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES256, &arrayEncoder, &mapEncoder2));
+#ifdef MBEDTLS_EDDSA_C
     CBOR_CHECK(COSE_public_key(FIDO2_ALG_EDDSA, &arrayEncoder, &mapEncoder2));
+#endif
     CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES384, &arrayEncoder, &mapEncoder2));
     CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES512, &arrayEncoder, &mapEncoder2));
     CBOR_CHECK(COSE_public_key(FIDO2_ALG_ES256K, &arrayEncoder, &mapEncoder2));
