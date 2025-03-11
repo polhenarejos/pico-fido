@@ -98,7 +98,7 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
 
-    uint8_t curves = 4;
+    uint8_t curves = 3;
 #ifdef MBEDTLS_EDDSA_C
     curves++;
 #endif
