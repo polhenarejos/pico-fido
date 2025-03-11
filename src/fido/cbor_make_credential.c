@@ -217,7 +217,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 curve = FIDO2_CURVE_P521;
             }
         }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K && (phy_data.enabled_curves & PHY_CURVE_SECP256K1)) {
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K
+#ifndef ENABLE_EMULATION
+             && (phy_data.enabled_curves & PHY_CURVE_SECP256K1)
+#endif
+            ) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_P256K1;
             }
