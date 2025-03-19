@@ -336,6 +336,7 @@ int otp_unload() {
     return PICOKEY_OK;
 }
 
+uint8_t status_byte = 0x0;
 uint16_t otp_status(bool is_otp) {
     if (scanned == false) {
         scan_all();
@@ -355,6 +356,7 @@ uint16_t otp_status(bool is_otp) {
                   (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID :
                    0x00);
     res_APDU[res_APDU_size++] = 0;
+    res_APDU[res_APDU_size++] = status_byte;
     if (is_otp) {
         res_APDU_size = 0;
     }
@@ -461,17 +463,35 @@ int cmd_otp() {
         file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otp_config = (otp_config_t *) file_get_data(ef);
-            if (!(otp_config->cfg_flags & CHAL_YUBICO && otp_config->tkt_flags & CHAL_RESP)) {
+            if (!(otp_config->tkt_flags & CHAL_RESP)) {
                 return SW_WRONG_DATA();
             }
             int ret = 0;
+            uint8_t *rdata_bk = apdu.rdata;
+            if (otp_config->cfg_flags & CHAL_BTN_TRIG) {
+                status_byte = 0x20;
+                otp_status(_is_otp);
+                if (wait_button() == true) {
+                    status_byte = 0x00;
+                    otp_status(_is_otp);
+                    return SW_CONDITIONS_NOT_SATISFIED();
+                }
+                status_byte = 0x10;
+                apdu.rdata = rdata_bk;
+            }
             if (p1 == 0x30 || p1 == 0x38) {
-                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, 8, res_APDU);
+                if (!(otp_config->cfg_flags & CHAL_HMAC)) {
+                    return SW_WRONG_DATA();
+                }
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, (otp_config->cfg_flags & HMAC_LT64) ? 8 : 64, res_APDU);
                 if (ret == 0) {
                     res_APDU_size = 20;
                 }
             }
             else if (p1 == 0x20 || p1 == 0x28) {
+                if (!(otp_config->cfg_flags & CHAL_YUBICO)) {
+                    return SW_WRONG_DATA();
+                }
                 uint8_t challenge[16];
                 memcpy(challenge, apdu.data, 6);
                 memcpy(challenge + 6, pico_serial_str, 10);
@@ -483,6 +503,9 @@ int cmd_otp() {
                 if (ret == 0) {
                     res_APDU_size = 16;
                 }
+            }
+            if (ret == 0) {
+                status_byte = 0x00;
             }
         }
     }
@@ -555,6 +578,7 @@ int otp_hid_set_report_cb(uint8_t itf,
                     memcpy(otp_frame_rx + rseq * 7, buffer, 7);
                     if (rseq == 9) {
                         DEBUG_DATA(otp_frame_rx, sizeof(otp_frame_rx));
+                        DEBUG_PAYLOAD(otp_frame_rx, sizeof(otp_frame_rx));
                         uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = get_uint16_t_le(otp_frame_rx + 65);
                         uint8_t slot_id = otp_frame_rx[64];
                         if (residual_crc == rcrc) {
