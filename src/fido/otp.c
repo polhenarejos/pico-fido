@@ -467,6 +467,7 @@ int cmd_otp() {
                 return SW_WRONG_DATA();
             }
             int ret = 0;
+#ifndef ENABLE_EMULATION
             uint8_t *rdata_bk = apdu.rdata;
             if (otp_config->cfg_flags & CHAL_BTN_TRIG) {
                 status_byte = 0x20;
@@ -479,6 +480,7 @@ int cmd_otp() {
                 status_byte = 0x10;
                 apdu.rdata = rdata_bk;
             }
+#endif
             if (p1 == 0x30 || p1 == 0x38) {
                 if (!(otp_config->cfg_flags & CHAL_HMAC)) {
                     return SW_WRONG_DATA();
