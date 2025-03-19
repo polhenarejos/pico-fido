@@ -404,7 +404,7 @@ int cmd_otp() {
         config_seq++;
         return otp_status(_is_otp);
     }
-    else if (p1 == 0x04 || p1 == 0x05) {
+    else if (p1 == 0x04 || p1 == 0x05) { // Update slot
         otp_config_t *odata = (otp_config_t *) apdu.data;
         if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
             return SW_WRONG_DATA();
@@ -425,10 +425,11 @@ int cmd_otp() {
                                (odata->cfg_flags & CFGFLAG_UPDATE_MASK);
             file_put_data(ef, apdu.data, otp_config_size);
             low_flash_available();
+            config_seq++;
         }
         return otp_status(_is_otp);
     }
-    else if (p1 == 0x06) {
+    else if (p1 == 0x06) { // Swap slots
         uint8_t tmp[otp_config_size + 8];
         bool ef1_data = false;
         file_t *ef1 = file_new(EF_OTP_SLOT1);
@@ -450,16 +451,17 @@ int cmd_otp() {
             delete_file(ef2);
         }
         low_flash_available();
+        config_seq++;
         return otp_status(_is_otp);
     }
     else if (p1 == 0x10) {
         memcpy(res_APDU, pico_serial.id, 4);
         res_APDU_size = 4;
     }
-    else if (p1 == 0x13) {
+    else if (p1 == 0x13) { // Get config
         man_get_config();
     }
-    else if (p1 == 0x30 || p1 == 0x38 || p1 == 0x20 || p1 == 0x28) {
+    else if (p1 == 0x30 || p1 == 0x38 || p1 == 0x20 || p1 == 0x28) { // Calculate OTP
         file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
         if (file_has_data(ef)) {
             otp_config_t *otp_config = (otp_config_t *) file_get_data(ef);
