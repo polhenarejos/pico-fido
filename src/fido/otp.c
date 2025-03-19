@@ -443,6 +443,8 @@ int cmd_otp() {
         }
         else {
             delete_file(ef1);
+            // When a dynamic file is deleted, existing referenes are invalidated
+            ef2 = file_new(EF_OTP_SLOT2);
         }
         if (ef1_data) {
             file_put_data(ef2, tmp, sizeof(tmp));
