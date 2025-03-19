@@ -561,52 +561,45 @@ int otp_send_frame(uint8_t *frame, size_t frame_len) {
     return 0;
 }
 
-int otp_hid_set_report_cb(uint8_t itf,
-                           uint8_t report_id,
-                           hid_report_type_t report_type,
-                           uint8_t const *buffer,
-                           uint16_t bufsize)
-{
-    if (itf == ITF_KEYBOARD) {
-        if (report_type == 3) {
-            DEBUG_PAYLOAD(buffer, bufsize);
-            if (buffer[7] == 0xFF) { // reset
-                *get_send_buffer_size(ITF_KEYBOARD) = 0;
-                otp_curr_seq = otp_exp_seq = 0;
-                memset(otp_frame_tx, 0, sizeof(otp_frame_tx));
-            }
-            else if (buffer[7] & 0x80) { // a frame
-                uint8_t rseq = buffer[7] & 0x1F;
-                if (rseq < 10) {
-                    if (rseq == 0) {
-                        memset(otp_frame_rx, 0, sizeof(otp_frame_rx));
+int otp_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const *buffer, uint16_t bufsize) {
+    if (report_type == 3) {
+        DEBUG_PAYLOAD(buffer, bufsize);
+        if (buffer[7] == 0xFF) { // reset
+            *get_send_buffer_size(ITF_KEYBOARD) = 0;
+            otp_curr_seq = otp_exp_seq = 0;
+            memset(otp_frame_tx, 0, sizeof(otp_frame_tx));
+        }
+        else if (buffer[7] & 0x80) { // a frame
+            uint8_t rseq = buffer[7] & 0x1F;
+            if (rseq < 10) {
+                if (rseq == 0) {
+                    memset(otp_frame_rx, 0, sizeof(otp_frame_rx));
+                }
+                memcpy(otp_frame_rx + rseq * 7, buffer, 7);
+                if (rseq == 9) {
+                    DEBUG_DATA(otp_frame_rx, sizeof(otp_frame_rx));
+                    DEBUG_PAYLOAD(otp_frame_rx, sizeof(otp_frame_rx));
+                    uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = get_uint16_t_le(otp_frame_rx + 65);
+                    uint8_t slot_id = otp_frame_rx[64];
+                    if (residual_crc == rcrc) {
+                        uint8_t hdr[5];
+                        apdu.header = hdr;
+                        apdu.data = otp_frame_rx;
+                        apdu.nc = 64;
+                        apdu.rdata = otp_frame_tx;
+                        apdu.header[0] = 0;
+                        apdu.header[1] = 0x01;
+                        apdu.header[2] = slot_id;
+                        apdu.header[3] = 0;
+                        _is_otp = true;
+                        int ret = otp_process_apdu();
+                        if (ret == 0x9000 && res_APDU_size > 0) {
+                            otp_send_frame(apdu.rdata, apdu.rlen);
+                        }
+                        _is_otp = false;
                     }
-                    memcpy(otp_frame_rx + rseq * 7, buffer, 7);
-                    if (rseq == 9) {
-                        DEBUG_DATA(otp_frame_rx, sizeof(otp_frame_rx));
-                        DEBUG_PAYLOAD(otp_frame_rx, sizeof(otp_frame_rx));
-                        uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = get_uint16_t_le(otp_frame_rx + 65);
-                        uint8_t slot_id = otp_frame_rx[64];
-                        if (residual_crc == rcrc) {
-                            uint8_t hdr[5];
-                            apdu.header = hdr;
-                            apdu.data = otp_frame_rx;
-                            apdu.nc = 64;
-                            apdu.rdata = otp_frame_tx;
-                            apdu.header[0] = 0;
-                            apdu.header[1] = 0x01;
-                            apdu.header[2] = slot_id;
-                            apdu.header[3] = 0;
-                            _is_otp = true;
-                            int ret = otp_process_apdu();
-                            if (ret == 0x9000 && res_APDU_size > 0) {
-                                otp_send_frame(apdu.rdata, apdu.rlen);
-                            }
-                            _is_otp = false;
-                        }
-                        else {
-                            printf("[OTP] Bad CRC!\n");
-                        }
+                    else {
+                        printf("[OTP] Bad CRC!\n");
                     }
                 }
             }
