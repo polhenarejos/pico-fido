@@ -97,8 +97,21 @@ int man_get_config() {
     if (!file_has_data(ef)) {
         res_APDU[res_APDU_size++] = TAG_USB_ENABLED;
         res_APDU[res_APDU_size++] = 2;
-        res_APDU[res_APDU_size++] = CAP_FIDO2 >> 8;
-        res_APDU[res_APDU_size++] = CAP_OTP | CAP_U2F | CAP_OATH;
+        uint16_t caps = 0;
+        if (cap_supported(CAP_FIDO2)) {
+            caps |= CAP_FIDO2;
+        }
+        if (cap_supported(CAP_OTP)) {
+            caps |= CAP_OTP;
+        }
+        if (cap_supported(CAP_U2F)) {
+            caps |= CAP_U2F;
+        }
+        if (cap_supported(CAP_OATH)) {
+            caps |= CAP_OATH;
+        }
+        res_APDU[res_APDU_size++] = caps >> 8;
+        res_APDU[res_APDU_size++] = caps & 0xFF;
         res_APDU[res_APDU_size++] = TAG_DEVICE_FLAGS;
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = FLAG_EJECT;
@@ -126,6 +139,15 @@ int cmd_write_config() {
     file_t *ef = file_new(EF_DEV_CONF);
     file_put_data(ef, apdu.data + 1, (uint16_t)(apdu.nc - 1));
     low_flash_available();
+#ifndef ENABLE_EMULATION
+    if (cap_supported(CAP_OTP)) {
+        phy_data.enabled_usb_itf |= PHY_USB_ITF_KB;
+    }
+    else {
+        phy_data.enabled_usb_itf &= ~PHY_USB_ITF_KB;
+    }
+    phy_save();
+#endif
     return SW_OK();
 }
 
