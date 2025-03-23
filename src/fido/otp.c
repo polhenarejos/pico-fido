@@ -350,11 +350,24 @@ uint16_t otp_status(bool is_otp) {
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
     res_APDU[res_APDU_size++] = 0;
     res_APDU[res_APDU_size++] = config_seq;
-    res_APDU[res_APDU_size++] = (CONFIG2_TOUCH | CONFIG1_TOUCH) |
-                  (file_has_data(search_dynamic_file(EF_OTP_SLOT1)) ? CONFIG1_VALID :
-                   0x00) |
-                  (file_has_data(search_dynamic_file(EF_OTP_SLOT2)) ? CONFIG2_VALID :
-                   0x00);
+    uint8_t opts = 0;
+    file_t *ef = search_dynamic_file(EF_OTP_SLOT1);
+    if (file_has_data(ef)) {
+        opts |= CONFIG1_VALID;
+        otp_config_t *otp_config = (otp_config_t *) file_get_data(ef);
+        if (!(otp_config->tkt_flags & CHAL_RESP) || otp_config->cfg_flags & CHAL_BTN_TRIG) {
+            opts |= CONFIG1_TOUCH;
+        }
+    }
+    ef = search_dynamic_file(EF_OTP_SLOT2);
+    if (file_has_data(ef)) {
+        opts |= CONFIG2_VALID;
+        otp_config_t *otp_config = (otp_config_t *) file_get_data(ef);
+        if (!(otp_config->tkt_flags & CHAL_RESP) || otp_config->cfg_flags & CHAL_BTN_TRIG) {
+            opts |= CONFIG2_TOUCH;
+        }
+    }
+    res_APDU[res_APDU_size++] = opts;
     res_APDU[res_APDU_size++] = 0;
     res_APDU[res_APDU_size++] = status_byte;
     if (is_otp) {
@@ -638,6 +651,7 @@ uint16_t otp_hid_get_report_cb(uint8_t itf,
     else {
         res_APDU = buffer;
         otp_status(true);
+        DEBUG_DATA(buffer, 8);
     }
 
     return reqlen;
