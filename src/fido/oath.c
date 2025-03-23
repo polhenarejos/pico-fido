@@ -598,6 +598,9 @@ int cmd_rename() {
     if (asn1_find_tag(&ctxi, TAG_NAME, &new_name) == false) {
         return SW_WRONG_DATA();
     }
+    if (memcmp(name.data, new_name.data, name.len) == 0) {
+        return SW_WRONG_DATA();
+    }
     file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef) == false) {
         return SW_DATA_INVALID();
@@ -608,13 +611,7 @@ int cmd_rename() {
     if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_WRONG_DATA();
     }
-    uint8_t *new_data;
-    if (new_name.len > name.len) {
-        new_data = (uint8_t *) calloc(1, file_get_size(ef) + new_name.len - name.len);
-    }
-    else {
-        new_data = (uint8_t *) calloc(1, file_get_size(ef));
-    }
+    uint8_t *new_data = (uint8_t *) calloc(sizeof(uint8_t), fsize + new_name.len - name.len);
     memcpy(new_data, fdata, name.data - fdata);
     *(new_data + (name.data - fdata) - 1) = new_name.len;
     memcpy(new_data + (name.data - fdata), new_name.data, new_name.len);
