@@ -586,6 +586,10 @@ int cmd_verify_hotp() {
 
 int cmd_rename() {
     asn1_ctx_t ctxi, name = { 0 }, new_name = { 0 };
+
+    if (validated == false) {
+        return SW_SECURITY_STATUS_NOT_SATISFIED();
+    }
     if (apdu.data[0] != TAG_NAME) {
         return SW_WRONG_DATA();
     }
