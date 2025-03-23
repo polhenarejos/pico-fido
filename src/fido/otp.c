@@ -505,7 +505,13 @@ int cmd_otp() {
                 uint8_t aes_key[KEY_SIZE + UID_SIZE];
                 memcpy(aes_key, otp_config->aes_key, KEY_SIZE);
                 memcpy(aes_key + KEY_SIZE, otp_config->uid, UID_SIZE);
-                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), aes_key, sizeof(aes_key), apdu.data, (otp_config->cfg_flags & HMAC_LT64) ? 8 : 64, res_APDU);
+                uint8_t chal_len = 64;
+                if (otp_config->cfg_flags & HMAC_LT64) {
+                    while (chal_len > 0 && apdu.data[63] == apdu.data[chal_len - 1]) {
+                        chal_len--;
+                    }
+                }
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), aes_key, sizeof(aes_key), apdu.data, chal_len, res_APDU);
                 if (ret == 0) {
                     res_APDU_size = 20;
                 }
