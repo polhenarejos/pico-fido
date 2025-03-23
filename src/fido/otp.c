@@ -502,7 +502,10 @@ int cmd_otp() {
                 if (!(otp_config->cfg_flags & CHAL_HMAC)) {
                     return SW_WRONG_DATA();
                 }
-                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), otp_config->aes_key, KEY_SIZE, apdu.data, (otp_config->cfg_flags & HMAC_LT64) ? 8 : 64, res_APDU);
+                uint8_t aes_key[KEY_SIZE + UID_SIZE];
+                memcpy(aes_key, otp_config->aes_key, KEY_SIZE);
+                memcpy(aes_key + KEY_SIZE, otp_config->uid, UID_SIZE);
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA1), aes_key, sizeof(aes_key), apdu.data, (otp_config->cfg_flags & HMAC_LT64) ? 8 : 64, res_APDU);
                 if (ret == 0) {
                     res_APDU_size = 20;
                 }
