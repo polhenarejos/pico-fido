@@ -17,7 +17,7 @@ for board in "$board_dir"/*
 do
     board_name="$(basename -- $board .h)"
     rm -rf *
-    PICO_SDK_PATH="${PICO_SDK_PATH}" cmake .. -DPICO_BOARD=$board_name
+    PICO_SDK_PATH="${PICO_SDK_PATH}" cmake .. -DPICO_BOARD=$board_name -DSECURE_BOOT_PKEY=../../ec_private_key.pem
     make -j`nproc`
     mv pico_fido.uf2 ../release/pico_fido_$board_name-$SUFFIX.uf2
 done
