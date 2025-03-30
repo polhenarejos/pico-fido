@@ -502,7 +502,14 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
 
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, extensions.largeBlobKey == ptrue && options.rk == ptrue ? 5 : 4));
+    uint8_t lparams = 3;
+    if (enterpriseAttestation == 2) {
+        lparams++;
+    }
+    if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
+        lparams++;
+    }
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lparams));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "packed"));
@@ -531,8 +538,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
 
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
-    CBOR_CHECK(cbor_encode_boolean(&mapEncoder, enterpriseAttestation == 2));
+    if (enterpriseAttestation == 2) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
+        CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+    }
 
     if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
