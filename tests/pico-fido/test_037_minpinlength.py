@@ -69,7 +69,7 @@ def test_minpin(SetMinPin, MCMinPin):
 
 def test_minpin_bad_rpid(SetMinPinWrongRpid, MCMinPin):
     assert not MCMinPin.auth_data.extensions
-    assert "minPinLength" not in MCMinPin.auth_data.extensions
+    #assert "minPinLength" not in MCMinPin.auth_data.extensions
 
 def test_setminpin(device, SetMinPin, MCMinPin):
     cfg = FidoConfig(device)

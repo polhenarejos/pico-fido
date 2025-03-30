@@ -469,91 +469,93 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         if (options.up == pfalse) {
             extensions.hmac_secret = NULL;
         }
-        if (extensions.hmac_secret != NULL) {
+        if (extensions.hmac_secret == ptrue) {
             l++;
         }
         if (credBlob == ptrue) {
             l++;
         }
-        if (extensions.thirdPartyPayment != NULL) {
+        if (extensions.thirdPartyPayment == ptrue) {
             l++;
         }
-        CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
-        if (credBlob == ptrue) {
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
-            if (selcred->extensions.credBlob.present == true) {
-                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, selcred->extensions.credBlob.data,
-                                                   selcred->extensions.credBlob.len));
+        if (l > 0) {
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
+            if (credBlob == ptrue) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
+                if (selcred->extensions.credBlob.present == true) {
+                    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, selcred->extensions.credBlob.data,
+                                                    selcred->extensions.credBlob.len));
+                }
+                else {
+                    CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, NULL, 0));
+                }
             }
-            else {
-                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, NULL, 0));
-            }
-        }
-        if (extensions.hmac_secret != NULL) {
+            if (extensions.hmac_secret == ptrue) {
 
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
 
-            uint8_t sharedSecret[64] = {0};
-            mbedtls_ecp_point Qp;
-            mbedtls_ecp_point_init(&Qp);
-            mbedtls_mpi_lset(&Qp.Z, 1);
-            if (mbedtls_mpi_read_binary(&Qp.X, kax.data, kax.len) != 0) {
+                uint8_t sharedSecret[64] = {0};
+                mbedtls_ecp_point Qp;
+                mbedtls_ecp_point_init(&Qp);
+                mbedtls_mpi_lset(&Qp.Z, 1);
+                if (mbedtls_mpi_read_binary(&Qp.X, kax.data, kax.len) != 0) {
+                    mbedtls_ecp_point_free(&Qp);
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                if (mbedtls_mpi_read_binary(&Qp.Y, kay.data, kay.len) != 0) {
+                    mbedtls_ecp_point_free(&Qp);
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                ret = ecdh((uint8_t)hmacSecretPinUvAuthProtocol, &Qp, sharedSecret);
                 mbedtls_ecp_point_free(&Qp);
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                if (ret != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                if (verify((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, (uint16_t)salt_enc.len, salt_auth.data) != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP2_ERR_EXTENSION_FIRST);
+                }
+                uint8_t salt_dec[64] = {0}, poff = ((uint8_t)hmacSecretPinUvAuthProtocol - 1) * IV_SIZE;
+                ret = decrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, (uint16_t)salt_enc.len, salt_dec);
+                if (ret != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                uint8_t cred_random[64] = {0}, *crd = NULL;
+                ret = credential_derive_hmac_key(selcred->id.data, selcred->id.len, cred_random);
+                if (ret != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                if (flags & FIDO2_AUT_FLAG_UV) {
+                    crd = cred_random + 32;
+                }
+                else {
+                    crd = cred_random;
+                }
+                uint8_t out1[64] = {0}, hmac_res[80] = {0};
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec, 32, out1);
+                if ((uint8_t)salt_enc.len == 64 + poff) {
+                    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec + 32, 32, out1 + 32);
+                }
+                encrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, out1, (uint16_t)(salt_enc.len - poff), hmac_res);
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, hmac_res, salt_enc.len));
             }
-            if (mbedtls_mpi_read_binary(&Qp.Y, kay.data, kay.len) != 0) {
-                mbedtls_ecp_point_free(&Qp);
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            if (extensions.thirdPartyPayment == ptrue) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "thirdPartyPayment"));
+                if (selcred->extensions.thirdPartyPayment == ptrue) {
+                    CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+                }
+                else {
+                    CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
+                }
             }
-            ret = ecdh((uint8_t)hmacSecretPinUvAuthProtocol, &Qp, sharedSecret);
-            mbedtls_ecp_point_free(&Qp);
-            if (ret != 0) {
-                mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            if (verify((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, (uint16_t)salt_enc.len, salt_auth.data) != 0) {
-                mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
-                CBOR_ERROR(CTAP2_ERR_EXTENSION_FIRST);
-            }
-            uint8_t salt_dec[64] = {0}, poff = ((uint8_t)hmacSecretPinUvAuthProtocol - 1) * IV_SIZE;
-            ret = decrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, (uint16_t)salt_enc.len, salt_dec);
-            if (ret != 0) {
-                mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            uint8_t cred_random[64] = {0}, *crd = NULL;
-            ret = credential_derive_hmac_key(selcred->id.data, selcred->id.len, cred_random);
-            if (ret != 0) {
-                mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-            }
-            if (flags & FIDO2_AUT_FLAG_UV) {
-                crd = cred_random + 32;
-            }
-            else {
-                crd = cred_random;
-            }
-            uint8_t out1[64] = {0}, hmac_res[80] = {0};
-            mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec, 32, out1);
-            if ((uint8_t)salt_enc.len == 64 + poff) {
-                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec + 32, 32, out1 + 32);
-            }
-            encrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, out1, (uint16_t)(salt_enc.len - poff), hmac_res);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, hmac_res, salt_enc.len));
-        }
-        if (extensions.thirdPartyPayment != NULL) {
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "thirdPartyPayment"));
-            if (selcred->extensions.thirdPartyPayment == ptrue) {
-                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
-            }
-            else {
-                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
-            }
-        }
 
-        CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-        ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
-        flags |= FIDO2_AUT_FLAG_ED;
+            CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+            ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
+            flags |= FIDO2_AUT_FLAG_ED;
+        }
     }
 
     uint32_t ctr = get_sign_counter();

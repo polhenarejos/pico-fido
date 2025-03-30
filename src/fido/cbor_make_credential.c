@@ -348,13 +348,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         cbor_encoder_init(&encoder, ext, sizeof(ext), 0);
         int l = 0;
         uint8_t minPinLen = 0;
-        if (extensions.hmac_secret != NULL) {
+        if (extensions.hmac_secret == ptrue) {
             l++;
         }
         if (extensions.credProtect != 0) {
             l++;
         }
-        if (extensions.minPinLength != NULL) {
+        if (extensions.minPinLength == ptrue) {
             file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
             if (file_has_data(ef_minpin)) {
                 uint8_t *minpin_data = file_get_data(ef_minpin);
@@ -372,29 +372,31 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (extensions.credBlob.present == true) {
             l++;
         }
-        CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
-        if (extensions.credBlob.present == true) {
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
-            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, extensions.credBlob.len < MAX_CREDBLOB_LENGTH));
-        }
-        if (extensions.credProtect != 0) {
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
-        }
-        if (extensions.hmac_secret != NULL) {
+        if (l > 0) {
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
+            if (extensions.credBlob.present == true) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
+                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, extensions.credBlob.len < MAX_CREDBLOB_LENGTH));
+            }
+            if (extensions.credProtect != 0) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credProtect"));
+                CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
+            }
+            if (extensions.hmac_secret == ptrue) {
 
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
-            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, *extensions.hmac_secret));
-        }
-        if (minPinLen > 0) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
+                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+            }
+            if (minPinLen > 0) {
 
-            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "minPinLength"));
-            CBOR_CHECK(cbor_encode_uint(&mapEncoder, minPinLen));
-        }
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "minPinLength"));
+                CBOR_CHECK(cbor_encode_uint(&mapEncoder, minPinLen));
+            }
 
-        CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
-        ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
-        flags |= FIDO2_AUT_FLAG_ED;
+            CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+            ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
+            flags |= FIDO2_AUT_FLAG_ED;
+        }
     }
     mbedtls_ecp_keypair ekey;
     mbedtls_ecp_keypair_init(&ekey);
