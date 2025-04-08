@@ -92,7 +92,8 @@
 #define OATH_FIXED_MODHEX2  0x40    // First two bytes in fixed part sent as modhex
 #define OATH_FIXED_MODHEX   0x50    // Fixed part sent as modhex
 #define OATH_FIXED_MASK     0x50    // Mask to get out fixed flags
-#define CFGFLAG_UPDATE_MASK (PACING_10MS | PACING_20MS)
+#define CFGFLAG_UPDATE_MASK_STATIC (PACING_10MS | PACING_20MS)
+#define CFGFLAG_UPDATE_MASK_CHAL (PACING_20MS)
 
 static uint8_t config_seq = { 1 };
 
@@ -434,8 +435,14 @@ int cmd_otp() {
                                (odata->ext_flags & EXTFLAG_UPDATE_MASK);
             odata->tkt_flags = (otpc->tkt_flags & ~TKTFLAG_UPDATE_MASK) |
                                (odata->tkt_flags & TKTFLAG_UPDATE_MASK);
-            odata->cfg_flags = (otpc->cfg_flags & ~CFGFLAG_UPDATE_MASK) |
-                               (odata->cfg_flags & CFGFLAG_UPDATE_MASK);
+            if (!(otpc->tkt_flags & CHAL_RESP)) {
+                odata->cfg_flags = (otpc->cfg_flags & ~CFGFLAG_UPDATE_MASK_STATIC) |
+                                   (odata->cfg_flags & CFGFLAG_UPDATE_MASK_STATIC);
+            }
+            else {
+                odata->cfg_flags = (otpc->cfg_flags & ~CFGFLAG_UPDATE_MASK_CHAL) |
+                                   (odata->cfg_flags & CFGFLAG_UPDATE_MASK_CHAL);
+            }
             file_put_data(ef, apdu.data, otp_config_size);
             low_flash_available();
             config_seq++;
