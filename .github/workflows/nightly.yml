@@ -24,7 +24,7 @@ jobs:
           PICO_SDK_PATH: ../pico-sdk
         run: |
            ./workflows/autobuild.sh pico
-           ./build_pico_fido.sh
+           ./build_pico_fido.sh --no-eddsa
            ./workflows/autobuild.sh esp32
       - name: Update nightly release
         uses: pyTooling/Actions/releaser@main
