@@ -42,6 +42,6 @@ if [[ $NO_EDDSA -eq 0 ]]; then
         rm -rf -- ./*
         PICO_SDK_PATH="${PICO_SDK_PATH}" cmake .. -DPICO_BOARD=$board_name -DSECURE_BOOT_PKEY=../../ec_private_key.pem -DENABLE_EDDSA=1
         make -j`nproc`
-        mv pico_fido.uf2 ../release/pico_fido_$board_name-$SUFFIX-eddsa1.uf2
+        mv pico_fido.uf2 ../release_eddsa/pico_fido_$board_name-$SUFFIX-eddsa1.uf2
     done
 fi
