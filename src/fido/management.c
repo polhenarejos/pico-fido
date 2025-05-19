@@ -85,6 +85,7 @@ int man_get_config() {
     res_APDU[res_APDU_size++] = TAG_SERIAL;
     res_APDU[res_APDU_size++] = 4;
     memcpy(res_APDU + res_APDU_size, pico_serial.id, 4);
+    res_APDU[res_APDU_size] &= ~0xFC; // Force 8-digit serial number
     res_APDU_size += 4;
     res_APDU[res_APDU_size++] = TAG_FORM_FACTOR;
     res_APDU[res_APDU_size++] = 1;
