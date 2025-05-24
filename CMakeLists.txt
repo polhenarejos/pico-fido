@@ -98,6 +98,7 @@ set(SOURCES ${SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_vendor.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_large_blobs.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/management.c
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/defs.c
         )
 if (${ENABLE_OATH_APP})
 set(SOURCES ${SOURCES}

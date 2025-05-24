@@ -41,8 +41,6 @@
 int fido_process_apdu();
 int fido_unload();
 
-uint8_t PICO_PRODUCT = 2; // Pico FIDO
-
 pinUvAuthToken_t paut = { 0 };
 
 uint8_t keydev_dec[32];
