@@ -307,7 +307,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     return r;
 }
 
-int scan_files() {
+int scan_files_fido() {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
     ef_mkek = search_by_fid(EF_MKEK, NULL, SPECIFY_EF);
@@ -432,7 +432,7 @@ int scan_files() {
 
 void scan_all() {
     scan_flash();
-    scan_files();
+    scan_files_fido();
 }
 
 extern void init_otp();

@@ -59,7 +59,7 @@ int cmd_register() {
     CTAP_REGISTER_RESP *resp = (CTAP_REGISTER_RESP *) res_APDU;
     resp->registerId = CTAP_REGISTER_ID;
     resp->keyHandleLen = KEY_HANDLE_LEN;
-    //if (scan_files(true) != PICOKEY_OK)
+    //if (scan_files_fido(true) != PICOKEY_OK)
     //    return SW_EXEC_ERROR();
     if (apdu.nc != CTAP_APPID_SIZE + CTAP_CHAL_SIZE) {
         return SW_WRONG_LENGTH();
