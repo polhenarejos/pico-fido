@@ -74,14 +74,30 @@ bool cap_supported(uint16_t cap) {
     return true;
 }
 
+static uint8_t _openpgp_aid[] = {
+    6,
+    0xD2, 0x76, 0x00, 0x01, 0x24, 0x01,
+};
+static uint8_t _piv_aid[] = {
+    5,
+    0xA0, 0x00, 0x00, 0x03, 0x8,
+};
+
 int man_get_config() {
     file_t *ef = search_dynamic_file(EF_DEV_CONF);
     res_APDU_size = 0;
     res_APDU[res_APDU_size++] = 0; // Overall length. Filled later
     res_APDU[res_APDU_size++] = TAG_USB_SUPPORTED;
     res_APDU[res_APDU_size++] = 2;
-    res_APDU[res_APDU_size++] = CAP_FIDO2 >> 8;
-    res_APDU[res_APDU_size++] = CAP_OTP | CAP_U2F | CAP_OATH;
+    uint16_t caps = CAP_FIDO2 | CAP_OTP | CAP_U2F | CAP_OATH;
+    if (app_exists(_openpgp_aid + 1, _openpgp_aid[0])) {
+        caps |= CAP_OPENPGP;
+    }
+    if (app_exists(_piv_aid + 1, _piv_aid[0])) {
+        caps |= CAP_PIV;
+    }
+    res_APDU[res_APDU_size++] = caps >> 8;
+    res_APDU[res_APDU_size++] = caps & 0xFF;
     res_APDU[res_APDU_size++] = TAG_SERIAL;
     res_APDU[res_APDU_size++] = 4;
     memcpy(res_APDU + res_APDU_size, pico_serial.id, 4);
@@ -109,6 +125,12 @@ int man_get_config() {
         }
         if (cap_supported(CAP_OATH)) {
             caps |= CAP_OATH;
+        }
+        if (cap_supported(CAP_OPENPGP)) {
+            caps |= CAP_OPENPGP;
+        }
+        if (cap_supported(CAP_PIV)) {
+            caps |= CAP_PIV;
         }
         res_APDU[res_APDU_size++] = caps >> 8;
         res_APDU[res_APDU_size++] = caps & 0xFF;
