@@ -1,6 +1,8 @@
 # Pico FIDO
 This project transforms your Raspberry Pi Pico or ESP32 microcontroller into an integrated FIDO Passkey, functioning like a standard USB Passkey for authentication.
 
+If you are looking for a Fido + OpenPGP, see: https://github.com/polhenarejos/pico-fido2
+
 ## Features
 Pico FIDO includes the following features:
 
