@@ -77,7 +77,7 @@ else()
     set(USB_ITF_CCID 0)
 endif()
 
-set(SOURCES ${SOURCES}
+set(SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/kek.c
