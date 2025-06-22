@@ -77,7 +77,10 @@ else()
     set(USB_ITF_CCID 0)
 endif()
 
-set(SOURCES
+set(USB_ITF_HID 1)
+include(pico-keys-sdk/pico_keys_sdk_import.cmake)
+
+set(SOURCES ${PICO_KEYS_SOURCES}
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/kek.c
@@ -111,8 +114,6 @@ set(SOURCES ${SOURCES}
         )
 endif()
 
-set(USB_ITF_HID 1)
-include(pico-keys-sdk/pico_keys_sdk_import.cmake)
 SET_VERSION(ver_major ver_minor "${CMAKE_CURRENT_LIST_DIR}/src/fido/version.h" 1)
 if(ESP_PLATFORM)
     project(pico_fido)
