@@ -476,6 +476,7 @@ int cmd_otp() {
     }
     else if (p1 == 0x10) {
         memcpy(res_APDU, pico_serial.id, 4);
+        res_APDU[0] &= ~0xFC; // Force 8-digit serial number
         res_APDU_size = 4;
     }
     else if (p1 == 0x13) { // Get config
