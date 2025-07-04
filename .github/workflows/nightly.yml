@@ -19,13 +19,20 @@ jobs:
         with:
           ref: ${{ matrix.refs }}
           submodules: 'recursive'
+      - name: Restore private key
+        run: |
+          echo "${{ secrets.PRIVATE_KEY_B64 }}" | base64 -d > private.pem
+          chmod 600 private.pem
       - name : Build
         env:
           PICO_SDK_PATH: ../pico-sdk
+          SECURE_BOOT_PKEY: ../private.pem
         run: |
            ./workflows/autobuild.sh pico
            ./build_pico_fido.sh --no-eddsa
            ./workflows/autobuild.sh esp32
+      - name: Delete private key
+        run: rm private.pem
       - name: Update nightly release
         uses: pyTooling/Actions/releaser@main
         with:
