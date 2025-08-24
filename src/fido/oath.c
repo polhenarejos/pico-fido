@@ -24,6 +24,7 @@
 #include "asn1.h"
 #include "crypto_utils.h"
 #include "management.h"
+#include "ctap_hid.h"
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
