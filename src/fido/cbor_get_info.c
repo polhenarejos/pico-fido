@@ -38,12 +38,13 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 6));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 7));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credBlob"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobKey"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "minPinLength"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret-mc"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "thirdPartyPayment"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 

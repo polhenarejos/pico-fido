@@ -26,6 +26,7 @@
 #include "mbedtls/sha256.h"
 #include "random.h"
 #include "pico_keys.h"
+#include "crypto_utils.h"
 
 int cbor_make_credential(const uint8_t *data, size_t len) {
     CborParser parser;
@@ -39,7 +40,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     PublicKeyCredentialDescriptor excludeList[MAX_CREDENTIAL_COUNT_IN_LIST] = { 0 };
     size_t excludeList_len = 0;
     CredOptions options = { 0 };
-    uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0;
+    uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0, hmacSecretPinUvAuthProtocol = 1;
+    int64_t kty = 2, hmac_alg = 0, crv = 0;
+    CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
+    bool hmac_secret_mc = false;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
     CredExtensions extensions = { 0 };
@@ -127,6 +131,31 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_PARSE_MAP_START(_f1, 2)
             {
                 CBOR_FIELD_GET_KEY_TEXT(2);
+                if (strcmp(_fd2, "hmac-secret-mc") == 0) {
+                    hmac_secret_mc = true;
+                    uint64_t ukey = 0;
+                    CBOR_PARSE_MAP_START(_f2, 3)
+                    {
+                        CBOR_FIELD_GET_UINT(ukey, 3);
+                        if (ukey == 0x01) {
+                            CBOR_CHECK(COSE_read_key(&_f3, &kty, &hmac_alg, &crv, &kax, &kay));
+                        }
+                        else if (ukey == 0x02) {
+                            CBOR_FIELD_GET_BYTES(salt_enc, 3);
+                        }
+                        else if (ukey == 0x03) {
+                            CBOR_FIELD_GET_BYTES(salt_auth, 3);
+                        }
+                        else if (ukey == 0x04) {
+                            CBOR_FIELD_GET_UINT(hmacSecretPinUvAuthProtocol, 3);
+                        }
+                        else {
+                            CBOR_ADVANCE(3);
+                        }
+                    }
+                    CBOR_PARSE_MAP_END(_f2, 3);
+                    continue;
+                }
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
                 CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "minPinLength", extensions.minPinLength);
@@ -313,6 +342,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
     }
 
+    if (hmac_secret_mc && extensions.hmac_secret != ptrue) {
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+
     if (options.up == ptrue || options.up == NULL) { //14.1
         if (pinUvAuthParam.present == true) {
             if (getUserPresentFlagValue() == false) {
@@ -372,6 +405,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (extensions.credBlob.present == true) {
             l++;
         }
+        if (hmac_secret_mc) {
+            l++;
+        }
         if (l > 0) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
             if (extensions.credBlob.present == true) {
@@ -391,6 +427,57 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "minPinLength"));
                 CBOR_CHECK(cbor_encode_uint(&mapEncoder, minPinLen));
+            }
+            if (hmac_secret_mc) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret-mc"));
+
+                uint8_t sharedSecret[64] = {0};
+                mbedtls_ecp_point Qp;
+                mbedtls_ecp_point_init(&Qp);
+                mbedtls_mpi_lset(&Qp.Z, 1);
+                if (mbedtls_mpi_read_binary(&Qp.X, kax.data, kax.len) != 0) {
+                    mbedtls_ecp_point_free(&Qp);
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                if (mbedtls_mpi_read_binary(&Qp.Y, kay.data, kay.len) != 0) {
+                    mbedtls_ecp_point_free(&Qp);
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                int ret = ecdh((uint8_t)hmacSecretPinUvAuthProtocol, &Qp, sharedSecret);
+                mbedtls_ecp_point_free(&Qp);
+                if (ret != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                if (verify((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, (uint16_t)salt_enc.len, salt_auth.data) != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP2_ERR_EXTENSION_FIRST);
+                }
+                uint8_t salt_dec[64] = {0}, poff = ((uint8_t)hmacSecretPinUvAuthProtocol - 1) * IV_SIZE;
+                ret = decrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, salt_enc.data, (uint16_t)salt_enc.len, salt_dec);
+                if (ret != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                uint8_t cred_random[64] = {0}, *crd = NULL;
+                ret = credential_derive_hmac_key(cred_id, cred_id_len, cred_random);
+                if (ret != 0) {
+                    mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+                }
+                if (flags & FIDO2_AUT_FLAG_UV) {
+                    crd = cred_random + 32;
+                }
+                else {
+                    crd = cred_random;
+                }
+                uint8_t out1[64] = {0}, hmac_res[80] = {0};
+                mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec, 32, out1);
+                if ((uint8_t)salt_enc.len == 64 + poff) {
+                    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crd, 32, salt_dec + 32, 32, out1 + 32);
+                }
+                encrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, out1, (uint16_t)(salt_enc.len - poff), hmac_res);
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, hmac_res, salt_enc.len));
             }
 
             CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
@@ -569,6 +656,10 @@ err:
     CBOR_FREE_BYTE_STRING(user.id);
     CBOR_FREE_BYTE_STRING(user.displayName);
     CBOR_FREE_BYTE_STRING(user.parent.name);
+    CBOR_FREE_BYTE_STRING(kax);
+    CBOR_FREE_BYTE_STRING(kay);
+    CBOR_FREE_BYTE_STRING(salt_enc);
+    CBOR_FREE_BYTE_STRING(salt_auth);
     if (extensions.present == true) {
         CBOR_FREE_BYTE_STRING(extensions.credBlob);
     }
