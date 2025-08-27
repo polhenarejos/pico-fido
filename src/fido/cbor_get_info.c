@@ -30,10 +30,11 @@ int cbor_get_info() {
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 15));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "U2F_V2"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_0"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_1"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_2"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
