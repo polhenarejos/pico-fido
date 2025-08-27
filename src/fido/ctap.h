@@ -134,6 +134,7 @@ typedef struct {
 #define CTAP_PERMISSION_BE              0x08  // BioEnrollment
 #define CTAP_PERMISSION_LBW             0x10  // LargeBlobWrite
 #define CTAP_PERMISSION_ACFG            0x20  // AuthenticatorConfiguration
+#define CTAP_PERMISSION_PCMR            0x40  // PerCredentialManagementReadOnly
 
 typedef struct mse {
     uint8_t Qpt[65];

@@ -105,11 +105,7 @@ int regenerate() {
     mbedtls_ecdh_init(&hkey);
     hkey_init = true;
     mbedtls_ecdh_setup(&hkey, MBEDTLS_ECP_DP_SECP256R1);
-    int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp,
-                                      &hkey.ctx.mbed_ecdh.d,
-                                      &hkey.ctx.mbed_ecdh.Q,
-                                      random_gen,
-                                      NULL);
+    int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_gen, NULL);
     mbedtls_mpi_lset(&hkey.ctx.mbed_ecdh.Qp.Z, 1);
     if (ret != 0) {
         return ret;
@@ -125,34 +121,15 @@ int kdf(uint8_t protocol, const mbedtls_mpi *z, uint8_t *sharedSecret) {
         return ret;
     }
     if (protocol == 1) {
-        return mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                          buf,
-                          sizeof(buf),
-                          sharedSecret);
+        return mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), buf, sizeof(buf), sharedSecret);
     }
     else if (protocol == 2) {
         const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-        ret = mbedtls_hkdf(md_info,
-                           NULL,
-                           0,
-                           buf,
-                           sizeof(buf),
-                           (uint8_t *) "CTAP2 HMAC key",
-                           14,
-                           sharedSecret,
-                           32);
+        ret = mbedtls_hkdf(md_info, NULL, 0, buf, sizeof(buf), (uint8_t *) "CTAP2 HMAC key", 14, sharedSecret, 32);
         if (ret != 0) {
             return ret;
         }
-        return mbedtls_hkdf(md_info,
-                            NULL,
-                            0,
-                            buf,
-                            sizeof(buf),
-                            (uint8_t *) "CTAP2 AES key",
-                            13,
-                            sharedSecret + 32,
-                            32);
+        return mbedtls_hkdf(md_info, NULL, 0, buf, sizeof(buf), (uint8_t *) "CTAP2 AES key", 13, sharedSecret + 32, 32);
     }
     return -1;
 }
@@ -160,26 +137,38 @@ int kdf(uint8_t protocol, const mbedtls_mpi *z, uint8_t *sharedSecret) {
 int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret) {
     mbedtls_mpi z;
     mbedtls_mpi_init(&z);
-    int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp,
-                                          &z,
-                                          Q,
-                                          &hkey.ctx.mbed_ecdh.d,
-                                          random_gen,
-                                          NULL);
+    int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, Q, &hkey.ctx.mbed_ecdh.d, random_gen, NULL);
     ret = kdf(protocol, &z, sharedSecret);
     mbedtls_mpi_free(&z);
     return ret;
 }
 
-int resetPinUvAuthToken() {
+void resetAuthToken(bool persistent) {
+    uint16_t fid = EF_AUTHTOKEN;
+    if (persistent) {
+        fid = EF_PAUTHTOKEN;
+    }
+    file_t *ef = search_by_fid(fid, NULL, SPECIFY_EF);
     uint8_t t[32];
     random_gen(NULL, t, sizeof(t));
-    file_put_data(ef_authtoken, t, sizeof(t));
+    file_put_data(ef, t, sizeof(t));
+    low_flash_available();
+}
+
+int resetPinUvAuthToken() {
+    resetAuthToken(false);
     paut.permissions = 0;
     paut.data = file_get_data(ef_authtoken);
     paut.len = file_get_size(ef_authtoken);
+    return 0;
+}
 
-    low_flash_available();
+int resetPersistentPinUvAuthToken() {
+    resetAuthToken(true);
+    file_t *ef_pauthtoken = search_by_fid(EF_PAUTHTOKEN, NULL, SPECIFY_EF);
+    ppaut.permissions = 0;
+    ppaut.data = file_get_data(ef_pauthtoken);
+    ppaut.len = file_get_size(ef_pauthtoken);
     return 0;
 }
 
@@ -578,6 +567,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         low_flash_available();
         resetPinUvAuthToken();
+        resetPersistentPinUvAuthToken();
         goto err; // No return
     }
     else if (subcommand == 0x9 || subcommand == 0x5) { //getPinUvAuthTokenUsingPinWithPermissions
@@ -598,7 +588,9 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             if ((permissions & CTAP_PERMISSION_BE)) { // Not supported yet
                 CBOR_ERROR(CTAP2_ERR_UNAUTHORIZED_PERMISSION);
             }
-
+            if ((permissions & CTAP_PERMISSION_PCMR) && permissions != CTAP_PERMISSION_PCMR) {
+                CBOR_ERROR(CTAP2_ERR_UNAUTHORIZED_PERMISSION);
+            }
         }
         if (!file_has_data(ef_pin)) {
             CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
@@ -664,21 +656,29 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
             CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
         }
-        resetPinUvAuthToken();
-        beginUsingPinUvAuthToken(false);
-        if (subcommand == 0x05) {
-            permissions = CTAP_PERMISSION_MC | CTAP_PERMISSION_GA;
-        }
-        paut.permissions = (uint8_t)permissions;
-        if (rpId.present == true) {
-            mbedtls_sha256((uint8_t *) rpId.data, rpId.len, paut.rp_id_hash, 0);
-            paut.has_rp_id = true;
+        uint8_t pinUvAuthToken_enc[32 + IV_SIZE], *pdata = NULL;
+        ;
+        if (permissions & CTAP_PERMISSION_PCMR) {
+            ppaut.permissions = CTAP_PERMISSION_PCMR;
+            pdata = ppaut.data;
         }
         else {
-            paut.has_rp_id = false;
+            resetPinUvAuthToken();
+            beginUsingPinUvAuthToken(false);
+            if (subcommand == 0x05) {
+                permissions = CTAP_PERMISSION_MC | CTAP_PERMISSION_GA;
+            }
+            paut.permissions = (uint8_t)permissions;
+            if (rpId.present == true) {
+                mbedtls_sha256((uint8_t *) rpId.data, rpId.len, paut.rp_id_hash, 0);
+                paut.has_rp_id = true;
+            }
+            else {
+                paut.has_rp_id = false;
+            }
+            pdata = paut.data;
         }
-        uint8_t pinUvAuthToken_enc[32 + IV_SIZE];
-        encrypt((uint8_t)pinUvAuthProtocol, sharedSecret, paut.data, 32, pinUvAuthToken_enc);
+        encrypt((uint8_t)pinUvAuthProtocol, sharedSecret, pdata, 32, pinUvAuthToken_enc);
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pinUvAuthToken_enc, 32 + poff));

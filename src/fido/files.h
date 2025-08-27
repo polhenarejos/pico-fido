@@ -29,6 +29,7 @@
 #define EF_OPTS         0xC001
 #define EF_PIN          0x1080
 #define EF_AUTHTOKEN    0x1090
+#define EF_PAUTHTOKEN   0x1091
 #define EF_MINPINLEN    0x1100
 #define EF_DEV_CONF     0x1122
 #define EF_CRED         0xCF00 // Creds at 0xCF00 - 0xCFFF

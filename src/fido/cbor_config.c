@@ -31,6 +31,8 @@
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
+extern void resetPersistentPinUvAuthToken();
+extern void resetPinUvAuthToken();
 
 int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
@@ -206,6 +208,10 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         if (file_has_data(ef_pin) && file_get_data(ef_pin)[1] < newMinPinLength) {
             forceChangePin = ptrue;
+        }
+        if (forceChangePin) {
+            resetPersistentPinUvAuthToken();
+            resetPinUvAuthToken();
         }
         uint8_t *dataf = (uint8_t *) calloc(1, 2 + minPinLengthRPIDs_len * 32);
         dataf[0] = (uint8_t)newMinPinLength;

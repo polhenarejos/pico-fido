@@ -42,6 +42,7 @@ int fido_process_apdu();
 int fido_unload();
 
 pinUvAuthToken_t paut = { 0 };
+persistentPinUvAuthToken_t ppaut = { 0 };
 
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
@@ -418,6 +419,19 @@ int scan_files_fido() {
     }
     else {
         printf("FATAL ERROR: Auth Token not found in memory!\r\n");
+    }
+    file_t *ef_pauthtoken = search_by_fid(EF_PAUTHTOKEN, NULL, SPECIFY_EF);
+    if (ef_pauthtoken) {
+        if (!file_has_data(ef_pauthtoken)) {
+            uint8_t t[32];
+            random_gen(NULL, t, sizeof(t));
+            file_put_data(ef_pauthtoken, t, sizeof(t));
+        }
+        ppaut.data = file_get_data(ef_pauthtoken);
+        ppaut.len = file_get_size(ef_pauthtoken);
+    }
+    else {
+        printf("FATAL ERROR: Persistent Auth Token not found in memory!\r\n");
     }
     ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     if (!file_has_data(ef_largeblob)) {
