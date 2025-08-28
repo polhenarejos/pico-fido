@@ -29,7 +29,7 @@ def test_authenticate_ctap1_through_ctap2(device, RegRes):
     res = device.doGA(ctap1=False, allow_list=[
             {"id": RegRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ])
-    assert res['res'].get_response(0).credential_id == RegRes['res'].attestation_object.auth_data.credential_data.credential_id
+    assert res['res'].get_response(0).raw_id == RegRes['res'].attestation_object.auth_data.credential_data.credential_id
 
 
 # Test FIDO2 register works with U2F auth

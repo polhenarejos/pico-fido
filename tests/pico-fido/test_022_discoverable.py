@@ -85,7 +85,7 @@ def test_multiple_rk_nodisplay(device, MCRes_DC):
     auths = []
     regs = []
     # Use unique RP to not collide with other credentials
-    rp = {"id": f"unique-{random.random()}.com", "name": "Example"}
+    rp = {"id": "example.com", "name": "Example"}
     for i in range(0, 3):
         res = device.doMC(rp=rp, rk=True, user=generate_random_user())
         regs.append(res)
@@ -116,7 +116,7 @@ def test_rk_maximum_size_nodisplay(device):
     auths = resGA.get_assertions()
 
     user_max_GA = auths[0]
-    print(auths)
+
     for y in ("name", "displayName", "id"):
         if (y in user_max_GA):
             assert user_max_GA.user[y] == user_max[y]
@@ -126,7 +126,7 @@ def test_rk_maximum_list_capacity_per_rp_nodisplay(info, device, MCRes_DC):
     """
     Test maximum returned capacity of the RK for the given RP
     """
-
+    device.reset()
     # Try to determine from get_info, or default to 19.
     RK_CAPACITY_PER_RP = info.max_creds_in_list
     if not RK_CAPACITY_PER_RP:
@@ -140,7 +140,7 @@ def test_rk_maximum_list_capacity_per_rp_nodisplay(info, device, MCRes_DC):
         return user
 
     # Use unique RP to not collide with other credentials from other tests.
-    rp = {"id": f"unique-{random.random()}.com", "name": "Example"}
+    rp = {"id": "example.com", "name": "Example"}
 
     # req = FidoRequest(MCRes_DC, options=None, user=get_user(), rp = rp)
     # res = device.sendGA(*req.toGA())
@@ -183,10 +183,10 @@ def test_rk_with_allowlist_of_different_rp(resetdevice):
     """
 
     rk_rp = {"id": "rk-cred.org", "name": "Example"}
-    rk_res = resetdevice.doMC(rp = rk_rp, rk=True)['res'].attestation_object
+    rk_res = resetdevice.MC(rp = rk_rp, options={"rk":True})['res']
 
     server_rp = {"id": "server-cred.com", "name": "Example"}
-    server_res = resetdevice.doMC(rp = server_rp, rk=True)['res'].attestation_object
+    server_res = resetdevice.MC(rp = server_rp, options={"rk":True})['res']
 
     allow_list_with_different_rp_cred = [
         {
@@ -197,7 +197,7 @@ def test_rk_with_allowlist_of_different_rp(resetdevice):
 
 
     with pytest.raises(CtapError) as e:
-        res = resetdevice.doGA(rp_id = rk_rp['id'], allow_list = allow_list_with_different_rp_cred)
+        res = resetdevice.GA(rp_id = rk_rp['id'], allow_list = allow_list_with_different_rp_cred)
     assert e.value.code == CtapError.ERR.NO_CREDENTIALS
 
 
@@ -208,10 +208,10 @@ def test_same_userId_overwrites_rk(resetdevice):
     rp = {"id": "overwrite.org", "name": "Example"}
     user = generate_random_user()
 
-    mc_res1 = resetdevice.doMC(rp = rp, rk=True, user = user)
+    mc_res1 = resetdevice.MC(rp = rp, options={"rk":True}, user = user)
 
     # Should overwrite the first credential.
-    mc_res2 = resetdevice.doMC(rp = rp, rk=True, user = user)
+    mc_res2 = resetdevice.MC(rp = rp, options={"rk":True}, user = user)
 
     ga_res = resetdevice.GA(rp_id=rp['id'])['res']
 
@@ -227,7 +227,7 @@ def test_larger_icon_than_128(device):
     user = generate_random_user()
     user['icon'] = 'https://www.w3.org/TR/webauthn/?icon=' + ("A" * 128)
 
-    device.doMC(rp = rp, rk=True, user = user)
+    device.MC(rp = rp, options={"rk":True}, user = user)
 
 
 def test_returned_credential(device):

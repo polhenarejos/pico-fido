@@ -83,7 +83,7 @@ def test_credprotect_optional_list_excluded(device, MCCredProtectOptionalList):
     ]
 
     with pytest.raises(CtapError) as e:
-        device.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL_WITH_LIST}, exclude_list=exclude_list)
+        device.MC(options={'rk': True}, extensions={'credProtect': CredProtect.UserVerificationOptionalWithCredentialId}, exclude_list=exclude_list)
 
     assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
 
@@ -123,10 +123,10 @@ def test_credprotect_optional_and_list_works_no_uv(device, MCCredProtectOptional
         },
     ]
     # works
-    res1 = device.doGA(allow_list=allow_list)['res'].get_assertions()[0]
+    res1 = device.doGA(allow_list=allow_list, user_verification=False)['res'].get_assertions()[0]
     assert res1.number_of_credentials in (None, 2)
 
-    results = device.doGA(allow_list=allow_list)['res'].get_assertions()
+    results = device.doGA(allow_list=allow_list, user_verification=False)['res'].get_assertions()
 
     # the required credProtect is not returned.
     for res in results:
