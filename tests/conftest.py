@@ -20,7 +20,7 @@
 
 from http import client
 from fido2.hid import CtapHidDevice
-from fido2.client import Fido2Client, WindowsClient, UserInteraction, ClientError, _Ctap1ClientBackend
+from fido2.client import Fido2Client, UserInteraction, ClientError, _Ctap1ClientBackend
 from fido2.attestation import FidoU2FAttestation
 from fido2.ctap2.pin import ClientPin
 from fido2.server import Fido2Server
