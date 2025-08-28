@@ -499,11 +499,13 @@ extern int cmd_register();
 extern int cmd_authenticate();
 extern int cmd_version();
 extern int cbor_parse(int, uint8_t *, size_t);
+extern void driver_init_hid();
 
 #define CTAP_CBOR 0x10
 
 int cmd_cbor() {
     uint8_t *old_buf = res_APDU;
+    driver_init_hid();
     int ret = cbor_parse(0x90, apdu.data, apdu.nc);
     if (ret != 0) {
         return SW_EXEC_ERROR();
