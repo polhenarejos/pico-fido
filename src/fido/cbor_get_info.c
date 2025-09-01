@@ -27,7 +27,11 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 15));
+    uint8_t lfields = 14;
+    if (phy_data.vid != 0x1050) {
+        lfields++;
+    }
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
@@ -152,13 +156,13 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0F));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDBLOB_LENGTH)); // maxCredBlobLength
-
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
-    CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
-    CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_DISABLE));
-    CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
-
+    if (phy_data.vid != 0x1050) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
+        CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_DISABLE));
+        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
+    }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
 err:
     if (error != CborNoError) {
