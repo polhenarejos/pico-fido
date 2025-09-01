@@ -24,7 +24,7 @@
 #include "asn1.h"
 #include "crypto_utils.h"
 #include "management.h"
-#include "ctap_hid.h"
+extern bool is_nk;
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
@@ -638,7 +638,7 @@ int cmd_rename() {
     if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_WRONG_DATA();
     }
-    uint8_t *new_data = (uint8_t *) calloc(sizeof(uint8_t), fsize + new_name.len - name.len);
+    uint8_t *new_data = (uint8_t *) calloc(fsize + new_name.len - name.len, sizeof(uint8_t));
     memcpy(new_data, fdata, name.data - fdata);
     *(new_data + (name.data - fdata) - 1) = new_name.len;
     memcpy(new_data + (name.data - fdata), new_name.data, new_name.len);
