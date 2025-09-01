@@ -22,16 +22,19 @@
 #include "files.h"
 #include "apdu.h"
 #include "version.h"
-#include "phy.h"
 
 int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     uint8_t lfields = 14;
+#ifndef ENABLE_EMULATION
     if (phy_data.vid != 0x1050) {
         lfields++;
     }
+#else
+    lfields++;
+#endif
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
@@ -157,13 +160,17 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0F));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDBLOB_LENGTH)); // maxCredBlobLength
+#ifndef ENABLE_EMULATION
     if (phy_data.vid != 0x1050) {
+#endif
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
         CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_DISABLE));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
+#ifndef ENABLE_EMULATION
     }
+#endif
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
 err:
     if (error != CborNoError) {
