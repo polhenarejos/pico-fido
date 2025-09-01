@@ -22,6 +22,7 @@
 #include "files.h"
 #include "apdu.h"
 #include "version.h"
+#include "phy.h"
 
 int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
