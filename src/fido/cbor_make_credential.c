@@ -231,19 +231,34 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0) {
             CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
         }
-        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256) {
+        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP256) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_P256;
             }
         }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES384) {
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES384 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP384) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_P384;
             }
         }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512) {
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP512) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_P521;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB256) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_BP256R1;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB384) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_BP384R1;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB512) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_BP512R1;
             }
         }
         else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K
@@ -256,9 +271,14 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
         }
 #ifdef MBEDTLS_EDDSA_C
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_EDDSA) {
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_EDDSA || pubKeyCredParams[i].alg == FIDO2_ALG_ED25519) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_ED25519;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ED448) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_ED448;
             }
         }
 #endif
@@ -327,9 +347,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             continue;
         }
         Credential ecred = {0};
-        if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash,
-                            &ecred) == 0 &&
-            (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED ||
+        if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED ||
              (flags & FIDO2_AUT_FLAG_UV))) {
                 credential_free(&ecred);
             CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
@@ -367,9 +385,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t cred_id[MAX_CRED_ID_LENGTH] = {0};
     size_t cred_id_len = 0;
 
-    CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &options,
-                                 &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve,
-                                 cred_id, &cred_id_len));
+    CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &options, &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
     if (getUserVerifiedFlagValue()) {
         flags |= FIDO2_AUT_FLAG_UV;
@@ -523,14 +539,14 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     memcpy(pa, clientDataHash.data, clientDataHash.len);
     uint8_t hash[64] = {0}, sig[MBEDTLS_ECDSA_MAX_LEN] = {0};
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
+    if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1 || ekey.grp.id == MBEDTLS_ECP_DP_BP384R1) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
     }
-    else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
+    else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1 || ekey.grp.id == MBEDTLS_ECP_DP_BP512R1) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
     }
 #ifdef MBEDTLS_EDDSA_C
-    else if (ekey.grp.id == MBEDTLS_ECP_DP_ED25519) {
+    else if (ekey.grp.id == MBEDTLS_ECP_DP_ED25519 || ekey.grp.id == MBEDTLS_ECP_DP_ED448) {
         md = NULL;
     }
 #endif

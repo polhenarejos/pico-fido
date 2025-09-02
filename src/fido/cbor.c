@@ -214,6 +214,9 @@ CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent,
     else if (key->grp.id == MBEDTLS_ECP_DP_ED25519) {
         alg = FIDO2_ALG_EDDSA;
     }
+    else if (key->grp.id == MBEDTLS_ECP_DP_ED448) {
+        alg = FIDO2_ALG_ED448;
+    }
 #endif
     return COSE_key_params(crv, alg, &key->grp, &key->Q, mapEncoderParent, mapEncoder);
 }

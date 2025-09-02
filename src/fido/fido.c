@@ -119,6 +119,15 @@ mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
         return MBEDTLS_ECP_DP_ED448;
     }
 #endif
+    else if (curve == FIDO2_CURVE_BP256R1) {
+        return MBEDTLS_ECP_DP_BP256R1;
+    }
+    else if (curve == FIDO2_CURVE_BP384R1) {
+        return MBEDTLS_ECP_DP_BP384R1;
+    }
+    else if (curve == FIDO2_CURVE_BP512R1) {
+        return MBEDTLS_ECP_DP_BP512R1;
+    }
     return MBEDTLS_ECP_DP_NONE;
 }
 int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
