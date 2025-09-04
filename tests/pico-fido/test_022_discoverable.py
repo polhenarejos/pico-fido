@@ -58,8 +58,9 @@ def test_with_allow_list_after_reset(device, MCRes_DC, GARes_DC):
     device.reset()
 
     # It returns a silent authentication
-    ga_res = device.doGA(allow_list=allow_list)
-
+    with pytest.raises(CtapError) as e:
+        ga_res = device.doGA(allow_list=allow_list)
+    assert e.value.code == CtapError.ERR.NO_CREDENTIALS
 
 
 def test_resident_key(MCRes_DC, info):

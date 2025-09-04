@@ -347,10 +347,26 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             continue;
         }
         Credential ecred = {0};
-        if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED ||
-             (flags & FIDO2_AUT_FLAG_UV))) {
+        if (credential_is_resident(excludeList[e].id.data, excludeList[e].id.len)) {
+            for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+                file_t *ef_cred = search_dynamic_file((uint16_t)(EF_CRED + i));
+                if (!file_has_data(ef_cred) || memcmp(file_get_data(ef_cred), rp_id_hash, 32) != 0) {
+                    continue;
+                }
+                uint8_t *cred_idr = file_get_data(ef_cred) + 32;
+                if (memcmp(cred_idr, excludeList[e].id.data, CRED_RESIDENT_LEN) == 0) {
+                    if (credential_load(file_get_data(ef_cred) + 32 + CRED_RESIDENT_LEN, file_get_size(ef_cred) - 32 - CRED_RESIDENT_LEN, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || (flags & FIDO2_AUT_FLAG_UV))) {
+                        credential_free(&ecred);
+                        CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
+                    }
+                }
+            }
+        }
+        else {
+            if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || (flags & FIDO2_AUT_FLAG_UV))) {
                 credential_free(&ecred);
-            CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
+                CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
+            }
         }
         credential_free(&ecred);
     }
@@ -520,15 +536,23 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(COSE_key(&ekey, &encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
 
-    size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + cred_id_len + rs) + ext_len;
+    size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + (options.rk == ptrue ? CRED_RESIDENT_LEN : cred_id_len) + rs) + ext_len;
     aut_data = (uint8_t *) calloc(1, aut_data_len + clientDataHash.len);
     uint8_t *pa = aut_data;
     memcpy(pa, rp_id_hash, 32); pa += 32;
     *pa++ = flags;
     pa += put_uint32_t_be(ctr, pa);
     memcpy(pa, aaguid, 16); pa += 16;
-    pa += put_uint16_t_be(cred_id_len, pa);
-    memcpy(pa, cred_id, cred_id_len); pa += (uint16_t)cred_id_len;
+    if (options.rk == ptrue) {
+        uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
+        pa += put_uint16_t_be(sizeof(cred_idr), pa);
+        credential_derive_resident(cred_id, cred_id_len, cred_idr);
+        memcpy(pa, cred_idr, sizeof(cred_idr)); pa += sizeof(cred_idr);
+    }
+    else {
+        pa += put_uint16_t_be(cred_id_len, pa);
+        memcpy(pa, cred_id, cred_id_len); pa += (uint16_t)cred_id_len;
+    }
     memcpy(pa, cbor_buf, rs); pa += (uint16_t)rs;
     memcpy(pa, ext, ext_len); pa += (uint16_t)ext_len;
     if ((size_t)(pa - aut_data) != aut_data_len) {

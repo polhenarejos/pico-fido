@@ -22,6 +22,7 @@ import pytest
 from fido2.ctap2.extensions import CredProtectExtension
 from fido2.webauthn import UserVerificationRequirement
 from fido2.ctap import CtapError
+from utils import generate_random_user
 
 class CredProtect:
     UserVerificationOptional = 1
@@ -30,140 +31,139 @@ class CredProtect:
 
 @pytest.fixture(scope="class")
 def MCCredProtectOptional(resetdevice):
-    res = resetdevice.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL})['res'].attestation_object
+    res = resetdevice.doMC(rk=True, user=generate_random_user(), extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL})['res'].attestation_object
     return res
 
 @pytest.fixture(scope="class")
 def MCCredProtectOptionalList(resetdevice):
-    res = resetdevice.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL_WITH_LIST})['res'].attestation_object
+    res = resetdevice.doMC(rk=True, user=generate_random_user(), extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL_WITH_LIST})['res'].attestation_object
     return res
 
 @pytest.fixture(scope="class")
 def MCCredProtectRequired(resetdevice):
-    res = resetdevice.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.REQUIRED})['res'].attestation_object
+    res = resetdevice.doMC(rk=True, user=generate_random_user(), extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.REQUIRED})['res'].attestation_object
     return res
 
+class TestCredProtect(object):
+    def test_credprotect_make_credential_1(self, MCCredProtectOptional):
+        assert MCCredProtectOptional.auth_data.extensions
+        assert "credProtect" in MCCredProtectOptional.auth_data.extensions
+        assert MCCredProtectOptional.auth_data.extensions["credProtect"] == 1
 
-def test_credprotect_make_credential_1(MCCredProtectOptional):
-    assert MCCredProtectOptional.auth_data.extensions
-    assert "credProtect" in MCCredProtectOptional.auth_data.extensions
-    assert MCCredProtectOptional.auth_data.extensions["credProtect"] == 1
+    def test_credprotect_make_credential_2(self, MCCredProtectOptionalList):
+        assert MCCredProtectOptionalList.auth_data.extensions
+        assert "credProtect" in MCCredProtectOptionalList.auth_data.extensions
+        assert MCCredProtectOptionalList.auth_data.extensions["credProtect"] == 2
 
-def test_credprotect_make_credential_2(MCCredProtectOptionalList):
-    assert MCCredProtectOptionalList.auth_data.extensions
-    assert "credProtect" in MCCredProtectOptionalList.auth_data.extensions
-    assert MCCredProtectOptionalList.auth_data.extensions["credProtect"] == 2
+    def test_credprotect_make_credential_3(self, MCCredProtectRequired):
+        assert MCCredProtectRequired.auth_data.extensions
+        assert "credProtect" in MCCredProtectRequired.auth_data.extensions
+        assert MCCredProtectRequired.auth_data.extensions["credProtect"] == 3
 
-def test_credprotect_make_credential_3(MCCredProtectRequired):
-    assert MCCredProtectRequired.auth_data.extensions
-    assert "credProtect" in MCCredProtectRequired.auth_data.extensions
-    assert MCCredProtectRequired.auth_data.extensions["credProtect"] == 3
+    def test_credprotect_optional_excluded(self, device, MCCredProtectOptional):
+        """ CredProtectOptional Cred should be visible to be excluded with no UV """
+        exclude_list = [
+            {
+                "id": MCCredProtectOptional.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            }
+        ]
 
-def test_credprotect_optional_excluded(device, MCCredProtectOptional):
-    """ CredProtectOptional Cred should be visible to be excluded with no UV """
-    exclude_list = [
-        {
-            "id": MCCredProtectOptional.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        }
-    ]
+        with pytest.raises(CtapError) as e:
+            device.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL}, exclude_list=exclude_list)
 
-    with pytest.raises(CtapError) as e:
-        device.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL}, exclude_list=exclude_list)
+        assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
 
-    assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
+    def test_credprotect_optional_list_excluded(self, device, MCCredProtectOptionalList):
+        """ CredProtectOptionalList Cred should be visible to be excluded with no UV """
+        exclude_list = [
+            {
+                "id": MCCredProtectOptionalList.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            }
+        ]
 
-def test_credprotect_optional_list_excluded(device, MCCredProtectOptionalList):
-    """ CredProtectOptionalList Cred should be visible to be excluded with no UV """
-    exclude_list = [
-        {
-            "id": MCCredProtectOptionalList.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        }
-    ]
+        with pytest.raises(CtapError) as e:
+            device.MC(options={'rk': True}, extensions={'credProtect': CredProtect.UserVerificationOptionalWithCredentialId}, exclude_list=exclude_list)
 
-    with pytest.raises(CtapError) as e:
-        device.MC(options={'rk': True}, extensions={'credProtect': CredProtect.UserVerificationOptionalWithCredentialId}, exclude_list=exclude_list)
+        assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
 
-    assert e.value.code == CtapError.ERR.CREDENTIAL_EXCLUDED
+    def test_credprotect_required_not_excluded_with_no_uv(self, device, MCCredProtectRequired):
+        """ CredProtectRequired Cred should NOT be visible to be excluded with no UV """
+        exclude_list = [
+            {
+                "id": MCCredProtectRequired.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            }
+        ]
 
-def test_credprotect_required_not_excluded_with_no_uv(device, MCCredProtectRequired):
-    """ CredProtectRequired Cred should NOT be visible to be excluded with no UV """
-    exclude_list = [
-        {
-            "id": MCCredProtectRequired.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        }
-    ]
+        # works
+        device.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.REQUIRED}, exclude_list=exclude_list)
 
-    # works
-    device.doMC(rk=True, extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.REQUIRED}, exclude_list=exclude_list)
+    def test_credprotect_optional_works_with_no_allowList_no_uv(self, device, MCCredProtectOptional):
 
-def test_credprotect_optional_works_with_no_allowList_no_uv(device, MCCredProtectOptional):
+        # works
+        res = device.doGA()['res'].get_assertions()[0]
 
-    # works
-    res = device.doGA()['res'].get_assertions()[0]
+        # If there's only one credential, this is None
+        assert res.number_of_credentials == None
 
-    # If there's only one credential, this is None
-    assert res.number_of_credentials == None
+    def test_credprotect_optional_and_list_works_no_uv(self, device, MCCredProtectOptional, MCCredProtectOptionalList, MCCredProtectRequired):
+        allow_list = [
+            {
+                "id": MCCredProtectOptional.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            },
+            {
+                "id": MCCredProtectOptionalList.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            },
+            {
+                "id": MCCredProtectRequired.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            },
+        ]
+        # works
+        res1 = device.doGA(allow_list=allow_list, user_verification=False)['res'].get_assertions()[0]
+        assert res1.number_of_credentials in (None, 2)
 
-def test_credprotect_optional_and_list_works_no_uv(device, MCCredProtectOptional, MCCredProtectOptionalList, MCCredProtectRequired):
-    allow_list = [
-        {
-            "id": MCCredProtectOptional.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        },
-        {
-            "id": MCCredProtectOptionalList.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        },
-        {
-            "id": MCCredProtectRequired.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        },
-    ]
-    # works
-    res1 = device.doGA(allow_list=allow_list, user_verification=False)['res'].get_assertions()[0]
-    assert res1.number_of_credentials in (None, 2)
+        results = device.doGA(allow_list=allow_list, user_verification=False)['res'].get_assertions()
 
-    results = device.doGA(allow_list=allow_list, user_verification=False)['res'].get_assertions()
+        # the required credProtect is not returned.
+        for res in results:
+            assert res.credential["id"] != MCCredProtectRequired.auth_data.credential_data.credential_id[:]
 
-    # the required credProtect is not returned.
-    for res in results:
-        assert res.credential["id"] != MCCredProtectRequired.auth_data.credential_data.credential_id[:]
+    def test_hmac_secret_and_credProtect_make_credential(self, resetdevice, MCCredProtectOptional):
 
-def test_hmac_secret_and_credProtect_make_credential(resetdevice, MCCredProtectOptional
-):
+        res = resetdevice.doMC(extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL, 'hmacCreateSecret': True})['res'].attestation_object
 
-    res = resetdevice.doMC(extensions={'credentialProtectionPolicy': CredProtectExtension.POLICY.OPTIONAL, 'hmacCreateSecret': True})['res'].attestation_object
+        for ext in ["credProtect", "hmac-secret"]:
+            assert res.auth_data.extensions
+            assert ext in res.auth_data.extensions
+            assert res.auth_data.extensions[ext] == True
 
-    for ext in ["credProtect", "hmac-secret"]:
-        assert res.auth_data.extensions
-        assert ext in res.auth_data.extensions
-        assert res.auth_data.extensions[ext] == True
+class TestCredProtectUv:
+    def test_credprotect_all_with_uv(self, device, MCCredProtectOptional, MCCredProtectOptionalList, MCCredProtectRequired, client_pin):
+        allow_list = [
+            {
+                "id": MCCredProtectOptional.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            },
+            {
+                "id": MCCredProtectOptionalList.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            },
+            {
+                "id": MCCredProtectRequired.auth_data.credential_data.credential_id[:],
+                "type": "public-key",
+            },
+        ]
 
+        pin = "12345678"
 
-def test_credprotect_all_with_uv(device, MCCredProtectOptional, MCCredProtectOptionalList, MCCredProtectRequired, client_pin):
-    allow_list = [
-        {
-            "id": MCCredProtectOptional.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        },
-        {
-            "id": MCCredProtectOptionalList.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        },
-        {
-            "id": MCCredProtectRequired.auth_data.credential_data.credential_id[:],
-            "type": "public-key",
-        },
-    ]
+        client_pin.set_pin(pin)
 
-    pin = "12345678"
+        res1 = device.doGA(user_verification=UserVerificationRequirement.REQUIRED, allow_list=allow_list)['res'].get_assertions()[0]
 
-    client_pin.set_pin(pin)
-
-    res1 = device.doGA(user_verification=UserVerificationRequirement.REQUIRED, allow_list=allow_list)['res'].get_assertions()[0]
-
-    assert res1.number_of_credentials in (None, 3)
+        assert res1.number_of_credentials in (None, 3)
 

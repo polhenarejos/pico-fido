@@ -259,7 +259,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
 
         Credential cred = { 0 };
-        if (credential_load(file_get_data(cred_ef) + 32, file_get_size(cred_ef) - 32, rpIdHash.data, &cred) != 0) {
+        if (credential_load(file_get_data(cred_ef) + 32 + CRED_RESIDENT_LEN, file_get_size(cred_ef) - 32 - CRED_RESIDENT_LEN, rpIdHash.data, &cred) != 0) {
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         }
 
@@ -316,7 +316,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 2));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred.id.data, cred.id.len));
+        uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
+        credential_derive_resident(cred.id.data, cred.id.len, cred_idr);
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
@@ -372,7 +374,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, MIN(file_get_size(ef) - 32, credentialId.id.len)) == 0) {
+            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, CRED_RESIDENT_LEN) == 0) {
                 uint8_t *rp_id_hash = file_get_data(ef);
                 if (delete_file(ef) != 0) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
@@ -414,10 +416,10 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, MIN(file_get_size(ef) - 32, credentialId.id.len)) == 0) {
+            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, CRED_RESIDENT_LEN) == 0) {
                 Credential cred = { 0 };
                 uint8_t *rp_id_hash = file_get_data(ef);
-                if (credential_load(rp_id_hash + 32, file_get_size(ef) - 32, rp_id_hash, &cred) != 0) {
+                if (credential_load(rp_id_hash + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, &cred) != 0) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
                 if (memcmp(user.id.data, cred.userId.data, MIN(user.id.len, cred.userId.len)) != 0) {
@@ -427,9 +429,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                 uint8_t newcred[MAX_CRED_ID_LENGTH];
                 size_t newcred_len = 0;
                 if (credential_create(&cred.rpId, &cred.userId, &user.parent.name,
-                                      &user.displayName, &cred.opts, &cred.extensions,
-                                      cred.use_sign_count, (int)cred.alg,
-                                      (int)cred.curve, newcred, &newcred_len) != 0) {
+                                    &user.displayName, &cred.opts, &cred.extensions,
+                                    cred.use_sign_count, (int)cred.alg,
+                                    (int)cred.curve, newcred, &newcred_len) != 0) {
                     credential_free(&cred);
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
