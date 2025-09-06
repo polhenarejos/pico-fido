@@ -19,6 +19,7 @@
 #define _CREDENTIAL_H_
 
 #include "ctap2_cbor.h"
+#include "file.h"
 
 typedef struct CredOptions {
     const bool *rk;
@@ -102,5 +103,6 @@ extern int credential_derive_large_blob_key(const uint8_t *cred_id,
                                             uint8_t *outk);
 extern int credential_derive_resident(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
 extern bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len);
+extern int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Credential *cred);
 
 #endif // _CREDENTIAL_H_

@@ -302,7 +302,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                             continue;
                         }
                         if (memcmp(file_get_data(ef) + 32, allowList[e].id.data, CRED_RESIDENT_LEN) == 0) {
-                            if (credential_load(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, &creds[creds_len]) != 0) {
+                            if (credential_load_resident(ef, rp_id_hash, &creds[creds_len]) != 0) {
                                 // Should never happen
                                 credential_free(&creds[creds_len]);
                                 continue;
@@ -347,7 +347,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
                     continue;
                 }
-                int ret = credential_load(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, &creds[creds_len]);
+                int ret = credential_load_resident(ef, rp_id_hash, &creds[creds_len]);
                 if (ret != 0) {
                     credential_free(&creds[creds_len]);
                 }

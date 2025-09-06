@@ -259,7 +259,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
 
         Credential cred = { 0 };
-        if (credential_load(file_get_data(cred_ef) + 32 + CRED_RESIDENT_LEN, file_get_size(cred_ef) - 32 - CRED_RESIDENT_LEN, rpIdHash.data, &cred) != 0) {
+        if (credential_load_resident(cred_ef, rpIdHash.data, &cred) != 0) {
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         }
 
@@ -419,7 +419,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, CRED_RESIDENT_LEN) == 0) {
                 Credential cred = { 0 };
                 uint8_t *rp_id_hash = file_get_data(ef);
-                if (credential_load(rp_id_hash + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, &cred) != 0) {
+                if (credential_load_resident(ef, rp_id_hash, &cred) != 0) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
                 if (memcmp(user.id.data, cred.userId.data, MIN(user.id.len, cred.userId.len)) != 0) {

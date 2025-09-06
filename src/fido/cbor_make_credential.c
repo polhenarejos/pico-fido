@@ -355,7 +355,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 }
                 uint8_t *cred_idr = file_get_data(ef_cred) + 32;
                 if (memcmp(cred_idr, excludeList[e].id.data, CRED_RESIDENT_LEN) == 0) {
-                    if (credential_load(file_get_data(ef_cred) + 32 + CRED_RESIDENT_LEN, file_get_size(ef_cred) - 32 - CRED_RESIDENT_LEN, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || (flags & FIDO2_AUT_FLAG_UV))) {
+                    if (credential_load_resident(ef_cred, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || (flags & FIDO2_AUT_FLAG_UV))) {
                         credential_free(&ecred);
                         CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
                     }

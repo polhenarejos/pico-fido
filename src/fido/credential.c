@@ -440,3 +440,10 @@ int credential_derive_resident(const uint8_t *cred_id, size_t cred_id_len, uint8
 bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len) {
     return memcmp(cred_id, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN) == 0;
 }
+
+int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Credential *cred) {
+    if (credential_is_resident(file_get_data(ef) + 32, file_get_size(ef) - 32)) {
+        return credential_load(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, cred);
+    }
+    return credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, cred);
+}
