@@ -237,17 +237,6 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, buffer + sizeof(buffer) - ret, ret));
         }
-        else if (vendorCmd == 0x02) {
-            if (vendorParam.present == false) {
-                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            }
-            file_t *ef_ee_ea = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
-            if (ef_ee_ea) {
-                file_put_data(ef_ee_ea, vendorParam.data, (uint16_t)vendorParam.len);
-            }
-            low_flash_available();
-            goto err;
-        }
     }
 #ifndef ENABLE_EMULATION
     else if (cmd == CTAP_VENDOR_PHY_OPTS) {

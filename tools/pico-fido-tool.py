@@ -74,16 +74,15 @@ def get_pki_data(url, data=None, method='GET'):
 
 class VendorConfig(Config):
 
+    CONFIG_VENDOR_PROTOTYPE = 0xFF
     class PARAM(IntEnum):
         VENDOR_COMMAND_ID         = 0x01
         VENDOR_AUT_CT             = 0x02
-        VENDOR_PARAM              = 0x02
+        VENDOR_PARAM              = 0x03
 
     class CMD(IntEnum):
         CONFIG_AUT_ENABLE       = 0x03e43f56b34285e2
         CONFIG_AUT_DISABLE      = 0x1831a40f04a25ed9
-        CONFIG_VENDOR_PROTOTYPE = 0x7f
-        CONFIG_VENDOR_PHY       = 0x1b
         CONFIG_PHY_VIDPID       = 0x6fcb19b0cbe3acfa
         CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
         CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
@@ -97,7 +96,7 @@ class VendorConfig(Config):
 
     def enable_device_aut(self, ct):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
+            VendorConfig.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_ENABLE,
                 VendorConfig.PARAM.VENDOR_AUT_CT: ct
@@ -106,7 +105,7 @@ class VendorConfig(Config):
 
     def disable_device_aut(self):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
+            VendorConfig.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_DISABLE
             },
@@ -114,7 +113,7 @@ class VendorConfig(Config):
 
     def vidpid(self, vid, pid):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            VendorConfig.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_VIDPID,
                 VendorConfig.PARAM.VENDOR_PARAM: (vid & 0xFFFF) << 16 | pid
@@ -123,7 +122,7 @@ class VendorConfig(Config):
 
     def led_gpio(self, gpio):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            VendorConfig.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_GPIO,
                 VendorConfig.PARAM.VENDOR_PARAM: gpio
@@ -132,7 +131,7 @@ class VendorConfig(Config):
 
     def led_brightness(self, brightness):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            VendorConfig.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_BTNESS,
                 VendorConfig.PARAM.VENDOR_PARAM: brightness
@@ -141,7 +140,7 @@ class VendorConfig(Config):
 
     def phy_opts(self, opts):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            VendorConfig.CONFIG_VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_OPTS,
                 VendorConfig.PARAM.VENDOR_PARAM: opts

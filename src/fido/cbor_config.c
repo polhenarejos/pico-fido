@@ -68,13 +68,16 @@ int cbor_config(const uint8_t *data, size_t len) {
             raw_subpara = (uint8_t *) cbor_value_get_next_byte(&_f1);
             CBOR_PARSE_MAP_START(_f1, 2)
             {
-                if (subcommand == 0x7f) { // Config Aut
+                if (subcommand == 0xFF) { // Vendor
                     CBOR_FIELD_GET_UINT(subpara, 2);
                     if (subpara == 0x01) {
                         CBOR_FIELD_GET_UINT(vendorCommandId, 2);
                     }
                     else if (subpara == 0x02) {
                         CBOR_FIELD_GET_BYTES(vendorAutCt, 2);
+                    }
+                    else if (subpara == 0x03) {
+                        CBOR_FIELD_GET_UINT(vendorParam, 2);
                     }
                 }
                 else if (subcommand == 0x03) { // Extensions
@@ -97,15 +100,6 @@ int cbor_config(const uint8_t *data, size_t len) {
                         CBOR_FIELD_GET_BOOL(forceChangePin, 2);
                     }
                 }
-                else  if (subcommand == 0x1B) { // PHY
-                    CBOR_FIELD_GET_UINT(subpara, 2);
-                    if (subpara == 0x01) {
-                        CBOR_FIELD_GET_UINT(vendorCommandId, 2);
-                    }
-                    else if (subpara == 0x02) {
-                        CBOR_FIELD_GET_UINT(vendorParam, 2);
-                    }
-                }
             }
             CBOR_PARSE_MAP_END(_f1, 2);
             raw_subpara_len = cbor_value_get_next_byte(&_f1) - raw_subpara;
@@ -124,8 +118,11 @@ int cbor_config(const uint8_t *data, size_t len) {
     if (pinUvAuthParam.present == false) {
         CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
     }
-    if (pinUvAuthProtocol  == 0) {
+    if (pinUvAuthProtocol == 0) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+    if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
 
     uint8_t *verify_payload = (uint8_t *) calloc(1, 32 + 1 + 1 + raw_subpara_len);
@@ -143,8 +140,15 @@ int cbor_config(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
     }
 
-    if (subcommand == 0x7f) {
-        if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE) {
+    if (subcommand == 0xFF) {
+#ifndef ENABLE_EMULATION
+        const bool is_phy = (vendorCommandId == CTAP_CONFIG_PHY_VIDPID ||
+            vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO ||
+            vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS ||
+            vendorCommandId == CTAP_CONFIG_PHY_OPTS);
+#endif
+        if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE)
+        {
             if (!file_has_data(ef_keydev_enc)) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
@@ -186,6 +190,31 @@ int cbor_config(const uint8_t *data, size_t len) {
             file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
             low_flash_available();
         }
+
+#ifndef ENABLE_EMULATION
+        else if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
+            phy_data.vid = (vendorParam >> 16) & 0xFFFF;
+            phy_data.pid = vendorParam & 0xFFFF;
+            phy_data.vidpid_present = true;
+        }
+        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
+            phy_data.led_gpio = (uint8_t)vendorParam;
+            phy_data.led_gpio_present = true;
+        }
+        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
+            phy_data.led_brightness = (uint8_t)vendorParam;
+            phy_data.led_brightness_present = true;
+        }
+        else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
+            phy_data.opts = (uint16_t)vendorParam;
+        }
+        else {
+            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        }
+        if (is_phy && phy_save() != PICOKEY_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+#endif
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
@@ -228,35 +257,6 @@ int cbor_config(const uint8_t *data, size_t len) {
         set_opts(get_opts() | FIDO2_OPT_EA);
         goto err;
     }
-#ifndef ENABLE_EMULATION
-    else if (subcommand == 0x1B) {
-        if (vendorParam == 0) {
-            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-        }
-        if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
-            phy_data.vid = (vendorParam >> 16) & 0xFFFF;
-            phy_data.pid = vendorParam & 0xFFFF;
-            phy_data.vidpid_present = true;
-        }
-        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
-            phy_data.led_gpio = (uint8_t)vendorParam;
-            phy_data.led_gpio_present = true;
-        }
-        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
-            phy_data.led_brightness = (uint8_t)vendorParam;
-            phy_data.led_brightness_present = true;
-        }
-        else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
-            phy_data.opts = (uint16_t)vendorParam;
-        }
-        else {
-            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
-        }
-        if (phy_save() != PICOKEY_OK) {
-            CBOR_ERROR(CTAP2_ERR_PROCESSING);
-        }
-    }
-#endif
     else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
     }
