@@ -44,6 +44,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     int64_t kty = 2, hmac_alg = 0, crv = 0;
     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
     bool hmac_secret_mc = false;
+    const bool *pin_complexity_policy = NULL;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
     CredExtensions extensions = { 0 };
@@ -162,6 +163,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", extensions.credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", extensions.thirdPartyPayment);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "pinComplexityPolicy", pin_complexity_policy);
+
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -440,6 +443,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (hmac_secret_mc) {
             l++;
         }
+        if (pin_complexity_policy == ptrue) {
+            l++;
+        }
         if (l > 0) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
             if (extensions.credBlob.present == true) {
@@ -451,12 +457,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_CHECK(cbor_encode_uint(&mapEncoder, extensions.credProtect));
             }
             if (extensions.hmac_secret == ptrue) {
-
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret"));
                 CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
             }
             if (minPinLen > 0) {
-
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "minPinLength"));
                 CBOR_CHECK(cbor_encode_uint(&mapEncoder, minPinLen));
             }
@@ -510,6 +514,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 }
                 encrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, out1, (uint16_t)(salt_enc.len - poff), hmac_res);
                 CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, hmac_res, salt_enc.len));
+            }
+            if (pin_complexity_policy == ptrue) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "pinComplexityPolicy"));
+                file_t *ef_pin_complexity_policy = search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
+                CBOR_CHECK(cbor_encode_boolean(&mapEncoder, file_has_data(ef_pin_complexity_policy)));
             }
 
             CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));

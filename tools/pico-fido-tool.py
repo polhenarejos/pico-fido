@@ -24,7 +24,7 @@ import argparse
 import platform
 from binascii import hexlify
 from threading import Event
-from typing import Mapping, Any, Optional, Callable
+from typing import List, Mapping, Any, Optional, Callable
 import struct
 import urllib.request
 import json
@@ -77,6 +77,7 @@ class VendorConfig(Config):
         VENDOR_COMMAND_ID         = 0x01
         VENDOR_PARAM_BYTESTRING   = 0x02
         VENDOR_PARAM_INT          = 0x03
+        VENDOR_PARAM_TEXTSTRING   = 0x04
 
     class CMD(IntEnum):
         CONFIG_AUT_ENABLE       = 0x03e43f56b34285e2
@@ -86,6 +87,7 @@ class VendorConfig(Config):
         CONFIG_PHY_LED_BTNESS   = 0x76a85945985d02fd
         CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
         CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
+        CONFIG_PIN_POLICY       = 0x6c07d70fe96c3897
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -154,6 +156,20 @@ class VendorConfig(Config):
                 VendorConfig.PARAM.VENDOR_PARAM_BYTESTRING: der
             },
         )
+
+    def pin_policy(self, url: bytes|str = None, policy: int = None):
+        if (url is not None or policy is not None):
+            params = { VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PIN_POLICY }
+            if (url is not None):
+                if (isinstance(url, str)):
+                    url = url.encode()
+                params[VendorConfig.PARAM.VENDOR_PARAM_BYTESTRING] = url
+            if (policy is not None):
+                params[VendorConfig.PARAM.VENDOR_PARAM_INT] = policy
+            self._call(
+                Config.CMD.VENDOR_PROTOTYPE,
+                params,
+            )
 
 class Ctap2Vendor(Ctap2):
     def __init__(self, device: CtapDevice, strict_cbor: bool = True):
@@ -486,6 +502,18 @@ class Vendor:
     def enable_enterprise_attestation(self):
         self.vcfg.enable_enterprise_attestation()
 
+    def set_min_pin_length(self, length, rpids: list[str] = None, url=None):
+        params = {
+            Config.PARAM.NEW_MIN_PIN_LENGTH: length,
+            Config.PARAM.MIN_PIN_LENGTH_RPIDS: rpids if rpids else None,
+        }
+        self.vcfg.set_min_pin_length(
+            min_pin_length=length,
+            rp_ids=rpids if rpids else None,
+        )
+        self.vcfg.pin_policy(url=url.encode() if url else None)
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -515,6 +543,11 @@ def parse_args():
     parser_phy_optdimm.add_argument('value', choices=['enable', 'disable'], help='Enable/Disable LED dimming.', nargs='?')
 
     parser_mem = subparser.add_parser('memory', help='Get current memory usage.')
+
+    parser_pin_policy = subparser.add_parser('pin_policy', help='Manage PIN policy.')
+    parser_pin_policy.add_argument('length', type=int, help='Minimum PIN length (4-63).')
+    parser_pin_policy.add_argument('--rpids', help='Comma separated list of Relying Party IDs that have authorization to receive minimum PIN length.')
+    parser_pin_policy.add_argument('--url', help='URL where the user can consult PIN policy.')
 
     args = parser.parse_args()
     return args
@@ -584,6 +617,14 @@ def memory(vdr: Vendor, args):
     print(f'\tFlash size: {mem["size"]/1024:.2f} kilobytes')
     print(f'\tFiles: {mem["files"]}')
 
+
+def pin_policy(vdr: Vendor, args):
+    rpids = None
+    if (args.rpids):
+        rpids = args.rpids.split(',')
+    vdr.set_min_pin_length(args.length, rpids, args.url)
+
+
 def main(args):
     print('Pico Fido Tool v1.10')
     print('Author: Pol Henarejos')
@@ -607,6 +648,9 @@ def main(args):
         phy(vdr, args)
     elif (args.command == 'memory'):
         memory(vdr, args)
+    elif (args.command == 'pin_policy'):
+        pin_policy(vdr, args)
+
 
 def run():
     args = parse_args()

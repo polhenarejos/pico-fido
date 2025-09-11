@@ -40,7 +40,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborError error = CborNoError;
     uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0, vendorParamInt = 0;
     CborByteString pinUvAuthParam = { 0 }, vendorParamByteString = { 0 };
-    CborCharString minPinLengthRPIDs[32] = { 0 };
+    CborCharString minPinLengthRPIDs[32] = { 0 }, vendorParamTextString = { 0 };
     size_t resp_size = 0, raw_subpara_len = 0, minPinLengthRPIDs_len = 0;
     CborEncoder encoder;
     //CborEncoder mapEncoder;
@@ -78,6 +78,9 @@ int cbor_config(const uint8_t *data, size_t len) {
                     }
                     else if (subpara == 0x03) {
                         CBOR_FIELD_GET_UINT(vendorParamInt, 2);
+                    }
+                    else if (subpara == 0x04) {
+                        CBOR_FIELD_GET_TEXT(vendorParamTextString, 2);
                     }
                 }
                 else if (subcommand == 0x03) { // Extensions
@@ -224,6 +227,21 @@ int cbor_config(const uint8_t *data, size_t len) {
             }
             low_flash_available();
         }
+        else if (vendorCommandId == CTAP_CONFIG_PIN_POLICY) {
+            file_t *ef_pin_policy = file_new(EF_PIN_COMPLEXITY_POLICY);
+            if (ef_pin_policy) {
+                uint8_t *val = calloc(1, 2 + vendorParamByteString.len);
+                if (val) {
+                    // Not ready yet for integer param
+                    // val[0] = (uint8_t)(vendorParamInt >> 8);
+                    // val[1] = (uint8_t)(vendorParamInt & 0xFF);
+                    memcpy(val + 2, vendorParamByteString.data, vendorParamByteString.len);
+                    file_put_data(ef_pin_policy, val, 2 + vendorParamByteString.len);
+                    free(val);
+                }
+            }
+            low_flash_available();
+        }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
@@ -275,6 +293,7 @@ int cbor_config(const uint8_t *data, size_t len) {
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(vendorParamByteString);
+    CBOR_FREE_BYTE_STRING(vendorParamTextString);
     for (size_t i = 0; i < minPinLengthRPIDs_len; i++) {
         CBOR_FREE_BYTE_STRING(minPinLengthRPIDs[i]);
     }
