@@ -38,8 +38,8 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
-    uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0, vendorParam = 0;
-    CborByteString pinUvAuthParam = { 0 }, vendorAutCt = { 0 };
+    uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0, vendorParamInt = 0;
+    CborByteString pinUvAuthParam = { 0 }, vendorParamByteString = { 0 };
     CborCharString minPinLengthRPIDs[32] = { 0 };
     size_t resp_size = 0, raw_subpara_len = 0, minPinLengthRPIDs_len = 0;
     CborEncoder encoder;
@@ -74,10 +74,10 @@ int cbor_config(const uint8_t *data, size_t len) {
                         CBOR_FIELD_GET_UINT(vendorCommandId, 2);
                     }
                     else if (subpara == 0x02) {
-                        CBOR_FIELD_GET_BYTES(vendorAutCt, 2);
+                        CBOR_FIELD_GET_BYTES(vendorParamByteString, 2);
                     }
                     else if (subpara == 0x03) {
-                        CBOR_FIELD_GET_UINT(vendorParam, 2);
+                        CBOR_FIELD_GET_UINT(vendorParamInt, 2);
                     }
                 }
                 else if (subcommand == 0x03) { // Extensions
@@ -147,8 +147,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS ||
             vendorCommandId == CTAP_CONFIG_PHY_OPTS);
 #endif
-        if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE)
-        {
+        if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE){
             if (!file_has_data(ef_keydev_enc)) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
@@ -169,7 +168,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             }
 
             mbedtls_chachapoly_context chatx;
-            int ret = mse_decrypt_ct(vendorAutCt.data, vendorAutCt.len);
+            int ret = mse_decrypt_ct(vendorParamByteString.data, vendorParamByteString.len);
             if (ret != 0) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
@@ -177,7 +176,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             uint8_t key_dev_enc[12 + 32 + 16];
             random_gen(NULL, key_dev_enc, 12);
             mbedtls_chachapoly_init(&chatx);
-            mbedtls_chachapoly_setkey(&chatx, vendorAutCt.data);
+            mbedtls_chachapoly_setkey(&chatx, vendorParamByteString.data);
             ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, file_get_size(ef_keydev), key_dev_enc, NULL, 0, file_get_data(ef_keydev), key_dev_enc + 12, key_dev_enc + 12 + file_get_size(ef_keydev));
             mbedtls_chachapoly_free(&chatx);
             if (ret != 0) {
@@ -193,20 +192,20 @@ int cbor_config(const uint8_t *data, size_t len) {
 
 #ifndef ENABLE_EMULATION
         else if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
-            phy_data.vid = (vendorParam >> 16) & 0xFFFF;
-            phy_data.pid = vendorParam & 0xFFFF;
+            phy_data.vid = (vendorParamInt >> 16) & 0xFFFF;
+            phy_data.pid = vendorParamInt & 0xFFFF;
             phy_data.vidpid_present = true;
         }
         else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
-            phy_data.led_gpio = (uint8_t)vendorParam;
+            phy_data.led_gpio = (uint8_t)vendorParamInt;
             phy_data.led_gpio_present = true;
         }
         else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
-            phy_data.led_brightness = (uint8_t)vendorParam;
+            phy_data.led_brightness = (uint8_t)vendorParamInt;
             phy_data.led_brightness_present = true;
         }
         else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
-            phy_data.opts = (uint16_t)vendorParam;
+            phy_data.opts = (uint16_t)vendorParamInt;
         }
         else {
             CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
@@ -215,6 +214,16 @@ int cbor_config(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_PROCESSING);
         }
 #endif
+        else if (vendorCommandId == CTAP_CONFIG_EA_UPLOAD) {
+            if (vendorParamByteString.present == false) {
+                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+            }
+            file_t *ef_ee_ea = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
+            if (ef_ee_ea) {
+                file_put_data(ef_ee_ea, vendorParamByteString.data, (uint16_t)vendorParamByteString.len);
+            }
+            low_flash_available();
+        }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
@@ -265,7 +274,7 @@ int cbor_config(const uint8_t *data, size_t len) {
 
 err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
-    CBOR_FREE_BYTE_STRING(vendorAutCt);
+    CBOR_FREE_BYTE_STRING(vendorParamByteString);
     for (size_t i = 0; i < minPinLengthRPIDs_len; i++) {
         CBOR_FREE_BYTE_STRING(minPinLengthRPIDs[i]);
     }

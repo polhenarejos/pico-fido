@@ -75,16 +75,17 @@ def get_pki_data(url, data=None, method='GET'):
 class VendorConfig(Config):
     class PARAM(IntEnum):
         VENDOR_COMMAND_ID         = 0x01
-        VENDOR_AUT_CT             = 0x02
-        VENDOR_PARAM              = 0x03
+        VENDOR_PARAM_BYTESTRING   = 0x02
+        VENDOR_PARAM_INT          = 0x03
 
     class CMD(IntEnum):
         CONFIG_AUT_ENABLE       = 0x03e43f56b34285e2
         CONFIG_AUT_DISABLE      = 0x1831a40f04a25ed9
+        CONFIG_EA_UPLOAD        = 0x66f2a674c29a8dcf
         CONFIG_PHY_VIDPID       = 0x6fcb19b0cbe3acfa
-        CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
-        CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
         CONFIG_PHY_LED_BTNESS   = 0x76a85945985d02fd
+        CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
+        CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -97,7 +98,7 @@ class VendorConfig(Config):
             Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_ENABLE,
-                VendorConfig.PARAM.VENDOR_AUT_CT: ct
+                VendorConfig.PARAM.VENDOR_PARAM_BYTESTRING: ct
             },
         )
 
@@ -114,7 +115,7 @@ class VendorConfig(Config):
             Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_VIDPID,
-                VendorConfig.PARAM.VENDOR_PARAM: (vid & 0xFFFF) << 16 | pid
+                VendorConfig.PARAM.VENDOR_PARAM_INT: (vid & 0xFFFF) << 16 | pid
             },
         )
 
@@ -123,7 +124,7 @@ class VendorConfig(Config):
             Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_GPIO,
-                VendorConfig.PARAM.VENDOR_PARAM: gpio
+                VendorConfig.PARAM.VENDOR_PARAM_INT: gpio
             },
         )
 
@@ -132,7 +133,7 @@ class VendorConfig(Config):
             Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_BTNESS,
-                VendorConfig.PARAM.VENDOR_PARAM: brightness
+                VendorConfig.PARAM.VENDOR_PARAM_INT: brightness
             },
         )
 
@@ -141,7 +142,16 @@ class VendorConfig(Config):
             Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_OPTS,
-                VendorConfig.PARAM.VENDOR_PARAM: opts
+                VendorConfig.PARAM.VENDOR_PARAM_INT: opts
+            },
+        )
+
+    def upload_ea(self, der):
+        self._call(
+            Config.CMD.VENDOR_PROTOTYPE,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_EA_UPLOAD,
+                VendorConfig.PARAM.VENDOR_PARAM_BYTESTRING: der
             },
         )
 
@@ -242,7 +252,6 @@ class Vendor:
         DISABLE             = 0x02
         KEY_AGREEMENT       = 0x01
         EA_CSR              = 0x01
-        EA_UPLOAD           = 0x02
 
     class RESP(IntEnum):
         PARAM       = 0x01
@@ -430,13 +439,7 @@ class Vendor:
         )[Vendor.RESP.PARAM]
 
     def upload_ea(self, der):
-        self._call(
-            Vendor.CMD.VENDOR_EA,
-            Vendor.SUBCMD.EA_UPLOAD,
-            {
-                Vendor.PARAM.PARAM: der
-            }
-        )
+        self.vcfg.upload_ea(der)
 
     def vidpid(self, vid, pid):
         return self.vcfg.vidpid(vid, pid)
@@ -480,6 +483,9 @@ class Vendor:
             )
         return { 'free': resp[1], 'used': resp[2], 'total': resp[3], 'files': resp[4], 'size': resp[5] }
 
+    def enable_enterprise_attestation(self):
+        self.vcfg.enable_enterprise_attestation()
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -492,7 +498,7 @@ def parse_args():
     parser_backup.add_argument('filename', help='File to save or load the backup.')
 
     parser_attestation = subparser.add_parser('attestation', help='Manages Enterprise Attestation')
-    parser_attestation.add_argument('subcommand', choices=['csr'])
+    parser_attestation.add_argument('subcommand', choices=['csr','enable'])
     parser_attestation.add_argument('--filename', help='Uploads the certificate filename to the device as enterprise attestation certificate. If not provided, it will generate an enterprise attestation certificate automatically.')
 
     parser_phy = subparser.add_parser('phy', help='Set PHY options.')
@@ -513,7 +519,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def secure(vdr, args):
+def secure(vdr: Vendor, args):
     if (args.subcommand == 'enable'):
         vdr.enable_device_aut()
     elif (args.subcommand == 'unlock'):
@@ -521,13 +527,13 @@ def secure(vdr, args):
     elif (args.subcommand == 'disable'):
         vdr.disable_device_aut()
 
-def backup(vdr, args):
+def backup(vdr: Vendor, args):
     if (args.subcommand == 'save'):
         vdr.backup_save(args.filename)
     elif (args.subcommand == 'load'):
         vdr.backup_load(args.filename)
 
-def attestation(vdr, args):
+def attestation(vdr: Vendor, args):
     if (args.subcommand == 'csr'):
         if (args.filename is None):
             csr = x509.load_der_x509_csr(vdr.csr())
@@ -542,8 +548,10 @@ def attestation(vdr, args):
                 except ValueError:
                     cert = x509.load_pem_x509_certificate(dataf)
         vdr.upload_ea(cert.public_bytes(Encoding.DER))
+    elif (args.subcommand == 'enable'):
+        vdr.enable_enterprise_attestation()
 
-def phy(vdr, args):
+def phy(vdr: Vendor, args):
     val = args.value if 'value' in args else None
     if (val):
         if (args.subcommand == 'vidpid'):
@@ -567,7 +575,7 @@ def phy(vdr, args):
     else:
         print('Command executed successfully. Please, restart your Pico Key.')
 
-def memory(vdr, args):
+def memory(vdr: Vendor, args):
     mem = vdr.memory()
     print(f'Memory usage:')
     print(f'\tFree: {mem["free"]/1024:.2f} kilobytes ({mem["free"]*100/mem["total"]:.2f}%)')
