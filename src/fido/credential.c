@@ -429,16 +429,20 @@ int credential_derive_resident(const uint8_t *cred_id, size_t cred_id_len, uint8
     memset(outk, 0, CRED_RESIDENT_LEN);
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     uint8_t *cred_idr = outk + CRED_RESIDENT_HEADER_LEN;
+    mbedtls_md_hmac(md_info, cred_idr, 32, pico_serial.id, sizeof(pico_serial.id), outk);
+    memcpy(outk + 4, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN);
+    outk[4 + CRED_PROTO_RESIDENT_LEN] = 0x00;
+    outk[4 + CRED_PROTO_RESIDENT_LEN + 1] = 0x00;
+
     mbedtls_md_hmac(md_info, cred_idr, 32, (uint8_t *) "SLIP-0022", 9, cred_idr);
     mbedtls_md_hmac(md_info, cred_idr, 32, (uint8_t *) cred_id, CRED_PROTO_LEN, cred_idr);
     mbedtls_md_hmac(md_info, cred_idr, 32, (uint8_t *) "resident", 8, cred_idr);
     mbedtls_md_hmac(md_info, cred_idr, 32, cred_id, cred_id_len, cred_idr);
-    memcpy(outk, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN);
     return 0;
 }
 
 bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len) {
-    return memcmp(cred_id, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN) == 0;
+    return memcmp(cred_id + 4, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN) == 0;
 }
 
 int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Credential *cred) {

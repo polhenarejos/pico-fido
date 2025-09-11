@@ -70,7 +70,7 @@ typedef struct Credential {
 
 #define CRED_PROTO_RESIDENT                 CRED_PROTO_23_S
 #define CRED_PROTO_RESIDENT_LEN             4
-#define CRED_RESIDENT_HEADER_LEN            (CRED_PROTO_RESIDENT_LEN + 4)
+#define CRED_RESIDENT_HEADER_LEN            (CRED_PROTO_RESIDENT_LEN + 6)
 #define CRED_RESIDENT_LEN                   (CRED_RESIDENT_HEADER_LEN + 32)
 
 typedef enum
