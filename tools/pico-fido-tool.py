@@ -86,7 +86,7 @@ class VendorConfig(Config):
         CONFIG_PHY_VIDPID       = 0x6fcb19b0cbe3acfa
         CONFIG_PHY_LED_BTNESS   = 0x76a85945985d02fd
         CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
-        CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
+        CONFIG_PHY_OPTS         = 0x269f3b09eceb805f
         CONFIG_PIN_POLICY       = 0x6c07d70fe96c3897
 
     class RESP(IntEnum):

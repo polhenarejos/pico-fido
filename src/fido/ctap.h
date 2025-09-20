@@ -120,7 +120,7 @@ typedef struct {
 #define CTAP_CONFIG_PHY_VIDPID      0x6fcb19b0cbe3acfa
 #define CTAP_CONFIG_PHY_LED_BTNESS  0x76a85945985d02fd
 #define CTAP_CONFIG_PHY_LED_GPIO    0x7b392a394de9f948
-#define CTAP_CONFIG_PHY_OPTS        0x969f3b09eceb805f
+#define CTAP_CONFIG_PHY_OPTS        0x269f3b09eceb805f
 #endif
 
 #define CTAP_VENDOR_CBOR            (CTAPHID_VENDOR_FIRST + 1)
