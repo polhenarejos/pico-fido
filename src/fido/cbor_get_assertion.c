@@ -18,7 +18,7 @@
 #include "pico_keys.h"
 #include "cbor.h"
 #include "ctap.h"
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"

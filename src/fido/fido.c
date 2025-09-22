@@ -28,7 +28,7 @@
 #if defined(USB_ITF_CCID)
 #include "ccid/ccid.h"
 #endif
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include <math.h>

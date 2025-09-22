@@ -16,7 +16,7 @@
  */
 
 #include "pico_keys.h"
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "pico/stdlib.h"
 #endif
 #include "hid/ctap_hid.h"

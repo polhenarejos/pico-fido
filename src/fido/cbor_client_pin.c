@@ -28,7 +28,7 @@
 #include "cbor.h"
 #include "ctap.h"
 #include "ctap2_cbor.h"
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"

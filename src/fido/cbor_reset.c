@@ -19,7 +19,7 @@
 #include "file.h"
 #include "fido.h"
 #include "ctap.h"
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "bsp/board.h"
 #endif
 #ifdef ESP_PLATFORM

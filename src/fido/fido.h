@@ -18,7 +18,7 @@
 #ifndef _FIDO_H_
 #define _FIDO_H_
 
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "pico/stdlib.h"
 #endif
 #ifndef ESP_PLATFORM
