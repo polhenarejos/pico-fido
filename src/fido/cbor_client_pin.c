@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #ifndef ESP_PLATFORM
 #include "common.h"
 #else
@@ -35,7 +36,6 @@
 #include "files.h"
 #include "random.h"
 #include "crypto_utils.h"
-#include "pico_keys.h"
 #include "apdu.h"
 #include "kek.h"
 

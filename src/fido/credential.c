@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
@@ -26,7 +27,6 @@
 #include "ctap.h"
 #include "random.h"
 #include "files.h"
-#include "pico_keys.h"
 #include "otp.h"
 
 int credential_derive_chacha_key(uint8_t *outk, const uint8_t *);

@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "cbor.h"
 #include "ctap.h"
 #if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
@@ -24,7 +25,6 @@
 #include "fido.h"
 #include "files.h"
 #include "crypto_utils.h"
-#include "pico_keys.h"
 #include "apdu.h"
 #include "cbor_make_credential.h"
 #include "credential.h"

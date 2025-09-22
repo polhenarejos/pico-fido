@@ -31,11 +31,7 @@
 #ifdef MBEDTLS_EDDSA_C
 #include "mbedtls/eddsa.h"
 #endif
-#ifndef ENABLE_EMULATION
 #include "hid/ctap_hid.h"
-#else
-#include <stdbool.h>
-#endif
 
 #define CTAP_PUBKEY_LEN (65)
 #define KEY_PATH_LEN (32)

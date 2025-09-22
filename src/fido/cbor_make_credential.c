@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "cbor_make_credential.h"
 #include "ctap2_cbor.h"
 #include "hid/ctap_hid.h"
@@ -25,7 +26,6 @@
 #include "credential.h"
 #include "mbedtls/sha256.h"
 #include "random.h"
-#include "pico_keys.h"
 #include "crypto_utils.h"
 
 int cbor_make_credential(const uint8_t *data, size_t len) {

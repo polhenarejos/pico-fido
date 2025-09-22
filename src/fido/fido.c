@@ -15,9 +15,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "fido.h"
 #include "kek.h"
-#include "pico_keys.h"
 #include "apdu.h"
 #include "ctap.h"
 #include "files.h"
@@ -25,7 +25,7 @@
 #include "random.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/hkdf.h"
-#if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
+#if defined(USB_ITF_CCID)
 #include "ccid/ccid.h"
 #endif
 #if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)

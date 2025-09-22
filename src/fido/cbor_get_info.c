@@ -15,6 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "ctap2_cbor.h"
 #include "hid/ctap_hid.h"
 #include "fido.h"

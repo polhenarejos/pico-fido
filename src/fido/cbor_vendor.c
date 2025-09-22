@@ -15,13 +15,13 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
 #include "hid/ctap_hid.h"
 #include "files.h"
 #include "apdu.h"
-#include "pico_keys.h"
 #include "random.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
