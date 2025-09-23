@@ -459,12 +459,14 @@ void scan_all() {
 extern void init_otp();
 void init_fido() {
     scan_all();
+#ifdef ENABLE_OTP_APP
     init_otp();
+#endif
 }
 
 bool wait_button_pressed() {
     uint32_t val = EV_PRESS_BUTTON;
-#ifndef ENABLE_EMULATION
+#if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
     queue_try_add(&card_to_usb_q, &val);
     do {
         queue_remove_blocking(&usb_to_card_q, &val);

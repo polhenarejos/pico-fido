@@ -216,6 +216,7 @@ int otp_button_pressed(uint8_t slot) {
     if (otp_config->cfg_flags & CHAL_YUBICO && otp_config->tkt_flags & CHAL_RESP) {
         return 2;
     }
+#ifdef ENABLE_OATH_APP
     if (otp_config->tkt_flags & OATH_HOTP) {
         uint8_t tmp_key[KEY_SIZE + 2];
         tmp_key[0] = 0x01;
@@ -257,6 +258,7 @@ int otp_button_pressed(uint8_t slot) {
             append_keyboard_buffer((const uint8_t *) "\r", 1);
         }
     }
+#endif
     else if (otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET) {
         uint8_t fixed_size = FIXED_SIZE + UID_SIZE + KEY_SIZE;
         if (otp_config->cfg_flags & SHORT_TICKET) { // Not clear which is the purpose of SHORT_TICKET
