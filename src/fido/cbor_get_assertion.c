@@ -364,7 +364,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     if (creds[i].extensions.credProtect == CRED_PROT_UV_REQUIRED && !(flags & FIDO2_AUT_FLAG_UV)) {
                         credential_free(&creds[i]);
                     }
-                    else if (creds[i].extensions.credProtect == CRED_PROT_UV_OPTIONAL_WITH_LIST && resident == true && !(flags & FIDO2_AUT_FLAG_UV)) {
+                    else if (creds[i].extensions.credProtect == CRED_PROT_UV_OPTIONAL_WITH_LIST && allowList_len == 0 && !(flags & FIDO2_AUT_FLAG_UV)) {
                         credential_free(&creds[i]);
                     }
                     else {
