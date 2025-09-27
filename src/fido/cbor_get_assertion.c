@@ -395,8 +395,24 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     if (strcmp(allowList[e].type.data, "public-key") != 0) {
                         continue;
                     }
-                    if (credential_verify(allowList[e].id.data, allowList[e].id.len, rp_id_hash, true) == 0) {
-                        numberOfCredentials++;
+                    if (credential_is_resident(allowList[e].id.data, allowList[e].id.len)) {
+                        for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
+                            file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+                            if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
+                                continue;
+                            }
+                            if (memcmp(file_get_data(ef) + 32, allowList[e].id.data, CRED_RESIDENT_LEN) == 0) {
+                                if (credential_verify(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, true) == 0) {
+                                    numberOfCredentials++;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    else {
+                        if (credential_verify(allowList[e].id.data, allowList[e].id.len, rp_id_hash, true) == 0) {
+                            numberOfCredentials++;
+                        }
                     }
                 }
             }
