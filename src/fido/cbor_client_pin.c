@@ -420,12 +420,13 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (pin_len < minPin) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
-        uint8_t hsh[34], dhash[32];
+        uint8_t hsh[35], dhash[32];
         hsh[0] = MAX_PIN_RETRIES;
         hsh[1] = pin_len;
+        hsh[2] = 1; // New format indicator
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, dhash);
-        double_hash_pin(dhash, 16, hsh + 2);
-        file_put_data(ef_pin, hsh, 2 + 32);
+        double_hash_pin_otp(dhash, 16, hsh + 3);
+        file_put_data(ef_pin, hsh, sizeof(hsh));
         low_flash_available();
 
         ret = check_mkek_encrypted(dhash);
@@ -475,10 +476,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
-        uint8_t pin_data[34];
-        memcpy(pin_data, file_get_data(ef_pin), 34);
+        uint8_t pin_data[35];
+        memcpy(pin_data, file_get_data(ef_pin), file_get_size(ef_pin));
         pin_data[0] -= 1;
-        file_put_data(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, pin_data, file_get_size(ef_pin));
         low_flash_available();
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64];
@@ -487,9 +488,16 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
-        uint8_t dhash[32];
-        double_hash_pin(paddedNewPin, 16, dhash);
-        if (memcmp(dhash, file_get_data(ef_pin) + 2, 32) != 0) {
+        uint8_t dhash[32], off = 3;
+        if (file_get_size(ef_pin) == 34) {
+            off = 2;
+            double_hash_pin(paddedNewPin, 16, dhash);
+        }
+        else {
+            double_hash_pin_otp(paddedNewPin, 16, dhash);
+        }
+
+        if (memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
@@ -502,6 +510,11 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             else {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
             }
+        }
+        if (off == 2) {
+            // Upgrade pin file to new format
+            pin_data[2] = 1;      // New format indicator
+            double_hash_pin_otp(paddedNewPin, 16, pin_data + 3);
         }
         hash_multi(paddedNewPin, 16, session_pin);
         pin_data[0] = MAX_PIN_RETRIES;
@@ -528,13 +541,14 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (pin_len < minPin) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
-        uint8_t hsh[34];
-        hsh[0] = MAX_PIN_RETRIES;
-        hsh[1] = pin_len;
+        pin_data[0] = MAX_PIN_RETRIES;
+        pin_data[1] = pin_len;
+        pin_data[2] = 1; // New format indicator
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, dhash);
-        double_hash_pin(dhash, 16, hsh + 2);
+        double_hash_pin_otp(dhash, 16, pin_data + 3);
+
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 &&
-            memcmp(hsh + 2, file_get_data(ef_pin) + 2, 32) == 0) {
+            memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
 
@@ -543,7 +557,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (ret != PICOKEY_OK) {
             CBOR_ERROR(ret);
         }
-        file_put_data(ef_pin, hsh, 2 + 32);
+        file_put_data(ef_pin, pin_data, sizeof(pin_data));
 
         ret = check_mkek_encrypted(dhash);
         if (ret != PICOKEY_OK) {
@@ -556,7 +570,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (ret != PICOKEY_OK) {
             CBOR_ERROR(ret);
         }
-        mbedtls_platform_zeroize(hsh, sizeof(hsh));
+        mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(dhash, sizeof(dhash));
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
             uint8_t *tmpf = (uint8_t *) calloc(1, file_get_size(ef_minpin));
@@ -610,10 +624,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
-        uint8_t pin_data[34];
-        memcpy(pin_data, file_get_data(ef_pin), 34);
+        uint8_t pin_data[35];
+        memcpy(pin_data, file_get_data(ef_pin), file_get_size(ef_pin));
         pin_data[0] -= 1;
-        file_put_data(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, pin_data, file_get_size(ef_pin));
         low_flash_available();
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64], poff = ((uint8_t)pinUvAuthProtocol - 1) * IV_SIZE;
@@ -622,9 +636,15 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
-        uint8_t dhash[32];
-        double_hash_pin(paddedNewPin, 16, dhash);
-        if (memcmp(dhash, file_get_data(ef_pin) + 2, 32) != 0) {
+        uint8_t dhash[32], off = 3;
+        if (file_get_size(ef_pin) == 34) {
+            off = 2;
+            double_hash_pin(paddedNewPin, 16, dhash);
+        }
+        else {
+            double_hash_pin_otp(paddedNewPin, 16, dhash);
+        }
+        if (memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
@@ -647,6 +667,13 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         hash_multi(paddedNewPin, 16, session_pin);
         pin_data[0] = MAX_PIN_RETRIES;
         new_pin_mismatches = 0;
+
+        if (off == 2) {
+            // Upgrade pin file to new format
+            pin_data[2] = 1;      // New format indicator
+            double_hash_pin_otp(paddedNewPin, 16, pin_data + 3);
+        }
+
         file_put_data(ef_pin, pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(dhash, sizeof(dhash));
