@@ -442,6 +442,9 @@ int credential_derive_resident(const uint8_t *cred_id, size_t cred_id_len, uint8
 }
 
 bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len) {
+    if (cred_id_len < 4 + CRED_PROTO_RESIDENT_LEN) {
+        return false;
+    }
     return memcmp(cred_id + 4, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN) == 0;
 }
 
