@@ -51,7 +51,7 @@ extern void init_fido();
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
 extern int mbedtls_curve_to_fido(mbedtls_ecp_group_id id);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key);
-extern int load_keydev(uint8_t *key);
+extern int load_keydev(uint8_t key[32]);
 extern int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out);
 extern int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out);
 extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret);

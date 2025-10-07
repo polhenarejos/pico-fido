@@ -44,6 +44,7 @@ uint32_t max_usage_time_period  = 600 * 1000;
 bool needs_power_cycle = false;
 static mbedtls_ecdh_context hkey;
 static bool hkey_init = false;
+extern int encrypt_keydev_f1(const uint8_t keydev[32]);
 
 int beginUsingPinUvAuthToken(bool userIsPresent) {
     paut.user_present = userIsPresent;
@@ -199,11 +200,7 @@ int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in
     return -1;
 }
 
-int authenticate(uint8_t protocol,
-                 const uint8_t *key,
-                 const uint8_t *data,
-                 size_t len,
-                 uint8_t *sign) {
+int authenticate(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign) {
     uint8_t hmac[32];
     int ret =
         mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, hmac);
@@ -231,10 +228,10 @@ int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t l
         return ret;
     }
     if (protocol == 1) {
-        return memcmp(sign, hmac, 16);
+        return ct_memcmp(sign, hmac, 16);
     }
     else if (protocol == 2) {
-        return memcmp(sign, hmac, 32);
+        return ct_memcmp(sign, hmac, 32);
     }
     return -1;
 }
@@ -269,17 +266,15 @@ int pinUvAuthTokenUsageTimerObserver() {
     return 0;
 }
 
-int check_mkek_encrypted(const uint8_t *dhash) {
-    if (file_get_size(ef_mkek) == MKEK_IV_SIZE + MKEK_KEY_SIZE) {
-        hash_multi(dhash, 16, session_pin); // Only for storing MKEK
-        uint8_t mkek[MKEK_SIZE] = {0};
-        memcpy(mkek, file_get_data(ef_mkek), MKEK_IV_SIZE + MKEK_KEY_SIZE);
-        int ret = store_mkek(mkek);
-        mbedtls_platform_zeroize(mkek, sizeof(mkek));
-        mbedtls_platform_zeroize(session_pin, sizeof(session_pin));
-        if (ret != PICOKEY_OK) {
-            return CTAP2_ERR_PIN_AUTH_INVALID;
-        }
+int check_keydev_encrypted(const uint8_t pin_token[32]) {
+    if (file_get_data(ef_keydev) && *file_get_data(ef_keydev) == 0x01) {
+        uint8_t tmp_keydev[61];
+        tmp_keydev[0] = 0x02; // Change format to encrypted
+        encrypt_with_aad(pin_token, file_get_data(ef_keydev) + 1, 32, tmp_keydev + 1);
+        DEBUG_DATA(tmp_keydev, sizeof(tmp_keydev));
+        file_put_data(ef_keydev, tmp_keydev, sizeof(tmp_keydev));
+        mbedtls_platform_zeroize(tmp_keydev, sizeof(tmp_keydev));
+        low_flash_available();
     }
     return PICOKEY_OK;
 }
@@ -294,11 +289,11 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
     CborEncoder encoder, mapEncoder;
     CborValue map;
     CborError error = CborNoError;
-    CborByteString pinUvAuthParam = { 0 }, newPinEnc = { 0 }, pinHashEnc = { 0 }, kax = { 0 },
-                   kay = { 0 };
+    CborByteString pinUvAuthParam = { 0 }, newPinEnc = { 0 }, pinHashEnc = { 0 }, kax = { 0 }, kay = { 0 };
     CborCharString rpId = { 0 };
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
+    uint8_t keydev[32] = {0};
     if (hkey_init == false) {
         initialize();
     }
@@ -425,11 +420,12 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         hsh[1] = pin_len;
         hsh[2] = 1; // New format indicator
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, dhash);
-        double_hash_pin_otp(dhash, 16, hsh + 3);
+        pin_derive_verifier(dhash, 16, hsh + 3);
         file_put_data(ef_pin, hsh, sizeof(hsh));
         low_flash_available();
 
-        ret = check_mkek_encrypted(dhash);
+        pin_derive_session(dhash, 16, session_pin);
+        ret = check_keydev_encrypted(session_pin);
         if (ret != PICOKEY_OK) {
             CBOR_ERROR(ret);
         }
@@ -494,10 +490,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             double_hash_pin(paddedNewPin, 16, dhash);
         }
         else {
-            double_hash_pin_otp(paddedNewPin, 16, dhash);
+            pin_derive_verifier(paddedNewPin, 16, dhash);
         }
 
-        if (memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
+        if (ct_memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
@@ -514,12 +510,25 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (off == 2) {
             // Upgrade pin file to new format
             pin_data[2] = 1;      // New format indicator
-            double_hash_pin_otp(paddedNewPin, 16, pin_data + 3);
+            pin_derive_verifier(paddedNewPin, 16, pin_data + 3);
+
+            hash_multi(paddedNewPin, 16, session_pin);
+            ret = load_keydev(keydev);
+            if (ret != PICOKEY_OK) {
+                CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
+            }
+            encrypt_keydev_f1(keydev);
         }
-        hash_multi(paddedNewPin, 16, session_pin);
+        pin_derive_session(paddedNewPin, 16, session_pin);
         pin_data[0] = MAX_PIN_RETRIES;
         file_put_data(ef_pin, pin_data, sizeof(pin_data));
         low_flash_available();
+
+        ret = check_keydev_encrypted(session_pin);
+        if (ret != PICOKEY_OK) {
+            CBOR_ERROR(ret);
+        }
+
         new_pin_mismatches = 0;
         ret = decrypt((uint8_t)pinUvAuthProtocol, sharedSecret, newPinEnc.data, (uint16_t)newPinEnc.len, paddedNewPin);
         mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
@@ -541,35 +550,32 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (pin_len < minPin) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
+
+        // New PIN is valid and verified
+        ret = load_keydev(keydev);
+        if (ret != PICOKEY_OK) {
+            CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
+        }
+        encrypt_keydev_f1(keydev);
+
+        mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, dhash);
+        pin_derive_session(dhash, 16, session_pin);
+        ret = check_keydev_encrypted(session_pin);
+        if (ret != PICOKEY_OK) {
+            CBOR_ERROR(ret);
+        }
+        low_flash_available();
+
         pin_data[0] = MAX_PIN_RETRIES;
         pin_data[1] = pin_len;
         pin_data[2] = 1; // New format indicator
-        mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, dhash);
-        double_hash_pin_otp(dhash, 16, pin_data + 3);
+        pin_derive_verifier(dhash, 16, pin_data + 3);
 
-        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 &&
-            memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
+        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 && ct_memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
-        }
-
-        uint8_t mkek[MKEK_SIZE] = {0};
-        ret = load_mkek(mkek);
-        if (ret != PICOKEY_OK) {
-            CBOR_ERROR(ret);
         }
         file_put_data(ef_pin, pin_data, sizeof(pin_data));
 
-        ret = check_mkek_encrypted(dhash);
-        if (ret != PICOKEY_OK) {
-            CBOR_ERROR(ret);
-        }
-
-        hash_multi(dhash, 16, session_pin);
-        ret = store_mkek(mkek);
-        mbedtls_platform_zeroize(mkek, sizeof(mkek));
-        if (ret != PICOKEY_OK) {
-            CBOR_ERROR(ret);
-        }
         mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(dhash, sizeof(dhash));
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
@@ -642,11 +648,12 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             double_hash_pin(paddedNewPin, 16, dhash);
         }
         else {
-            double_hash_pin_otp(paddedNewPin, 16, dhash);
+            pin_derive_verifier(paddedNewPin, 16, dhash);
         }
-        if (memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
+        if (ct_memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+            mbedtls_platform_zeroize(dhash, sizeof(dhash));
             if (retries == 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
             }
@@ -658,25 +665,31 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
             }
         }
-
-        ret = check_mkek_encrypted(paddedNewPin);
-        if (ret != PICOKEY_OK) {
-            CBOR_ERROR(ret);
-        }
-
-        hash_multi(paddedNewPin, 16, session_pin);
-        pin_data[0] = MAX_PIN_RETRIES;
-        new_pin_mismatches = 0;
+        mbedtls_platform_zeroize(dhash, sizeof(dhash));
 
         if (off == 2) {
             // Upgrade pin file to new format
             pin_data[2] = 1;      // New format indicator
-            double_hash_pin_otp(paddedNewPin, 16, pin_data + 3);
+            pin_derive_verifier(paddedNewPin, 16, pin_data + 3);
+            hash_multi(paddedNewPin, 16, session_pin);
+            ret = load_keydev(keydev);
+            if (ret != PICOKEY_OK) {
+                CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
+            }
+            encrypt_keydev_f1(keydev);
         }
+
+        pin_derive_session(paddedNewPin, 16, session_pin);
+        ret = check_keydev_encrypted(session_pin);
+        if (ret != PICOKEY_OK) {
+            CBOR_ERROR(ret);
+        }
+
+        pin_data[0] = MAX_PIN_RETRIES;
+        new_pin_mismatches = 0;
 
         file_put_data(ef_pin, pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
-        mbedtls_platform_zeroize(dhash, sizeof(dhash));
 
         low_flash_available();
         file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
@@ -684,7 +697,6 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
         }
         uint8_t pinUvAuthToken_enc[32 + IV_SIZE], *pdata = NULL;
-        ;
         if (permissions & CTAP_PERMISSION_PCMR) {
             ppaut.permissions = CTAP_PERMISSION_PCMR;
             pdata = ppaut.data;
@@ -722,6 +734,7 @@ err:
     CBOR_FREE_BYTE_STRING(kax);
     CBOR_FREE_BYTE_STRING(kay);
     CBOR_FREE_BYTE_STRING(rpId);
+    mbedtls_platform_zeroize(keydev, sizeof(keydev));
     if (error != CborNoError) {
         if (error == CborErrorImproperValue) {
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
