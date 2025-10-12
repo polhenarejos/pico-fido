@@ -236,7 +236,7 @@ int cbor_config(const uint8_t *data, size_t len) {
                     // val[0] = (uint8_t)(vendorParamInt >> 8);
                     // val[1] = (uint8_t)(vendorParamInt & 0xFF);
                     memcpy(val + 2, vendorParamByteString.data, vendorParamByteString.len);
-                    file_put_data(ef_pin_policy, val, 2 + vendorParamByteString.len);
+                    file_put_data(ef_pin_policy, val, 2 + (uint16_t)vendorParamByteString.len);
                     free(val);
                 }
             }

@@ -427,7 +427,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                     CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
                 }
                 uint8_t newcred[MAX_CRED_ID_LENGTH];
-                size_t newcred_len = 0;
+                uint16_t newcred_len = 0;
                 if (credential_create(&cred.rpId, &cred.userId, &user.parent.name,
                                     &user.displayName, &cred.opts, &cred.extensions,
                                     cred.use_sign_count, (int)cred.alg,

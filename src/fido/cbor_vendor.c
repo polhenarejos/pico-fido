@@ -243,8 +243,8 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         if (vendorCmd == 0x01) {
             uint16_t opts = 0;
             if (file_has_data(ef_phy)) {
-                uint8_t *data = file_get_data(ef_phy);
-                opts = get_uint16_t_be(data + PHY_OPTS);
+                uint8_t *pdata = file_get_data(ef_phy);
+                opts = get_uint16_t_be(pdata + PHY_OPTS);
             }
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));

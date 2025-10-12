@@ -93,7 +93,7 @@ int credential_create(CborCharString *rpId,
                       int alg,
                       int curve,
                       uint8_t *cred_id,
-                      size_t *cred_id_len) {
+                      uint16_t *cred_id_len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
     uint8_t rp_id_hash[32];
@@ -150,7 +150,7 @@ int credential_create(CborCharString *rpId,
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cred_id);
-    *cred_id_len = CRED_PROTO_LEN + CRED_IV_LEN + rs + CRED_TAG_LEN + CRED_SILENT_TAG_LEN;
+    *cred_id_len = CRED_PROTO_LEN + CRED_IV_LEN + (uint16_t)rs + CRED_TAG_LEN + CRED_SILENT_TAG_LEN;
     uint8_t key[32] = {0};
     credential_derive_chacha_key(key, (const uint8_t *)CRED_PROTO);
     uint8_t iv[CRED_IV_LEN] = {0};

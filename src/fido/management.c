@@ -116,7 +116,7 @@ int man_get_config() {
     if (!file_has_data(ef)) {
         res_APDU[res_APDU_size++] = TAG_USB_ENABLED;
         res_APDU[res_APDU_size++] = 2;
-        uint16_t caps = 0;
+        caps = 0;
         if (cap_supported(CAP_FIDO2)) {
             caps |= CAP_FIDO2;
         }

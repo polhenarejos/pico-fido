@@ -90,7 +90,7 @@ extern int credential_create(CborCharString *rpId,
                              int alg,
                              int curve,
                              uint8_t *cred_id,
-                             size_t *cred_id_len);
+                             uint16_t *cred_id_len);
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
 extern int credential_load(const uint8_t *cred_id,

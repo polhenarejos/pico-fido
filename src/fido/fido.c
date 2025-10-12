@@ -168,7 +168,7 @@ int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key) {
     uint8_t key_path[KEY_PATH_LEN];
     memcpy(key_path, cred_id, KEY_PATH_LEN);
     *(uint32_t *) key_path = 0x80000000 | 10022;
-    for (int i = 1; i < KEY_PATH_ENTRIES; i++) {
+    for (size_t i = 1; i < KEY_PATH_ENTRIES; i++) {
         *(uint32_t *) (key_path + i * sizeof(uint32_t)) |= 0x80000000;
     }
     return derive_key(NULL, false, key_path, mbedtls_curve, key);
@@ -253,7 +253,7 @@ int load_keydev(uint8_t key[32]) {
 }
 
 int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *key) {
-    for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
+    for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
         uint32_t k = *(uint32_t *) &keyHandle[i * sizeof(uint32_t)];
         if (!(k & 0x80000000)) {
             return -1;
@@ -294,7 +294,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         return r;
     }
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
-    for (int i = 0; i < KEY_PATH_ENTRIES; i++) {
+    for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
         if (new_key == true) {
             uint32_t val = 0;
             random_gen(NULL, (uint8_t *) &val, sizeof(val));

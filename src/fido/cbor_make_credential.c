@@ -402,7 +402,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
 
     uint8_t cred_id[MAX_CRED_ID_LENGTH] = {0};
-    size_t cred_id_len = 0;
+    uint16_t cred_id_len = 0;
 
     CBOR_CHECK(credential_create(&rp.id, &user.id, &user.parent.name, &user.displayName, &options, &extensions, (!ka || ka->use_sign_count == ptrue), alg, curve, cred_id, &cred_id_len));
 
@@ -619,7 +619,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 #ifndef ENABLE_EMULATION
             uint8_t *p = (uint8_t *)user.parent.name.data + 5;
             if (memcmp(p, "CommissionProfile", 17) == 0) {
-                ret = phy_unserialize_data(user.id.data, user.id.len, &phy_data);
+                ret = phy_unserialize_data(user.id.data, (uint16_t)user.id.len, &phy_data);
                 if (ret == PICOKEY_OK) {
                     ret = phy_save();
                 }
