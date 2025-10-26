@@ -137,6 +137,34 @@ To run a subset of tests, use the `-k <test>` flag:
 pytest -k test_credprotect
 ```
 
+## License and Commercial Use
+
+This project is available under two editions:
+
+**Community Edition (FOSS)**
+- Released under the GNU Affero General Public License v3 (AGPLv3).
+- You are free to study, modify, and run the code, including for internal evaluation.
+- If you distribute modified binaries/firmware, OR if you run a modified version of this project as a network-accessible service, you must provide the corresponding source code to the users of that binary or service, as required by AGPLv3.
+- No warranty. No SLA. No guaranteed support.
+
+**Enterprise / Commercial Edition**
+- Proprietary license for organizations that want to:
+  - run this in production with multiple users/devices,
+  - integrate it into their own product/appliance,
+  - enforce corporate policies (PIN policy, admin/user roles, revocation),
+  - and *not* be required to publish derivative source code.
+- Includes access to enterprise-only features (bulk provisioning, multi-user policy controls, device inventory & revocation, custom attestation/identity), official signed builds, and an onboarding call.
+
+Typical licensing models:
+- Internal use (within one legal entity).
+- Redistribution / OEM (shipping this as part of your product).
+
+For commercial licensing and enterprise features, email pol@henarejos.me
+Subject: `ENTERPRISE LICENSE <your company name>`
+
+See `ENTERPRISE.md` for details.
+
+
 ## Credits
 Pico FIDO uses the following libraries or portion of code:
 - MbedTLS for cryptographic operations.
