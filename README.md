@@ -152,18 +152,37 @@ This project is available under two editions:
   - run this in production with multiple users/devices,
   - integrate it into their own product/appliance,
   - enforce corporate policies (PIN policy, admin/user roles, revocation),
+  - deploy it as an internal virtualized / cloud-style service,
   - and *not* be required to publish derivative source code.
-- Includes access to enterprise-only features (bulk provisioning, multi-user policy controls, device inventory & revocation, custom attestation/identity), official signed builds, and an onboarding call.
+- Base package includes:
+  - commercial license (no AGPLv3 disclosure obligation for your modifications / integration)
+  - onboarding call
+  - access to officially signed builds
+- Optional / on-demand enterprise components that can be added case-by-case:
+  - ability to operate in multi-user / multi-device environments
+  - device inventory, traceability and secure revocation/offboarding
+  - custom attestation, per-organization device identity / anti-cloning
+  - virtualization / internal "HSM or auth backend" service for multiple teams or tenants
+  - post-quantum (PQC) key material handling and secure PQC credential storage
+  - hierarchical deterministic key derivation (HD wallet–style key trees for per-user / per-tenant keys, firmware signing trees, etc.)
+  - cryptographically signed audit trail / tamper-evident logging
+  - dual-control / two-person approval for high-risk operations
+  - secure key escrow / disaster recovery strategy
+  - release-signing / supply-chain hardening toolchain
+  - policy-locked hardened mode ("FIPS-style profile")
+  - priority security-response SLA
+  - white-label demo / pre-sales bundle
 
 Typical licensing models:
-- Internal use (within one legal entity).
-- Redistribution / OEM (shipping this as part of your product).
+- Internal use (single legal entity, including internal private cloud / virtualized deployments).
+- OEM / Redistribution / Service (ship in your product OR offer it as a service to third parties).
+
+These options are scoped and priced individually depending on which components you actually need.
 
 For commercial licensing and enterprise features, email pol@henarejos.me
 Subject: `ENTERPRISE LICENSE <your company name>`
 
 See `ENTERPRISE.md` for details.
-
 
 ## Credits
 Pico FIDO uses the following libraries or portion of code:
