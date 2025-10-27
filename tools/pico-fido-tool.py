@@ -24,7 +24,7 @@ import argparse
 import platform
 from binascii import hexlify
 from threading import Event
-from typing import Mapping, Any, Optional, Callable
+from typing import List, Mapping, Any, Optional, Callable
 import struct
 import urllib.request
 import json
@@ -73,21 +73,21 @@ def get_pki_data(url, data=None, method='GET'):
     return j
 
 class VendorConfig(Config):
-
     class PARAM(IntEnum):
         VENDOR_COMMAND_ID         = 0x01
-        VENDOR_AUT_CT             = 0x02
-        VENDOR_PARAM              = 0x02
+        VENDOR_PARAM_BYTESTRING   = 0x02
+        VENDOR_PARAM_INT          = 0x03
+        VENDOR_PARAM_TEXTSTRING   = 0x04
 
     class CMD(IntEnum):
         CONFIG_AUT_ENABLE       = 0x03e43f56b34285e2
         CONFIG_AUT_DISABLE      = 0x1831a40f04a25ed9
-        CONFIG_VENDOR_PROTOTYPE = 0x7f
-        CONFIG_VENDOR_PHY       = 0x1b
+        CONFIG_EA_UPLOAD        = 0x66f2a674c29a8dcf
         CONFIG_PHY_VIDPID       = 0x6fcb19b0cbe3acfa
-        CONFIG_PHY_OPTS         = 0x969f3b09eceb805f
-        CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
         CONFIG_PHY_LED_BTNESS   = 0x76a85945985d02fd
+        CONFIG_PHY_LED_GPIO     = 0x7b392a394de9f948
+        CONFIG_PHY_OPTS         = 0x269f3b09eceb805f
+        CONFIG_PIN_POLICY       = 0x6c07d70fe96c3897
 
     class RESP(IntEnum):
         KEY_AGREEMENT = 0x01
@@ -97,16 +97,16 @@ class VendorConfig(Config):
 
     def enable_device_aut(self, ct):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
+            Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_ENABLE,
-                VendorConfig.PARAM.VENDOR_AUT_CT: ct
+                VendorConfig.PARAM.VENDOR_PARAM_BYTESTRING: ct
             },
         )
 
     def disable_device_aut(self):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PROTOTYPE,
+            Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_AUT_DISABLE
             },
@@ -114,39 +114,62 @@ class VendorConfig(Config):
 
     def vidpid(self, vid, pid):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_VIDPID,
-                VendorConfig.PARAM.VENDOR_PARAM: (vid & 0xFFFF) << 16 | pid
+                VendorConfig.PARAM.VENDOR_PARAM_INT: (vid & 0xFFFF) << 16 | pid
             },
         )
 
     def led_gpio(self, gpio):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_GPIO,
-                VendorConfig.PARAM.VENDOR_PARAM: gpio
+                VendorConfig.PARAM.VENDOR_PARAM_INT: gpio
             },
         )
 
     def led_brightness(self, brightness):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_LED_BTNESS,
-                VendorConfig.PARAM.VENDOR_PARAM: brightness
+                VendorConfig.PARAM.VENDOR_PARAM_INT: brightness
             },
         )
 
     def phy_opts(self, opts):
         self._call(
-            VendorConfig.CMD.CONFIG_VENDOR_PHY,
+            Config.CMD.VENDOR_PROTOTYPE,
             {
                 VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PHY_OPTS,
-                VendorConfig.PARAM.VENDOR_PARAM: opts
+                VendorConfig.PARAM.VENDOR_PARAM_INT: opts
             },
         )
+
+    def upload_ea(self, der):
+        self._call(
+            Config.CMD.VENDOR_PROTOTYPE,
+            {
+                VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_EA_UPLOAD,
+                VendorConfig.PARAM.VENDOR_PARAM_BYTESTRING: der
+            },
+        )
+
+    def pin_policy(self, url: bytes|str = None, policy: int = None):
+        if (url is not None or policy is not None):
+            params = { VendorConfig.PARAM.VENDOR_COMMAND_ID: VendorConfig.CMD.CONFIG_PIN_POLICY }
+            if (url is not None):
+                if (isinstance(url, str)):
+                    url = url.encode()
+                params[VendorConfig.PARAM.VENDOR_PARAM_BYTESTRING] = url
+            if (policy is not None):
+                params[VendorConfig.PARAM.VENDOR_PARAM_INT] = policy
+            self._call(
+                Config.CMD.VENDOR_PROTOTYPE,
+                params,
+            )
 
 class Ctap2Vendor(Ctap2):
     def __init__(self, device: CtapDevice, strict_cbor: bool = True):
@@ -245,7 +268,6 @@ class Vendor:
         DISABLE             = 0x02
         KEY_AGREEMENT       = 0x01
         EA_CSR              = 0x01
-        EA_UPLOAD           = 0x02
 
     class RESP(IntEnum):
         PARAM       = 0x01
@@ -433,13 +455,7 @@ class Vendor:
         )[Vendor.RESP.PARAM]
 
     def upload_ea(self, der):
-        self._call(
-            Vendor.CMD.VENDOR_EA,
-            Vendor.SUBCMD.EA_UPLOAD,
-            {
-                Vendor.PARAM.PARAM: der
-            }
-        )
+        self.vcfg.upload_ea(der)
 
     def vidpid(self, vid, pid):
         return self.vcfg.vidpid(vid, pid)
@@ -483,6 +499,21 @@ class Vendor:
             )
         return { 'free': resp[1], 'used': resp[2], 'total': resp[3], 'files': resp[4], 'size': resp[5] }
 
+    def enable_enterprise_attestation(self):
+        self.vcfg.enable_enterprise_attestation()
+
+    def set_min_pin_length(self, length, rpids: list[str] = None, url=None):
+        params = {
+            Config.PARAM.NEW_MIN_PIN_LENGTH: length,
+            Config.PARAM.MIN_PIN_LENGTH_RPIDS: rpids if rpids else None,
+        }
+        self.vcfg.set_min_pin_length(
+            min_pin_length=length,
+            rp_ids=rpids if rpids else None,
+        )
+        self.vcfg.pin_policy(url=url.encode() if url else None)
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(title="commands", dest="command")
@@ -495,7 +526,7 @@ def parse_args():
     parser_backup.add_argument('filename', help='File to save or load the backup.')
 
     parser_attestation = subparser.add_parser('attestation', help='Manages Enterprise Attestation')
-    parser_attestation.add_argument('subcommand', choices=['csr'])
+    parser_attestation.add_argument('subcommand', choices=['csr','enable'])
     parser_attestation.add_argument('--filename', help='Uploads the certificate filename to the device as enterprise attestation certificate. If not provided, it will generate an enterprise attestation certificate automatically.')
 
     parser_phy = subparser.add_parser('phy', help='Set PHY options.')
@@ -513,10 +544,15 @@ def parse_args():
 
     parser_mem = subparser.add_parser('memory', help='Get current memory usage.')
 
+    parser_pin_policy = subparser.add_parser('pin_policy', help='Manage PIN policy.')
+    parser_pin_policy.add_argument('length', type=int, help='Minimum PIN length (4-63).')
+    parser_pin_policy.add_argument('--rpids', help='Comma separated list of Relying Party IDs that have authorization to receive minimum PIN length.')
+    parser_pin_policy.add_argument('--url', help='URL where the user can consult PIN policy.')
+
     args = parser.parse_args()
     return args
 
-def secure(vdr, args):
+def secure(vdr: Vendor, args):
     if (args.subcommand == 'enable'):
         vdr.enable_device_aut()
     elif (args.subcommand == 'unlock'):
@@ -524,13 +560,13 @@ def secure(vdr, args):
     elif (args.subcommand == 'disable'):
         vdr.disable_device_aut()
 
-def backup(vdr, args):
+def backup(vdr: Vendor, args):
     if (args.subcommand == 'save'):
         vdr.backup_save(args.filename)
     elif (args.subcommand == 'load'):
         vdr.backup_load(args.filename)
 
-def attestation(vdr, args):
+def attestation(vdr: Vendor, args):
     if (args.subcommand == 'csr'):
         if (args.filename is None):
             csr = x509.load_der_x509_csr(vdr.csr())
@@ -545,8 +581,10 @@ def attestation(vdr, args):
                 except ValueError:
                     cert = x509.load_pem_x509_certificate(dataf)
         vdr.upload_ea(cert.public_bytes(Encoding.DER))
+    elif (args.subcommand == 'enable'):
+        vdr.enable_enterprise_attestation()
 
-def phy(vdr, args):
+def phy(vdr: Vendor, args):
     val = args.value if 'value' in args else None
     if (val):
         if (args.subcommand == 'vidpid'):
@@ -570,7 +608,7 @@ def phy(vdr, args):
     else:
         print('Command executed successfully. Please, restart your Pico Key.')
 
-def memory(vdr, args):
+def memory(vdr: Vendor, args):
     mem = vdr.memory()
     print(f'Memory usage:')
     print(f'\tFree: {mem["free"]/1024:.2f} kilobytes ({mem["free"]*100/mem["total"]:.2f}%)')
@@ -578,6 +616,14 @@ def memory(vdr, args):
     print(f'\tTotal: {mem["total"]/1024:.2f} kilobytes')
     print(f'\tFlash size: {mem["size"]/1024:.2f} kilobytes')
     print(f'\tFiles: {mem["files"]}')
+
+
+def pin_policy(vdr: Vendor, args):
+    rpids = None
+    if (args.rpids):
+        rpids = args.rpids.split(',')
+    vdr.set_min_pin_length(args.length, rpids, args.url)
+
 
 def main(args):
     print('Pico Fido Tool v1.10')
@@ -602,6 +648,9 @@ def main(args):
         phy(vdr, args)
     elif (args.command == 'memory'):
         memory(vdr, args)
+    elif (args.command == 'pin_policy'):
+        pin_policy(vdr, args)
+
 
 def run():
     args = parse_args()

@@ -20,12 +20,13 @@
 
 from http import client
 from fido2.hid import CtapHidDevice
-from fido2.client import Fido2Client, UserInteraction, ClientError, _Ctap1ClientBackend
+from fido2.client import Fido2Client, UserInteraction, ClientError, _Ctap1ClientBackend, DefaultClientDataCollector
 from fido2.attestation import FidoU2FAttestation
 from fido2.ctap2.pin import ClientPin
 from fido2.server import Fido2Server
 from fido2.ctap import CtapError
-from fido2.webauthn import CollectedClientData, PublicKeyCredentialParameters, PublicKeyCredentialType
+from fido2.webauthn import PublicKeyCredentialParameters, PublicKeyCredentialType, PublicKeyCredentialCreationOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, AuthenticatorSelectionCriteria, UserVerificationRequirement, PublicKeyCredentialRequestOptions
+from fido2.ctap2.extensions import HmacSecretExtension, LargeBlobExtension, CredBlobExtension, CredProtectExtension, MinPinLengthExtension, CredPropsExtension, ThirdPartyPaymentExtension
 from utils import *
 from fido2.cose import ES256
 import sys
@@ -70,11 +71,13 @@ class DeviceSelectCredential:
         pass
 
 class Device():
-    def __init__(self, origin="https://example.com", user_interaction=CliInteraction(),uv="discouraged",rp={"id": "example.com", "name": "Example RP"}, attestation="direct"):
+    def __init__(self, origin="https://example.com", user_interaction=CliInteraction(), uv="discouraged", rp={"id": "example.com", "name": "Example RP"}, attestation="direct"):
         self.__user = None
         self.__set_client(origin=origin, user_interaction=user_interaction, uv=uv)
         self.__set_server(rp=rp, attestation=attestation)
 
+    def __verify_rp(rp_id, origin):
+        return True
 
     def __set_client(self, origin, user_interaction, uv):
         self.__uv = uv
@@ -101,14 +104,23 @@ class Device():
             sys.exit(1)
 
         # Set up a FIDO 2 client using the origin https://example.com
-        self.__client = Fido2Client(self.__dev, self.__origin, user_interaction=self.__user_interaction)
+        extensions = [
+            HmacSecretExtension(allow_hmac_secret=True),
+            LargeBlobExtension(),
+            CredBlobExtension(),
+            CredProtectExtension(),
+            MinPinLengthExtension(),
+            CredPropsExtension(),
+            ThirdPartyPaymentExtension()
+        ]
+        self.__client = Fido2Client(self.__dev, client_data_collector=DefaultClientDataCollector(self.__origin, verify=Device.__verify_rp), user_interaction=self.__user_interaction, extensions=extensions)
 
         # Prefer UV if supported and configured
         if self.__client.info.options.get("uv") or self.__client.info.options.get("pinUvAuthToken"):
             self.__uv = "preferred"
             print("Authenticator supports User Verification")
 
-        self.__client1 = Fido2Client(self.__dev, self.__origin, user_interaction=self.__user_interaction)
+        self.__client1 = Fido2Client(self.__dev, client_data_collector=DefaultClientDataCollector(self.__origin, verify=Device.__verify_rp), user_interaction=self.__user_interaction)
         self.__client1._backend = _Ctap1ClientBackend(self.__dev, user_interaction=self.__user_interaction)
         self.ctap1 = self.__client1._backend.ctap1
 
@@ -117,7 +129,7 @@ class Device():
         self.__attestation = attestation
         self.__server = Fido2Server(self.__rp, attestation=self.__attestation)
         self.__server.allowed_algorithms = [
-            PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, p['alg'])
+            PublicKeyCredentialParameters(type=PublicKeyCredentialType.PUBLIC_KEY, alg=p['alg'])
             for p in self.__client._backend.info.algorithms
         ]
 
@@ -216,9 +228,7 @@ class Device():
                         'key_params':key_params}}
 
     def doMC(self, client_data=Ellipsis, rp=Ellipsis, user=Ellipsis, key_params=Ellipsis, exclude_list=None, extensions=None, rk=None, user_verification=None, enterprise_attestation=None, event=None, ctap1=False):
-        client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
-                    type=CollectedClientData.TYPE.CREATE, origin=self.__origin, challenge=os.urandom(32)
-                )
+        client_data = client_data if client_data is not Ellipsis else DefaultClientDataCollector(origin=self.__origin, verify=Device.__verify_rp)
         rp = rp if rp is not Ellipsis else self.__rp
         user = user if user is not Ellipsis else self.user()
         key_params = key_params if key_params is not Ellipsis else self.__server.allowed_algorithms
@@ -226,22 +236,31 @@ class Device():
             client = self.__client1
         else:
             client = self.__client
-        result = client._backend.do_make_credential(
-            client_data=client_data,
-            rp=rp,
-            user=user,
-            key_params=key_params,
-            exclude_list=exclude_list,
+        options=PublicKeyCredentialCreationOptions(
+            rp=PublicKeyCredentialRpEntity.from_dict(rp),
+            user=PublicKeyCredentialUserEntity.from_dict(user),
+            pub_key_cred_params=key_params,
+            exclude_credentials=exclude_list,
             extensions=extensions,
-            rk=rk,
-            user_verification=user_verification,
-            enterprise_attestation=enterprise_attestation,
+            challenge=os.urandom(32),
+            authenticator_selection=AuthenticatorSelectionCriteria(
+                require_resident_key=rk,
+                user_verification=UserVerificationRequirement.REQUIRED if user_verification else UserVerificationRequirement.DISCOURAGED
+            ),
+            attestation=enterprise_attestation
+        )
+        client_data, rp_id = client_data.collect_client_data(options=options)
+        result = client._backend.do_make_credential(
+            options=options,
+            client_data=client_data,
+            rp_id=rp_id,
+            enterprise_rpid_list=None,
             event=event
         )
-        return {'res':result,'req':{'client_data':client_data,
+        return {'res':result.response,'req':{'client_data':client_data,
                        'rp':rp,
                        'user':user,
-                       'key_params':key_params}}
+                       'key_params':key_params},'client_extension_results':result.client_extension_results}
 
     def try_make_credential(self, options=None):
         if (options is None):
@@ -267,14 +286,14 @@ class Device():
 
         # Complete registration
         auth_data = self.__server.register_complete(
-            state, result.client_data, result.attestation_object
+            state=state, response=result
         )
         credentials = [auth_data.credential_data]
 
         print("New credential created!")
 
-        print("CLIENT DATA:", result.client_data)
-        print("ATTESTATION OBJECT:", result.attestation_object)
+        print("CLIENT DATA:", result.response.client_data)
+        print("ATTESTATION OBJECT:", result.response.attestation_object)
         print()
         print("CREDENTIAL DATA:", auth_data.credential_data)
 
@@ -294,17 +313,14 @@ class Device():
         self.__server.authenticate_complete(
             state,
             credentials,
-            result.credential_id,
-            result.client_data,
-            result.authenticator_data,
-            result.signature,
+            result
         )
 
         print("Credential authenticated!")
 
-        print("CLIENT DATA:", result.client_data)
+        print("CLIENT DATA:", result.response.client_data)
         print()
-        print("AUTH DATA:", result.authenticator_data)
+        print("AUTH DATA:", result.response.authenticator_data)
 
     def GA(self, rp_id=Ellipsis, client_data_hash=Ellipsis, allow_list=None, extensions=None, options=None, pin_uv_param=None, pin_uv_protocol=None):
         rp_id = rp_id if rp_id is not Ellipsis else self.__rp['id']
@@ -325,21 +341,31 @@ class Device():
         return self.__client._backend.ctap2.get_next_assertion()
 
     def doGA(self, client_data=Ellipsis, rp_id=Ellipsis, allow_list=None, extensions=None, user_verification=None, event=None, ctap1=False, check_only=False):
-        client_data = client_data if client_data is not Ellipsis else CollectedClientData.create(
-                    type=CollectedClientData.TYPE.GET, origin=self.__origin, challenge=os.urandom(32)
-                )
+        client_data = client_data if client_data is not Ellipsis else DefaultClientDataCollector(origin=self.__origin, verify=Device.__verify_rp)
+        if (ctap1 is True):
+            client = self.__client1
+        else:
+            client = self.__client
+
         rp_id = rp_id if rp_id is not Ellipsis else self.__rp['id']
+        options=PublicKeyCredentialRequestOptions(
+            challenge=os.urandom(32),
+            rp_id=rp_id,
+            allow_credentials=allow_list,
+            user_verification=UserVerificationRequirement.REQUIRED if user_verification else UserVerificationRequirement.DISCOURAGED,
+            extensions=extensions
+        )
+        client_data, rp_id = client_data.collect_client_data(options=options)
+
         if (ctap1 is True):
             client = self.__client1
         else:
             client = self.__client
         try:
             result = client._backend.do_get_assertion(
+                options=options,
                 client_data=client_data,
                 rp_id=rp_id,
-                allow_list=allow_list,
-                extensions=extensions,
-                user_verification=user_verification,
                 event=event
             )
         except ClientError as e:
@@ -347,11 +373,9 @@ class Device():
                 client_pin = ClientPin(self.__client._backend.ctap2)
                 client_pin.set_pin(DEFAULT_PIN)
                 result = client._backend.do_get_assertion(
+                    options=options,
                     client_data=client_data,
                     rp_id=rp_id,
-                    allow_list=allow_list,
-                    extensions=extensions,
-                    user_verification=user_verification,
                     event=event
                 )
             else:
@@ -416,8 +440,8 @@ def AuthRes(device, RegRes, *args):
             {"id": RegRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ], *args)
     aut_data = res['res'].get_response(0)
-    m = aut_data.authenticator_data.rp_id_hash + aut_data.authenticator_data.flags.to_bytes(1, 'big') + aut_data.authenticator_data.counter.to_bytes(4, 'big') + aut_data.client_data.hash
-    ES256(RegRes['res'].attestation_object.auth_data.credential_data.public_key).verify(m, aut_data.signature)
+    m = aut_data.response.authenticator_data.rp_id_hash + aut_data.response.authenticator_data.flags.to_bytes(1, 'big') + aut_data.response.authenticator_data.counter.to_bytes(4, 'big') + aut_data.response.client_data.hash
+    ES256(RegRes['res'].attestation_object.auth_data.credential_data.public_key).verify(m, aut_data.response.signature)
     return aut_data
 
 @pytest.fixture(scope="class")

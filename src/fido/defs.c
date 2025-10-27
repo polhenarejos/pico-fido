@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
- #include "fido.h"
+#include "pico_keys.h"
+#include "fido.h"
 
 uint8_t PICO_PRODUCT = 2; // Pico FIDO

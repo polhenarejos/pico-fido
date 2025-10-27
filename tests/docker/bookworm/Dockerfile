@@ -1,4 +1,4 @@
-FROM debian:bullseye
+FROM debian:bookworm
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -22,7 +22,7 @@ RUN apt install -y libccid \
     cmake \
     libfuse-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN pip3 install pytest pycvc cryptography pyscard inputimeout fido2==2.0.0
+RUN pip3 install pytest pycvc cryptography pyscard inputimeout fido2==2.0.0 --break-system-packages
 WORKDIR /
 RUN git clone https://github.com/frankmorgner/vsmartcard.git
 WORKDIR /vsmartcard/virtualsmartcard

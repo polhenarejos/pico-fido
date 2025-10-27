@@ -15,8 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "fido.h"
 #include "pico_keys.h"
+#include "fido.h"
 #include "apdu.h"
 #include "ctap.h"
 #include "random.h"

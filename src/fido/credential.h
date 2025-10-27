@@ -19,6 +19,7 @@
 #define _CREDENTIAL_H_
 
 #include "ctap2_cbor.h"
+#include "file.h"
 
 typedef struct CredOptions {
     const bool *rk;
@@ -58,6 +59,7 @@ typedef struct Credential {
 
 #define CRED_PROTO_21_S                     "\xf1\xd0\x02\x01"
 #define CRED_PROTO_22_S                     "\xf1\xd0\x02\x02"
+#define CRED_PROTO_23_S                     "\xf1\xd0\x02\x03"
 
 #define CRED_PROTO                          CRED_PROTO_22_S
 
@@ -65,6 +67,11 @@ typedef struct Credential {
 #define CRED_IV_LEN                         12
 #define CRED_TAG_LEN                        16
 #define CRED_SILENT_TAG_LEN                 16
+
+#define CRED_PROTO_RESIDENT                 CRED_PROTO_23_S
+#define CRED_PROTO_RESIDENT_LEN             4
+#define CRED_RESIDENT_HEADER_LEN            (CRED_PROTO_RESIDENT_LEN + 6)
+#define CRED_RESIDENT_LEN                   (CRED_RESIDENT_HEADER_LEN + 32)
 
 typedef enum
 {
@@ -83,7 +90,7 @@ extern int credential_create(CborCharString *rpId,
                              int alg,
                              int curve,
                              uint8_t *cred_id,
-                             size_t *cred_id_len);
+                             uint16_t *cred_id_len);
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash);
 extern int credential_load(const uint8_t *cred_id,
@@ -94,5 +101,8 @@ extern int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len
 extern int credential_derive_large_blob_key(const uint8_t *cred_id,
                                             size_t cred_id_len,
                                             uint8_t *outk);
+extern int credential_derive_resident(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
+extern bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len);
+extern int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Credential *cred);
 
 #endif // _CREDENTIAL_H_

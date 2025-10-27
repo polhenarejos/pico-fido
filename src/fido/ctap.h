@@ -114,10 +114,14 @@ typedef struct {
 
 #define CTAP_CONFIG_AUT_ENABLE      0x03e43f56b34285e2
 #define CTAP_CONFIG_AUT_DISABLE     0x1831a40f04a25ed9
+#define CTAP_CONFIG_EA_UPLOAD       0x66f2a674c29a8dcf
+#define CTAP_CONFIG_PIN_POLICY      0x6c07d70fe96c3897
+#ifndef ENABLE_EMULATION
 #define CTAP_CONFIG_PHY_VIDPID      0x6fcb19b0cbe3acfa
-#define CTAP_CONFIG_PHY_LED_GPIO    0x7b392a394de9f948
 #define CTAP_CONFIG_PHY_LED_BTNESS  0x76a85945985d02fd
-#define CTAP_CONFIG_PHY_OPTS        0x969f3b09eceb805f
+#define CTAP_CONFIG_PHY_LED_GPIO    0x7b392a394de9f948
+#define CTAP_CONFIG_PHY_OPTS        0x269f3b09eceb805f
+#endif
 
 #define CTAP_VENDOR_CBOR            (CTAPHID_VENDOR_FIRST + 1)
 
@@ -134,6 +138,7 @@ typedef struct {
 #define CTAP_PERMISSION_BE              0x08  // BioEnrollment
 #define CTAP_PERMISSION_LBW             0x10  // LargeBlobWrite
 #define CTAP_PERMISSION_ACFG            0x20  // AuthenticatorConfiguration
+#define CTAP_PERMISSION_PCMR            0x40  // PerCredentialManagementReadOnly
 
 typedef struct mse {
     uint8_t Qpt[65];

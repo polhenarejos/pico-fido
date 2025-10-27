@@ -27,16 +27,17 @@
 
 from __future__ import annotations
 
-from .base import HidDescriptor
-from ..ctap import CtapDevice, CtapError, STATUS
-from ..utils import LOG_LEVEL_TRAFFIC
-from threading import Event
-from enum import IntEnum, IntFlag, unique
-from typing import Tuple, Optional, Callable, Iterator
+import logging
+import os
 import struct
 import sys
-import os
-import logging
+from enum import IntEnum, IntFlag, unique
+from threading import Event
+from typing import Callable, Iterator
+
+from ..ctap import STATUS, CtapDevice, CtapError
+from ..utils import LOG_LEVEL_TRAFFIC
+from .base import HidDescriptor
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +56,16 @@ elif sys.platform.startswith("openbsd"):
     from . import openbsd as backend
 else:
     raise Exception("Unsupported platform")
+
 from . import emulation as backend
 
 list_descriptors = backend.list_descriptors
 get_descriptor = backend.get_descriptor
 open_connection = backend.open_connection
+
+
+class ConnectionFailure(Exception):
+    """The CTAP connection failed or returned an invalid response."""
 
 
 @unique
@@ -109,7 +115,7 @@ class CtapHidDevice(CtapDevice):
         response = self.call(CTAPHID.INIT, nonce)
         r_nonce, response = response[:8], response[8:]
         if r_nonce != nonce:
-            raise Exception("Wrong nonce")
+            raise ConnectionFailure("Wrong nonce")
         (
             self._channel_id,
             self._u2fhid_version,
@@ -129,7 +135,7 @@ class CtapHidDevice(CtapDevice):
         return self._u2fhid_version
 
     @property
-    def device_version(self) -> Tuple[int, int, int]:
+    def device_version(self) -> tuple[int, int, int]:
         """Device version number."""
         return self._device_version
 
@@ -139,12 +145,12 @@ class CtapHidDevice(CtapDevice):
         return self._capabilities
 
     @property
-    def product_name(self) -> Optional[str]:
+    def product_name(self) -> str | None:
         """Product name of device."""
         return self.descriptor.product_name
 
     @property
-    def serial_number(self) -> Optional[str]:
+    def serial_number(self) -> str | None:
         """Serial number of device."""
         return self.descriptor.serial_number
 
@@ -159,10 +165,22 @@ class CtapHidDevice(CtapDevice):
         self,
         cmd: int,
         data: bytes = b"",
-        event: Optional[Event] = None,
-        on_keepalive: Optional[Callable[[int], None]] = None,
+        event: Event | None = None,
+        on_keepalive: Callable[[STATUS], None] | None = None,
     ) -> bytes:
         event = event or Event()
+
+        while True:
+            try:
+                return self._do_call(cmd, data, event, on_keepalive)
+            except CtapError as e:
+                if e.code == CtapError.ERR.CHANNEL_BUSY:
+                    if not event.wait(0.1):
+                        logger.warning("CTAP channel busy, trying again...")
+                        continue  # Keep retrying on BUSY while not cancelled
+                raise
+
+    def _do_call(self, cmd, data, event, on_keepalive):
         remaining = data
         seq = 0
 
@@ -194,7 +212,7 @@ class CtapHidDevice(CtapDevice):
                 r_channel = struct.unpack_from(">I", recv)[0]
                 recv = recv[4:]
                 if r_channel != self._channel_id:
-                    raise Exception("Wrong channel")
+                    raise ConnectionFailure("Wrong channel")
 
                 if not response:  # Initialization packet
                     r_cmd, r_len = struct.unpack_from(">BH", recv)
@@ -202,13 +220,12 @@ class CtapHidDevice(CtapDevice):
                     if r_cmd == TYPE_INIT | cmd:
                         pass  # first data packet
                     elif r_cmd == TYPE_INIT | CTAPHID.KEEPALIVE:
-                        ka_status = struct.unpack_from(">B", recv)[0]
-                        logger.debug(f"Got keepalive status: {ka_status:02x}")
+                        try:
+                            ka_status = STATUS(struct.unpack_from(">B", recv)[0])
+                            logger.debug(f"Got keepalive status: {ka_status:02x}")
+                        except ValueError:
+                            raise ConnectionFailure("Invalid keepalive status")
                         if on_keepalive and ka_status != last_ka:
-                            try:
-                                ka_status = STATUS(ka_status)
-                            except ValueError:
-                                pass  # Unknown status value
                             last_ka = ka_status
                             on_keepalive(ka_status)
                         continue
@@ -220,7 +237,7 @@ class CtapHidDevice(CtapDevice):
                     r_seq = struct.unpack_from(">B", recv)[0]
                     recv = recv[1:]
                     if r_seq != seq:
-                        raise Exception("Wrong sequence number")
+                        raise ConnectionFailure("Wrong sequence number")
                     seq += 1
 
                 response += recv

@@ -15,8 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "fido.h"
 #include "pico_keys.h"
+#include "fido.h"
 #include "apdu.h"
 #include "ctap.h"
 #include "random.h"
@@ -69,11 +69,7 @@ int cmd_register() {
     }
     if (memcmp(req->appId, bogus_firefox,
                CTAP_APPID_SIZE) == 0 || memcmp(req->appId, bogus_chrome, CTAP_APPID_SIZE) == 0)
-#ifndef ENABLE_EMULATION
     { return ctap_error(CTAP1_ERR_CHANNEL_BUSY); }
-#else
-    { return SW_DATA_INVALID(); }
-#endif
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
     int ret = derive_key(req->appId, true, resp->keyHandleCertSig, MBEDTLS_ECP_DP_SECP256R1, &key);

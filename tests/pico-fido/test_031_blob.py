@@ -21,6 +21,7 @@
 import pytest
 from fido2.ctap import CtapError
 from fido2.ctap2.pin import PinProtocolV2, ClientPin
+from fido2.utils import websafe_decode
 from utils import verify
 import os
 
@@ -46,22 +47,24 @@ def GACredBlob(device, MCCredBlob):
 
 @pytest.fixture(scope="function")
 def MCLBK(device):
-    res = device.doMC(
+    mc = device.doMC(
         rk=True,
         extensions={'largeBlob':{'support':'required'}}
-        )['res']
-    return res
+        )
+    res = mc['res']
+    ext = mc['client_extension_results']
+    return {'res': res, 'ext': ext}
 
 @pytest.fixture(scope="function")
 def GALBRead(device, MCLBK):
     res = device.doGA(
         allow_list=[
-            {"id": MCLBK.attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
+            {"id": MCLBK['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ],extensions={'largeBlob':{'read': True}}
         )
     assertions = res['res'].get_assertions()
     for a in assertions:
-        verify(MCLBK.attestation_object, a, res['req']['client_data'].hash)
+        verify(MCLBK['res'].attestation_object, a, res['req']['client_data'].hash)
     return res['res']
 
 @pytest.fixture(scope="function")
@@ -70,18 +73,19 @@ def GALBReadLBK(GALBRead):
 
 @pytest.fixture(scope="function")
 def GALBReadLB(GALBRead):
+    print(GALBRead.get_response(0))
     return GALBRead.get_response(0)
 
 @pytest.fixture(scope="function")
 def GALBWrite(device, MCLBK):
     res = device.doGA(
         allow_list=[
-            {"id": MCLBK.attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
+            {"id": MCLBK['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ],extensions={'largeBlob':{'write': LARGE_BLOB}}
         )
     assertions = res['res'].get_assertions()
     for a in assertions:
-        verify(MCLBK.attestation_object, a, res['req']['client_data'].hash)
+        verify(MCLBK['res'].attestation_object, a, res['req']['client_data'].hash)
     return res['res'].get_response(0)
 
 def test_supports_credblob(info):
@@ -136,15 +140,17 @@ def test_supports_largeblobs(info):
     assert info.max_large_blob is None or (info.max_large_blob > 1024)
 
 def test_get_largeblobkey_mc(MCLBK):
-    assert 'supported' in MCLBK.extension_results
-    assert MCLBK.extension_results['supported'] is True
+    assert 'largeBlob' in MCLBK['ext']
+    assert 'supported' in MCLBK['ext']['largeBlob']
+    assert MCLBK['ext']['largeBlob']['supported'] is True
 
 def test_get_largeblobkey_ga(GALBReadLBK):
     assert GALBReadLBK.large_blob_key is not None
 
 def test_get_largeblob_rw(GALBWrite, GALBReadLB):
-    assert 'written' in GALBWrite.extension_results
-    assert GALBWrite.extension_results['written'] is True
+    assert 'largeBlob' in GALBWrite.client_extension_results
+    assert 'written' in GALBWrite.client_extension_results['largeBlob']
+    assert GALBWrite.client_extension_results['largeBlob']['written'] is True
 
-    assert 'blob' in GALBReadLB.extension_results
-    assert GALBReadLB.extension_results['blob'] == LARGE_BLOB
+    assert 'blob' in GALBReadLB.client_extension_results['largeBlob']
+    assert websafe_decode(GALBReadLB.client_extension_results['largeBlob']['blob']) == LARGE_BLOB

@@ -15,8 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "fido.h"
 #include "pico_keys.h"
+#include "fido.h"
 #include "apdu.h"
 #include "files.h"
 #include "random.h"
@@ -24,14 +24,17 @@
 #include "asn1.h"
 #include "hid/ctap_hid.h"
 #include "usb.h"
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "bsp/board.h"
+#endif
+#ifdef ENABLE_EMULATION
+void add_keyboard_buffer(const uint8_t *buf, size_t len, bool press_enter) {}
+void append_keyboard_buffer(const uint8_t *buf, size_t len) {}
+#else
+#include "tusb.h"
 #endif
 #include "mbedtls/aes.h"
 #include "management.h"
-#ifndef ENABLE_EMULATION
-#include "tusb.h"
-#endif
 
 #define FIXED_SIZE          16
 #define KEY_SIZE            16
@@ -116,12 +119,10 @@ uint16_t otp_status(bool is_otp);
 int otp_process_apdu();
 int otp_unload();
 
-#ifndef ENABLE_EMULATION
 extern int (*hid_set_report_cb)(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, uint16_t);
 extern uint16_t (*hid_get_report_cb)(uint8_t, uint8_t, hid_report_type_t, uint8_t *, uint16_t);
 int otp_hid_set_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, uint16_t);
 uint16_t otp_hid_get_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t *, uint16_t);
-#endif
 
 const uint8_t otp_aid[] = {
     7,
@@ -200,15 +201,12 @@ uint16_t calculate_crc(const uint8_t *data, size_t data_len) {
     return crc & 0xFFFF;
 }
 
-#ifndef ENABLE_EMULATION
 static uint8_t session_counter[2] = { 0 };
-#endif
 int otp_button_pressed(uint8_t slot) {
     init_otp();
     if (!cap_supported(CAP_OTP)) {
         return 3;
     }
-#ifndef ENABLE_EMULATION
     file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
     const uint8_t *data = file_get_data(ef);
     otp_config_t *otp_config = (otp_config_t *) data;
@@ -218,6 +216,7 @@ int otp_button_pressed(uint8_t slot) {
     if (otp_config->cfg_flags & CHAL_YUBICO && otp_config->tkt_flags & CHAL_RESP) {
         return 2;
     }
+#ifdef ENABLE_OATH_APP
     if (otp_config->tkt_flags & OATH_HOTP) {
         uint8_t tmp_key[KEY_SIZE + 2];
         tmp_key[0] = 0x01;
@@ -259,6 +258,7 @@ int otp_button_pressed(uint8_t slot) {
             append_keyboard_buffer((const uint8_t *) "\r", 1);
         }
     }
+#endif
     else if (otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET) {
         uint8_t fixed_size = FIXED_SIZE + UID_SIZE + KEY_SIZE;
         if (otp_config->cfg_flags & SHORT_TICKET) { // Not clear which is the purpose of SHORT_TICKET
@@ -317,19 +317,15 @@ int otp_button_pressed(uint8_t slot) {
             low_flash_available();
         }
     }
-#else
-    (void) slot;
-#endif
+
     return 0;
 }
 
 INITIALIZER( otp_ctor ) {
     register_app(otp_select, otp_aid);
     button_pressed_cb = otp_button_pressed;
-#ifndef ENABLE_EMULATION
     hid_set_report_cb = otp_hid_set_report_cb;
     hid_get_report_cb = otp_hid_get_report_cb;
-#endif
 }
 
 int otp_unload() {
@@ -490,20 +486,20 @@ int cmd_otp() {
                 return SW_WRONG_DATA();
             }
             int ret = 0;
-#ifndef ENABLE_EMULATION
             uint8_t *rdata_bk = apdu.rdata;
             if (otp_config->cfg_flags & CHAL_BTN_TRIG) {
                 status_byte = 0x20;
                 otp_status(_is_otp);
+#ifndef ENABLE_EMULATION
                 if (wait_button() == true) {
                     status_byte = 0x00;
                     otp_status(_is_otp);
                     return SW_CONDITIONS_NOT_SATISFIED();
                 }
+#endif
                 status_byte = 0x10;
                 apdu.rdata = rdata_bk;
             }
-#endif
             if (p1 == 0x30 || p1 == 0x38) {
                 if (!(otp_config->cfg_flags & CHAL_HMAC)) {
                     return SW_WRONG_DATA();
@@ -567,8 +563,6 @@ int otp_process_apdu() {
     }
     return SW_INS_NOT_SUPPORTED();
 }
-
-#ifndef ENABLE_EMULATION
 
 uint8_t otp_frame_rx[70] = {0};
 uint8_t otp_frame_tx[70] = {0};
@@ -671,5 +665,3 @@ uint16_t otp_hid_get_report_cb(uint8_t itf,
 
     return reqlen;
 }
-
-#endif

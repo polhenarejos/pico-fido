@@ -15,10 +15,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "bsp/board.h"
 #endif
 #include "hid/ctap_hid.h"
@@ -26,7 +27,6 @@
 #include "ctap.h"
 #include "random.h"
 #include "files.h"
-#include "pico_keys.h"
 #include "otp.h"
 
 int credential_derive_chacha_key(uint8_t *outk, const uint8_t *);
@@ -93,7 +93,7 @@ int credential_create(CborCharString *rpId,
                       int alg,
                       int curve,
                       uint8_t *cred_id,
-                      size_t *cred_id_len) {
+                      uint16_t *cred_id_len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
     uint8_t rp_id_hash[32];
@@ -150,7 +150,7 @@ int credential_create(CborCharString *rpId,
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cred_id);
-    *cred_id_len = CRED_PROTO_LEN + CRED_IV_LEN + rs + CRED_TAG_LEN + CRED_SILENT_TAG_LEN;
+    *cred_id_len = CRED_PROTO_LEN + CRED_IV_LEN + (uint16_t)rs + CRED_TAG_LEN + CRED_SILENT_TAG_LEN;
     uint8_t key[32] = {0};
     credential_derive_chacha_key(key, (const uint8_t *)CRED_PROTO);
     uint8_t iv[CRED_IV_LEN] = {0};
@@ -314,7 +314,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         if (memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
             continue;
         }
-        ret = credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, &rcred);
+        ret = credential_load(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, &rcred);
         if (ret != 0) {
             credential_free(&rcred);
             continue;
@@ -330,11 +330,14 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     if (sloti == -1) {
         return -1;
     }
-    uint8_t *data = (uint8_t *) calloc(1, cred_id_len + 32);
+    uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
+    credential_derive_resident(cred_id, cred_id_len, cred_idr);
+    uint8_t *data = (uint8_t *) calloc(1, cred_id_len + 32 + CRED_RESIDENT_LEN);
     memcpy(data, rp_id_hash, 32);
-    memcpy(data + 32, cred_id, cred_id_len);
+    memcpy(data + 32, cred_idr, CRED_RESIDENT_LEN);
+    memcpy(data + 32 + CRED_RESIDENT_LEN, cred_id, cred_id_len);
     file_t *ef = file_new((uint16_t)(EF_CRED + sloti));
-    file_put_data(ef, data, (uint16_t)cred_id_len + 32);
+    file_put_data(ef, data, (uint16_t)cred_id_len + 32 + CRED_RESIDENT_LEN);
     free(data);
 
     if (new_record == true) { //increase rps
@@ -420,4 +423,34 @@ int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len,
     mbedtls_md_hmac(md_info, outk, 32, (uint8_t *) "largeBlobKey", 12, outk);
     mbedtls_md_hmac(md_info, outk, 32, cred_id, cred_id_len, outk);
     return 0;
+}
+
+int credential_derive_resident(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk) {
+    memset(outk, 0, CRED_RESIDENT_LEN);
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    uint8_t *cred_idr = outk + CRED_RESIDENT_HEADER_LEN;
+    mbedtls_md_hmac(md_info, cred_idr, 32, pico_serial.id, sizeof(pico_serial.id), outk);
+    memcpy(outk + 4, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN);
+    outk[4 + CRED_PROTO_RESIDENT_LEN] = 0x00;
+    outk[4 + CRED_PROTO_RESIDENT_LEN + 1] = 0x00;
+
+    mbedtls_md_hmac(md_info, cred_idr, 32, (uint8_t *) "SLIP-0022", 9, cred_idr);
+    mbedtls_md_hmac(md_info, cred_idr, 32, (uint8_t *) cred_id, CRED_PROTO_LEN, cred_idr);
+    mbedtls_md_hmac(md_info, cred_idr, 32, (uint8_t *) "resident", 8, cred_idr);
+    mbedtls_md_hmac(md_info, cred_idr, 32, cred_id, cred_id_len, cred_idr);
+    return 0;
+}
+
+bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len) {
+    if (cred_id_len < 4 + CRED_PROTO_RESIDENT_LEN) {
+        return false;
+    }
+    return memcmp(cred_id + 4, CRED_PROTO_RESIDENT, CRED_PROTO_RESIDENT_LEN) == 0;
+}
+
+int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Credential *cred) {
+    if (credential_is_resident(file_get_data(ef) + 32, file_get_size(ef) - 32)) {
+        return credential_load(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, cred);
+    }
+    return credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, cred);
 }

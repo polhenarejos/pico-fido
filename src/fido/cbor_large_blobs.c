@@ -15,13 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
 #include "hid/ctap_hid.h"
 #include "files.h"
 #include "apdu.h"
-#include "pico_keys.h"
 #include "mbedtls/sha256.h"
 
 static uint64_t expectedLength = 0, expectedNextOffset = 0;
@@ -129,7 +129,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         uint8_t verify_data[70] = { 0 };
         memset(verify_data, 0xff, 32);
         verify_data[32] = 0x0C;
-        put_uint32_t_le(offset, verify_data + 34);
+        put_uint32_t_le((uint32_t)offset, verify_data + 34);
         mbedtls_sha256(set.data, set.len, verify_data + 38, 0);
         if (verify((uint8_t)pinUvAuthProtocol, paut.data, verify_data, (uint16_t)sizeof(verify_data), pinUvAuthParam.data) != 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);

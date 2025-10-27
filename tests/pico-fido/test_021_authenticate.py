@@ -31,10 +31,10 @@ def test_authenticate(device):
     AUTRes = device.authenticate(credentials)
 
 def test_assertion_auth_data(GARes):
-    assert len(GARes['res'].get_response(0).authenticator_data) == 37
+    assert len(GARes['res'].get_response(0).response.authenticator_data) == 37
 
 def test_Check_that_AT_flag_is_not_set(GARes):
-    assert (GARes['res'].get_response(0).authenticator_data.flags & 0xF8) == 0
+    assert (GARes['res'].get_response(0).response.authenticator_data.flags & 0xF8) == 0
 
 def test_that_user_credential_and_numberOfCredentials_are_not_present(device, MCRes):
     res = device.GA(allow_list=[
@@ -63,8 +63,8 @@ def test_get_assertion_allow_list_filtering_and_buffering(device):
     """ Check that authenticator filters and stores items in allow list correctly """
     allow_list = []
 
-    rp1 = {"id": "rp1.com", "name": "rp1.com"}
-    rp2 = {"id": "rp2.com", "name": "rp2.com"}
+    rp1 = {"id": "example.com", "name": "rp1.com"}
+    rp2 = {"id": "example.com", "name": "rp2.com"}
 
     rp1_registrations = []
     rp2_registrations = []
@@ -127,7 +127,7 @@ def test_mismatched_rp(device, GARes):
     rp_id += ".com"
 
     with pytest.raises(CtapError) as e:
-        device.doGA(rp_id=rp_id)
+        device.GA(rp_id=rp_id)
     assert e.value.code == CtapError.ERR.NO_CREDENTIALS
 
 def test_missing_rp(device):
@@ -137,7 +137,7 @@ def test_missing_rp(device):
 
 def test_bad_rp(device):
     with pytest.raises(CtapError) as e:
-        device.doGA(rp_id={"id": {"type": "wrong"}})
+        device.GA(rp_id={"id": {"type": "wrong"}})
 
 def test_missing_cdh(device):
     with pytest.raises(CtapError) as e:
@@ -150,11 +150,11 @@ def test_bad_cdh(device):
 
 def test_bad_allow_list(device):
     with pytest.raises(CtapError) as e:
-        device.doGA(allow_list={"type": "wrong"})
+        device.GA(allow_list={"type": "wrong"})
 
 def test_bad_allow_list_item(device, MCRes):
     with pytest.raises(CtapError) as e:
-        device.doGA(allow_list=["wrong"] + [
+        device.GA(allow_list=["wrong"] + [
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ]
         )
@@ -177,7 +177,7 @@ def test_option_up(device, info, GARes):
             assert res.auth_data.flags & (1 << 0)
 
 def test_allow_list_fake_item(device, MCRes):
-    device.doGA(allow_list=[{"type": "rot13", "id": b"1234"}]
+    device.GA(allow_list=[{"type": "rot13", "id": b"1234"}]
             + [
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ],
@@ -185,7 +185,7 @@ def test_allow_list_fake_item(device, MCRes):
 
 def test_allow_list_missing_field(device, MCRes):
     with pytest.raises(CtapError) as e:
-        device.doGA(allow_list=[{"id": b"1234"}] + [
+        device.GA(allow_list=[{"id": b"1234"}] + [
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ]
         )
@@ -200,7 +200,7 @@ def test_allow_list_field_wrong_type(device, MCRes):
 
 def test_allow_list_id_wrong_type(device, MCRes):
     with pytest.raises(CtapError) as e:
-        device.doGA(allow_list=[{"type": "public-key", "id": 42}]
+        device.GA(allow_list=[{"type": "public-key", "id": 42}]
                 + [
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ]
@@ -208,7 +208,7 @@ def test_allow_list_id_wrong_type(device, MCRes):
 
 def test_allow_list_missing_id(device, MCRes):
     with pytest.raises(CtapError) as e:
-        device.doGA(allow_list=[{"type": "public-key"}] + [
+        device.GA(allow_list=[{"type": "public-key"}] + [
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ]
         )

@@ -15,13 +15,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
 #include "hid/ctap_hid.h"
 #include "files.h"
 #include "apdu.h"
-#include "pico_keys.h"
 #include "random.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
@@ -237,25 +237,14 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, buffer + sizeof(buffer) - ret, ret));
         }
-        else if (vendorCmd == 0x02) {
-            if (vendorParam.present == false) {
-                CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            }
-            file_t *ef_ee_ea = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
-            if (ef_ee_ea) {
-                file_put_data(ef_ee_ea, vendorParam.data, (uint16_t)vendorParam.len);
-            }
-            low_flash_available();
-            goto err;
-        }
     }
 #ifndef ENABLE_EMULATION
     else if (cmd == CTAP_VENDOR_PHY_OPTS) {
         if (vendorCmd == 0x01) {
             uint16_t opts = 0;
             if (file_has_data(ef_phy)) {
-                uint8_t *data = file_get_data(ef_phy);
-                opts = get_uint16_t_be(data + PHY_OPTS);
+                uint8_t *pdata = file_get_data(ef_phy);
+                opts = get_uint16_t_be(pdata + PHY_OPTS);
             }
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));

@@ -15,8 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "fido.h"
 #include "pico_keys.h"
+#include "fido.h"
 #include "apdu.h"
 #include "version.h"
 #include "files.h"
@@ -40,7 +40,9 @@ int man_select(app_t *a, uint8_t force) {
     apdu.ne = res_APDU_size;
     if (force) {
         scan_all();
+#ifdef ENABLE_OTP_APP
         init_otp();
+#endif
     }
     return PICOKEY_OK;
 }
@@ -114,7 +116,7 @@ int man_get_config() {
     if (!file_has_data(ef)) {
         res_APDU[res_APDU_size++] = TAG_USB_ENABLED;
         res_APDU[res_APDU_size++] = 2;
-        uint16_t caps = 0;
+        caps = 0;
         if (cap_supported(CAP_FIDO2)) {
             caps |= CAP_FIDO2;
         }

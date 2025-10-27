@@ -15,8 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "fido.h"
 #include "pico_keys.h"
+#include "fido.h"
 #include "apdu.h"
 #include "files.h"
 #include "random.h"
@@ -24,6 +24,7 @@
 #include "asn1.h"
 #include "crypto_utils.h"
 #include "management.h"
+extern bool is_nk;
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
@@ -44,6 +45,10 @@
 #define TAG_PASSWORD        0x80
 #define TAG_NEW_PASSWORD    0x81
 #define TAG_PIN_COUNTER     0x82
+#define TAG_PWS_LOGIN       0x83
+#define TAG_PWS_PASSWORD    0x84
+#define TAG_PWS_METADATA    0x85
+#define TAG_SERIAL_NUMBER   0x8F
 
 #define ALG_HMAC_SHA1       0x01
 #define ALG_HMAC_SHA256     0x02
@@ -56,6 +61,7 @@
 
 #define PROP_INC            0x01
 #define PROP_TOUCH          0x02
+#define PROP_PIN            0x03
 
 int oath_process_apdu();
 int oath_unload();
@@ -99,6 +105,12 @@ int oath_select(app_t *a, uint8_t force) {
         res_APDU[res_APDU_size++] = TAG_ALGO;
         res_APDU[res_APDU_size++] = 1;
         res_APDU[res_APDU_size++] = ALG_HMAC_SHA1;
+        if (is_nk) {
+            res_APDU[res_APDU_size++] = TAG_SERIAL_NUMBER;
+            res_APDU[res_APDU_size++] = 8;
+            memcpy(res_APDU + res_APDU_size, pico_serial_str, 8);
+            res_APDU_size += 8;
+        }
         apdu.ne = res_APDU_size;
         return PICOKEY_OK;
     }
@@ -270,16 +282,27 @@ int cmd_list() {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
+    bool ext = (apdu.nc == 1 && apdu.data[0] == 0x01);
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file((uint16_t)(EF_OATH_CRED + i));
         if (file_has_data(ef)) {
-            asn1_ctx_t ctxi, key = { 0 }, name = { 0 };
+            asn1_ctx_t ctxi, key = { 0 }, name = { 0 }, pws = { 0 };
             asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
             if (asn1_find_tag(&ctxi, TAG_NAME, &name) == true && asn1_find_tag(&ctxi, TAG_KEY, &key) == true) {
                 res_APDU[res_APDU_size++] = TAG_NAME_LIST;
-                res_APDU[res_APDU_size++] = (uint8_t)(name.len + 1);
+                res_APDU[res_APDU_size++] = (uint8_t)(name.len + 1 + (ext ? 1 : 0));
                 res_APDU[res_APDU_size++] = key.data[0];
                 memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
+                if (ext) {
+                    uint8_t props = 0x0;
+                    if (asn1_find_tag(&ctxi, TAG_PWS_LOGIN, &pws) == true || asn1_find_tag(&ctxi, TAG_PWS_PASSWORD, &pws) == true || asn1_find_tag(&ctxi, TAG_PWS_METADATA, &pws) == true) {
+                        props |= 0x4;
+                    }
+                    if (asn1_find_tag(&ctxi, TAG_PROPERTY, &pws) == true && (pws.data[0] & PROP_TOUCH)) {
+                        props |= 0x1;
+                    }
+                    res_APDU[res_APDU_size++] = props;
+                }
             }
         }
     }
@@ -615,7 +638,7 @@ int cmd_rename() {
     if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_WRONG_DATA();
     }
-    uint8_t *new_data = (uint8_t *) calloc(sizeof(uint8_t), fsize + new_name.len - name.len);
+    uint8_t *new_data = (uint8_t *) calloc(fsize + new_name.len - name.len, sizeof(uint8_t));
     memcpy(new_data, fdata, name.data - fdata);
     *(new_data + (name.data - fdata) - 1) = new_name.len;
     memcpy(new_data + (name.data - fdata), new_name.data, new_name.len);
@@ -623,6 +646,53 @@ int cmd_rename() {
     file_put_data(ef, new_data, fsize + new_name.len - name.len);
     low_flash_available();
     free(new_data);
+    return SW_OK();
+}
+
+int cmd_get_credential() {
+    asn1_ctx_t ctxi, name = { 0 };
+    if (apdu.nc < 3) {
+        return SW_INCORRECT_PARAMS();
+    }
+    if (apdu.data[0] != TAG_NAME) {
+        return SW_WRONG_DATA();
+    }
+    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+        return SW_WRONG_DATA();
+    }
+    file_t *ef = find_oath_cred(name.data, name.len);
+    if (file_has_data(ef) == false) {
+        return SW_DATA_INVALID();
+    }
+    asn1_ctx_t login = { 0 }, pw = { 0 }, meta = { 0 }, prop = { 0 };
+    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == true) {
+        res_APDU[res_APDU_size++] = TAG_NAME;
+        res_APDU[res_APDU_size++] = (uint8_t)(name.len);
+        memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
+    }
+    if (asn1_find_tag(&ctxi, TAG_PWS_LOGIN, &login) == true) {
+        res_APDU[res_APDU_size++] = TAG_PWS_LOGIN;
+        res_APDU[res_APDU_size++] = (uint8_t)(login.len);
+        memcpy(res_APDU + res_APDU_size, login.data, login.len); res_APDU_size += login.len;
+    }
+    if (asn1_find_tag(&ctxi, TAG_PWS_PASSWORD, &pw) == true) {
+        res_APDU[res_APDU_size++] = TAG_PWS_PASSWORD;
+        res_APDU[res_APDU_size++] = (uint8_t)(pw.len);
+        memcpy(res_APDU + res_APDU_size, pw.data, pw.len); res_APDU_size += pw.len;
+    }
+    if (asn1_find_tag(&ctxi, TAG_PWS_METADATA, &meta) == true) {
+        res_APDU[res_APDU_size++] = TAG_PWS_METADATA;
+        res_APDU[res_APDU_size++] = (uint8_t)(meta.len);
+        memcpy(res_APDU + res_APDU_size, meta.data, meta.len); res_APDU_size += meta.len;
+    }
+    if (asn1_find_tag(&ctxi, TAG_PROPERTY, &prop) == true) {
+        res_APDU[res_APDU_size++] = TAG_PROPERTY;
+        res_APDU[res_APDU_size++] = (uint8_t)(prop.len);
+        memcpy(res_APDU + res_APDU_size, prop.data, prop.len); res_APDU_size += prop.len;
+    }
+    apdu.ne = res_APDU_size;
     return SW_OK();
 }
 
@@ -640,6 +710,7 @@ int cmd_rename() {
 #define INS_VERIFY_PIN      0xb2
 #define INS_CHANGE_PIN      0xb3
 #define INS_SET_PIN         0xb4
+#define INS_GET_CREDENTIAL  0xb5
 
 static const cmd_t cmds[] = {
     { INS_PUT, cmd_put },
@@ -656,6 +727,7 @@ static const cmd_t cmds[] = {
     { INS_CHANGE_PIN, cmd_change_otp_pin },
     { INS_VERIFY_PIN, cmd_verify_otp_pin },
     { INS_VERIFY_CODE, cmd_verify_hotp },
+    { INS_GET_CREDENTIAL, cmd_get_credential },
     { 0x00, 0x0 }
 };
 

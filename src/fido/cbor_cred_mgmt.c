@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "fido.h"
 #include "ctap.h"
 #include "hid/ctap_hid.h"
@@ -22,7 +23,6 @@
 #include "files.h"
 #include "apdu.h"
 #include "credential.h"
-#include "pico_keys.h"
 
 uint8_t rp_counter = 1;
 uint8_t rp_total = 0;
@@ -79,8 +79,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                         if (strcmp(_fd3, "transports") == 0) {
                             CBOR_PARSE_ARRAY_START(_f3, 4)
                             {
-                                CBOR_FIELD_GET_TEXT(credentialId.transports[credentialId.
-                                                                            transports_len], 4);
+                                CBOR_FIELD_GET_TEXT(credentialId.transports[credentialId.transports_len], 4);
                                 credentialId.transports_len++;
                             }
                             CBOR_PARSE_ARRAY_END(_f3, 4);
@@ -122,12 +121,19 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
 
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     if (subcommand == 0x01) {
-        if (verify((uint8_t)pinUvAuthProtocol, paut.data, (const uint8_t *) "\x01", 1, pinUvAuthParam.data) != CborNoError) {
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        if (verify((uint8_t)pinUvAuthProtocol, ppaut.data, (const uint8_t *) "\x01", 1, pinUvAuthParam.data) == CborNoError) {
+            if (!(ppaut.permissions & CTAP_PERMISSION_PCMR)) {
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
         }
-        if (is_preview == false &&
-            (!(paut.permissions & CTAP_PERMISSION_CM) || paut.has_rp_id == true)) {
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        else {
+            if (verify((uint8_t)pinUvAuthProtocol, paut.data, (const uint8_t *) "\x01", 1, pinUvAuthParam.data) != CborNoError) {
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
+            if (is_preview == false &&
+                (!(paut.permissions & CTAP_PERMISSION_CM) || paut.has_rp_id == true)) {
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
         }
         uint8_t existing = 0;
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
@@ -144,11 +150,18 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     else if (subcommand == 0x02 || subcommand == 0x03) {
         file_t *rp_ef = NULL;
         if (subcommand == 0x02) {
-            if (verify((uint8_t)pinUvAuthProtocol, paut.data, (const uint8_t *) "\x02", 1, pinUvAuthParam.data) != CborNoError) {
-                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            if (verify((uint8_t)pinUvAuthProtocol, ppaut.data, (const uint8_t *) "\x02", 1, pinUvAuthParam.data) == CborNoError) {
+                if (!(ppaut.permissions & CTAP_PERMISSION_PCMR)) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
             }
-            if (is_preview == false && (!(paut.permissions & CTAP_PERMISSION_CM) || paut.has_rp_id == true)) {
-                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            else {
+                if (verify((uint8_t)pinUvAuthProtocol, paut.data, (const uint8_t *) "\x02", 1, pinUvAuthParam.data) != CborNoError) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
+                if (is_preview == false && (!(paut.permissions & CTAP_PERMISSION_CM) || paut.has_rp_id == true)) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
             }
             rp_counter = 1;
             rp_total = 0;
@@ -199,13 +212,20 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         if (subcommand == 0x04) {
             *(raw_subpara - 1) = 0x04;
-            if (verify((uint8_t)pinUvAuthProtocol, paut.data, raw_subpara - 1, (uint16_t)(raw_subpara_len + 1), pinUvAuthParam.data) != CborNoError) {
-                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            if (verify((uint8_t)pinUvAuthProtocol, ppaut.data, raw_subpara - 1, (uint16_t)(raw_subpara_len + 1), pinUvAuthParam.data) == CborNoError) {
+                if (!(ppaut.permissions & CTAP_PERMISSION_PCMR)) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
             }
-            if (is_preview == false &&
-                (!(paut.permissions & CTAP_PERMISSION_CM) ||
-                 (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))) {
-                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            else {
+                if (verify((uint8_t)pinUvAuthProtocol, paut.data, raw_subpara - 1, (uint16_t)(raw_subpara_len + 1), pinUvAuthParam.data) != CborNoError) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
+                if (is_preview == false &&
+                    (!(paut.permissions & CTAP_PERMISSION_CM) ||
+                    (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
             }
             cred_counter = 1;
             cred_total = 0;
@@ -239,7 +259,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
 
         Credential cred = { 0 };
-        if (credential_load(file_get_data(cred_ef) + 32, file_get_size(cred_ef) - 32, rpIdHash.data, &cred) != 0) {
+        if (credential_load_resident(cred_ef, rpIdHash.data, &cred) != 0) {
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         }
 
@@ -296,7 +316,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 2));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred.id.data, cred.id.len));
+        uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
+        credential_derive_resident(cred.id.data, cred.id.len, cred_idr);
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
@@ -352,7 +374,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, MIN(file_get_size(ef) - 32, credentialId.id.len)) == 0) {
+            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, CRED_RESIDENT_LEN) == 0) {
                 uint8_t *rp_id_hash = file_get_data(ef);
                 if (delete_file(ef) != 0) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
@@ -394,10 +416,10 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, MIN(file_get_size(ef) - 32, credentialId.id.len)) == 0) {
+            if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, CRED_RESIDENT_LEN) == 0) {
                 Credential cred = { 0 };
                 uint8_t *rp_id_hash = file_get_data(ef);
-                if (credential_load(rp_id_hash + 32, file_get_size(ef) - 32, rp_id_hash, &cred) != 0) {
+                if (credential_load_resident(ef, rp_id_hash, &cred) != 0) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
                 if (memcmp(user.id.data, cred.userId.data, MIN(user.id.len, cred.userId.len)) != 0) {
@@ -405,11 +427,11 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                     CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
                 }
                 uint8_t newcred[MAX_CRED_ID_LENGTH];
-                size_t newcred_len = 0;
+                uint16_t newcred_len = 0;
                 if (credential_create(&cred.rpId, &cred.userId, &user.parent.name,
-                                      &user.displayName, &cred.opts, &cred.extensions,
-                                      cred.use_sign_count, (int)cred.alg,
-                                      (int)cred.curve, newcred, &newcred_len) != 0) {
+                                    &user.displayName, &cred.opts, &cred.extensions,
+                                    cred.use_sign_count, (int)cred.alg,
+                                    (int)cred.curve, newcred, &newcred_len) != 0) {
                     credential_free(&cred);
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }

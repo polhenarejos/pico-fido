@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "pico_keys.h"
 #include "ctap2_cbor.h"
 #include "hid/ctap_hid.h"
 #include "fido.h"
@@ -27,22 +28,36 @@ int cbor_get_info() {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 15));
+    uint8_t lfields = 14;
+#ifndef ENABLE_EMULATION
+    if (phy_data.vid != 0x1050) {
+        lfields++;
+    }
+#else
+    lfields++;
+#endif
+    file_t *ef_pin_policy = search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
+    if (file_has_data(ef_pin_policy)) {
+        lfields += 2;
+    }
+    CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "U2F_V2"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_0"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_1"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "FIDO_2_2"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 6));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 7));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credBlob"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobKey"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "minPinLength"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret-mc"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "thirdPartyPayment"));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
@@ -150,13 +165,36 @@ int cbor_get_info() {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0F));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDBLOB_LENGTH)); // maxCredBlobLength
+#ifndef ENABLE_EMULATION
+    if (phy_data.vid != 0x1050) {
+#endif
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
+        uint8_t enabled_cmds = 4;
+#ifndef ENABLE_EMULATION
+        enabled_cmds += 4;
+#endif
+        CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, enabled_cmds));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_DISABLE));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_EA_UPLOAD));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PIN_POLICY));
+#ifndef ENABLE_EMULATION
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_VIDPID));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_LED_BTNESS));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_LED_GPIO));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_OPTS));
+#endif
+        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
+#ifndef ENABLE_EMULATION
+    }
+    if (file_has_data(ef_pin_policy)) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1B));
+        CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1C));
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_pin_policy) + 2, file_get_size(ef_pin_policy) - 2));
+    }
 
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
-    CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
-    CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_DISABLE));
-    CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
-
+#endif
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
 err:
     if (error != CborNoError) {

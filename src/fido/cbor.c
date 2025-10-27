@@ -16,7 +16,7 @@
  */
 
 #include "pico_keys.h"
-#if !defined(ENABLE_EMULATION) && !defined(ESP_PLATFORM)
+#if defined(PICO_PLATFORM)
 #include "pico/stdlib.h"
 #endif
 #include "hid/ctap_hid.h"
@@ -104,7 +104,8 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     return CTAP1_ERR_INVALID_CMD;
 }
 
-void cbor_thread(void) {
+void *cbor_thread(void *arg) {
+    (void)arg;
     card_init_core1();
     while (1) {
         uint32_t m;
@@ -115,17 +116,17 @@ void cbor_thread(void) {
         if (m == EV_EXIT) {
             break;
         }
-        apdu.sw = cbor_parse(cbor_cmd, cbor_data, cbor_len);
+        apdu.sw = (uint16_t)cbor_parse(cbor_cmd, cbor_data, cbor_len);
         if (apdu.sw == 0) {
             DEBUG_DATA(res_APDU, res_APDU_size);
         }
         else {
             if (apdu.sw >= CTAP1_ERR_INVALID_CHANNEL) {
-                res_APDU[-1] = apdu.sw;
+                res_APDU[-1] = (uint8_t)apdu.sw;
                 apdu.sw = 0;
             }
             else {
-                res_APDU[0] = apdu.sw;
+                res_APDU[0] = (uint8_t)apdu.sw;
             }
         }
 
@@ -137,6 +138,7 @@ void cbor_thread(void) {
 #ifdef ESP_PLATFORM
     vTaskDelete(NULL);
 #endif
+    return NULL;
 }
 
 int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
@@ -213,6 +215,9 @@ CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent,
 #ifdef MBEDTLS_EDDSA_C
     else if (key->grp.id == MBEDTLS_ECP_DP_ED25519) {
         alg = FIDO2_ALG_EDDSA;
+    }
+    else if (key->grp.id == MBEDTLS_ECP_DP_ED448) {
+        alg = FIDO2_ALG_ED448;
     }
 #endif
     return COSE_key_params(crv, alg, &key->grp, &key->Q, mapEncoderParent, mapEncoder);
