@@ -135,9 +135,6 @@ void *cbor_thread(void *arg) {
         flag = EV_EXEC_FINISHED;
         queue_add_blocking(&card_to_usb_q, &flag);
     }
-#ifdef ESP_PLATFORM
-    vTaskDelete(NULL);
-#endif
     return NULL;
 }
 
