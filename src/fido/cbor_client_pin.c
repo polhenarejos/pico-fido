@@ -271,7 +271,6 @@ int check_keydev_encrypted(const uint8_t pin_token[32]) {
         uint8_t tmp_keydev[61];
         tmp_keydev[0] = 0x02; // Change format to encrypted
         encrypt_with_aad(pin_token, file_get_data(ef_keydev) + 1, 32, tmp_keydev + 1);
-        DEBUG_DATA(tmp_keydev, sizeof(tmp_keydev));
         file_put_data(ef_keydev, tmp_keydev, sizeof(tmp_keydev));
         mbedtls_platform_zeroize(tmp_keydev, sizeof(tmp_keydev));
         low_flash_available();
