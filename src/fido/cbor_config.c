@@ -210,12 +210,6 @@ int cbor_config(const uint8_t *data, size_t len) {
         else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
             phy_data.opts = (uint16_t)vendorParamInt;
         }
-        else {
-            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
-        }
-        if (is_phy && phy_save() != PICOKEY_OK) {
-            CBOR_ERROR(CTAP2_ERR_PROCESSING);
-        }
 #endif
         else if (vendorCommandId == CTAP_CONFIG_EA_UPLOAD) {
             if (vendorParamByteString.present == false) {
@@ -245,6 +239,11 @@ int cbor_config(const uint8_t *data, size_t len) {
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
+#ifndef ENABLE_EMULATION
+        if (is_phy && phy_save() != PICOKEY_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+#endif
         goto err;
     }
     else if (subcommand == 0x03) {
