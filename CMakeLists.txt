@@ -113,7 +113,7 @@ set(SOURCES ${SOURCES}
         )
 endif()
 
-SET_VERSION(ver_major ver_minor "${CMAKE_CURRENT_LIST_DIR}/src/fido/version.h" 1)
+SET_VERSION(ver_major ver_minor "${CMAKE_CURRENT_LIST_DIR}/src/fido/version.h" 2)
 if(ESP_PLATFORM)
     project(pico_fido)
 endif()
