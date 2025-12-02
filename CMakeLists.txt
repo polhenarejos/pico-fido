@@ -18,7 +18,6 @@
 cmake_minimum_required(VERSION 3.13)
 
 if(ESP_PLATFORM)
-set(DEBUG_APDU 1)
 set(DENABLE_POWER_ON_RESET 0)
 set(EXTRA_COMPONENT_DIRS src pico-keys-sdk/src)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
