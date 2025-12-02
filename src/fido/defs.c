@@ -17,5 +17,8 @@
 
 #include "pico_keys.h"
 #include "fido.h"
+#include "version.h"
 
 uint8_t PICO_PRODUCT = 2; // Pico FIDO
+uint8_t PICO_VERSION_MAJOR = PICO_FIDO_VERSION_MAJOR;
+uint8_t PICO_VERSION_MINOR = PICO_FIDO_VERSION_MINOR;
