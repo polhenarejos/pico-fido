@@ -23,6 +23,8 @@
 #include "asn1.h"
 #include "management.h"
 
+bool is_gpg = true;
+
 int man_process_apdu();
 int man_unload();
 
@@ -44,6 +46,7 @@ int man_select(app_t *a, uint8_t force) {
         init_otp();
 #endif
     }
+    is_gpg = false;
     return PICOKEY_OK;
 }
 
