@@ -96,50 +96,11 @@ mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
     if (curve == FIDO2_CURVE_P256) {
         return MBEDTLS_ECP_DP_SECP256R1;
     }
-    else if (curve == FIDO2_CURVE_P384) {
-        return MBEDTLS_ECP_DP_SECP384R1;
-    }
-    else if (curve == FIDO2_CURVE_P521) {
-        return MBEDTLS_ECP_DP_SECP521R1;
-    }
-    else if (curve == FIDO2_CURVE_P256K1) {
-        return MBEDTLS_ECP_DP_SECP256K1;
-    }
-    else if (curve == FIDO2_CURVE_X25519) {
-        return MBEDTLS_ECP_DP_CURVE25519;
-    }
-    else if (curve == FIDO2_CURVE_X448) {
-        return MBEDTLS_ECP_DP_CURVE448;
-    }
-    else if (curve == FIDO2_CURVE_BP256R1) {
-        return MBEDTLS_ECP_DP_BP256R1;
-    }
-    else if (curve == FIDO2_CURVE_BP384R1) {
-        return MBEDTLS_ECP_DP_BP384R1;
-    }
-    else if (curve == FIDO2_CURVE_BP512R1) {
-        return MBEDTLS_ECP_DP_BP512R1;
-    }
     return MBEDTLS_ECP_DP_NONE;
 }
 int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
     if (id == MBEDTLS_ECP_DP_SECP256R1) {
         return FIDO2_CURVE_P256;
-    }
-    else if (id == MBEDTLS_ECP_DP_SECP384R1) {
-        return FIDO2_CURVE_P384;
-    }
-    else if (id == MBEDTLS_ECP_DP_SECP521R1) {
-        return FIDO2_CURVE_P521;
-    }
-    else if (id == MBEDTLS_ECP_DP_SECP256K1) {
-        return FIDO2_CURVE_P256K1;
-    }
-    else if (id == MBEDTLS_ECP_DP_CURVE25519) {
-        return MBEDTLS_ECP_DP_CURVE25519;
-    }
-    else if (id == MBEDTLS_ECP_DP_CURVE448) {
-        return FIDO2_CURVE_X448;
     }
     return 0;
 }

@@ -234,43 +234,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0) {
             CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
         }
-        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP256) {
+        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_P256;
-            }
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES384 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP384) {
-            if (curve <= 0) {
-                curve = FIDO2_CURVE_P384;
-            }
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP512) {
-            if (curve <= 0) {
-                curve = FIDO2_CURVE_P521;
-            }
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB256) {
-            if (curve <= 0) {
-                curve = FIDO2_CURVE_BP256R1;
-            }
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB384) {
-            if (curve <= 0) {
-                curve = FIDO2_CURVE_BP384R1;
-            }
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB512) {
-            if (curve <= 0) {
-                curve = FIDO2_CURVE_BP512R1;
-            }
-        }
-        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K
-#ifndef ENABLE_EMULATION
-             && (phy_data.enabled_curves & PHY_CURVE_SECP256K1)
-#endif
-            ) {
-            if (curve <= 0) {
-                curve = FIDO2_CURVE_P256K1;
             }
         }
         else if (pubKeyCredParams[i].alg <= FIDO2_ALG_RS256 && pubKeyCredParams[i].alg >= FIDO2_ALG_RS512) {
