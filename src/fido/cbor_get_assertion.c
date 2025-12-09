@@ -633,20 +633,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
             md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
         }
-#ifdef MBEDTLS_EDDSA_C
-        else if (ekey.grp.id == MBEDTLS_ECP_DP_ED25519) {
-            md = NULL;
-        }
-#endif
         if (md != NULL) {
             ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
             ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
         }
-#ifdef MBEDTLS_EDDSA_C
-        else {
-            ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_gen, NULL);
-        }
-#endif
     }
     else {
         // Bogus signature
