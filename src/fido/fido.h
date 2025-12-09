@@ -28,9 +28,6 @@
 #endif
 
 #include "mbedtls/ecdsa.h"
-#ifdef MBEDTLS_EDDSA_C
-#include "mbedtls/eddsa.h"
-#endif
 #include "hid/ctap_hid.h"
 
 #define CTAP_PUBKEY_LEN (65)
@@ -57,16 +54,13 @@ extern int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint
 extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret);
 
 #define FIDO2_ALG_ES256     -7 //ECDSA-SHA256
-#define FIDO2_ALG_EDDSA     -8 //EdDSA
 #define FIDO2_ALG_ESP256    -9 //ECDSA-SHA256 P256
-#define FIDO2_ALG_ED25519   -19 //EDDSA Ed25519
 #define FIDO2_ALG_ES384     -35 //ECDSA-SHA384
 #define FIDO2_ALG_ES512     -36 //ECDSA-SHA512
 #define FIDO2_ALG_ECDH_ES_HKDF_256 -25 //ECDH-ES + HKDF-256
 #define FIDO2_ALG_ES256K    -47
 #define FIDO2_ALG_ESP384    -51 //ECDSA-SHA384 P384
 #define FIDO2_ALG_ESP512    -52 //ECDSA-SHA512 P521
-#define FIDO2_ALG_ED448     -53 //EDDSA Ed448
 #define FIDO2_ALG_RS256     -257
 #define FIDO2_ALG_RS384     -258
 #define FIDO2_ALG_RS512     -259
@@ -79,8 +73,6 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #define FIDO2_CURVE_P521        3
 #define FIDO2_CURVE_X25519      4
 #define FIDO2_CURVE_X448        5
-#define FIDO2_CURVE_ED25519     6
-#define FIDO2_CURVE_ED448       7
 #define FIDO2_CURVE_P256K1      8
 #define FIDO2_CURVE_BP256R1     9
 #define FIDO2_CURVE_BP384R1     10
