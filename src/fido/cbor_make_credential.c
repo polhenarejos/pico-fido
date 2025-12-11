@@ -234,11 +234,57 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0) {
             CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
         }
-        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256) {
+        if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP256) {
             if (curve <= 0) {
                 curve = FIDO2_CURVE_P256;
             }
         }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES384 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP384) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_P384;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES512 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP512) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_P521;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB256) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_BP256R1;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB384) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_BP384R1;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ESB512) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_BP512R1;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256K
+#ifndef ENABLE_EMULATION
+             && (phy_data.enabled_curves & PHY_CURVE_SECP256K1)
+#endif
+            ) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_P256K1;
+            }
+        }
+#ifdef MBEDTLS_EDDSA_C
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_EDDSA || pubKeyCredParams[i].alg == FIDO2_ALG_ED25519) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_ED25519;
+            }
+        }
+        else if (pubKeyCredParams[i].alg == FIDO2_ALG_ED448) {
+            if (curve <= 0) {
+                curve = FIDO2_CURVE_ED448;
+            }
+        }
+#endif
         else if (pubKeyCredParams[i].alg <= FIDO2_ALG_RS256 && pubKeyCredParams[i].alg >= FIDO2_ALG_RS512) {
             // pass
         }
@@ -532,6 +578,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1 || ekey.grp.id == MBEDTLS_ECP_DP_BP512R1) {
         md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
     }
+#ifdef MBEDTLS_EDDSA_C
+    else if (ekey.grp.id == MBEDTLS_ECP_DP_ED25519 || ekey.grp.id == MBEDTLS_ECP_DP_ED448) {
+        md = NULL;
+    }
+#endif
     if (md != NULL) {
         ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
     }
@@ -552,6 +603,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (md != NULL) {
         ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
     }
+#ifdef MBEDTLS_EDDSA_C
+    else {
+        ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_gen, NULL);
+    }
+#endif
     mbedtls_ecp_keypair_free(&ekey);
     if (ret != 0) {
         CBOR_ERROR(CTAP2_ERR_PROCESSING);

@@ -151,7 +151,8 @@ int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
 CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedtls_ecp_point *Q, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
     CborError error = CborNoError;
     int kty = 1;
-    if (crv == FIDO2_CURVE_P256) {
+    if (crv == FIDO2_CURVE_P256 || crv == FIDO2_CURVE_P384 || crv == FIDO2_CURVE_P521 ||
+        crv == FIDO2_CURVE_P256K1) {
         kty = 2;
     }
 
@@ -196,6 +197,26 @@ CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent,
     if (key->grp.id == MBEDTLS_ECP_DP_SECP256R1) {
         alg = FIDO2_ALG_ES256;
     }
+    else if (key->grp.id == MBEDTLS_ECP_DP_SECP384R1) {
+        alg = FIDO2_ALG_ES384;
+    }
+    else if (key->grp.id == MBEDTLS_ECP_DP_SECP521R1) {
+        alg = FIDO2_ALG_ES512;
+    }
+    else if (key->grp.id == MBEDTLS_ECP_DP_SECP256K1) {
+        alg = FIDO2_ALG_ES256K;
+    }
+    else if (key->grp.id == MBEDTLS_ECP_DP_CURVE25519) {
+        alg = FIDO2_ALG_ECDH_ES_HKDF_256;
+    }
+#ifdef MBEDTLS_EDDSA_C
+    else if (key->grp.id == MBEDTLS_ECP_DP_ED25519) {
+        alg = FIDO2_ALG_EDDSA;
+    }
+    else if (key->grp.id == MBEDTLS_ECP_DP_ED448) {
+        alg = FIDO2_ALG_ED448;
+    }
+#endif
     return COSE_key_params(crv, alg, &key->grp, &key->Q, mapEncoderParent, mapEncoder);
 }
 CborError COSE_key_shared(mbedtls_ecdh_context *key,
