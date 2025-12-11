@@ -111,6 +111,14 @@ mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
     else if (curve == FIDO2_CURVE_X448) {
         return MBEDTLS_ECP_DP_CURVE448;
     }
+#ifdef MBEDTLS_EDDSA_C
+    else if (curve == FIDO2_CURVE_ED25519) {
+        return MBEDTLS_ECP_DP_ED25519;
+    }
+    else if (curve == FIDO2_CURVE_ED448) {
+        return MBEDTLS_ECP_DP_ED448;
+    }
+#endif
     else if (curve == FIDO2_CURVE_BP256R1) {
         return MBEDTLS_ECP_DP_BP256R1;
     }
@@ -141,6 +149,14 @@ int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
     else if (id == MBEDTLS_ECP_DP_CURVE448) {
         return FIDO2_CURVE_X448;
     }
+#ifdef MBEDTLS_EDDSA_C
+    else if (id == MBEDTLS_ECP_DP_ED25519) {
+        return FIDO2_CURVE_ED25519;
+    }
+    else if (id == MBEDTLS_ECP_DP_ED448) {
+        return FIDO2_CURVE_ED448;
+    }
+#endif
     return 0;
 }
 
@@ -314,6 +330,11 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         if (r != 0) {
             return r;
         }
+#ifdef MBEDTLS_EDDSA_C
+        if (curve == MBEDTLS_ECP_DP_ED25519) {
+            return mbedtls_ecp_point_edwards(&key->grp, &key->Q, &key->d, random_gen, NULL);
+        }
+#endif
         return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL);
     }
     mbedtls_platform_zeroize(outk, sizeof(outk));
