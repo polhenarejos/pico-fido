@@ -19,7 +19,7 @@ boards=("pico" "pico2")
 for board_name in "${boards[@]}"
 do
     rm -rf -- ./*
-    PICO_SDK_PATH="${PICO_SDK_PATH}" cmake .. -DPICO_BOARD=$board_name -DSECURE_BOOT_PKEY=${SECURE_BOOT_PKEY}
+    PICO_SDK_PATH="${PICO_SDK_PATH}" cmake .. -DPICO_BOARD=$board_name -DSECURE_BOOT_PKEY=${SECURE_BOOT_PKEY} -DVIDPID=Yubikey5
     make -j`nproc`
     mv pico_fido.uf2 ../release/pico_fido_$board_name-$SUFFIX.uf2
 done
