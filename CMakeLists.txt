@@ -72,6 +72,13 @@ else()
 endif()
 
 set(USB_ITF_HID 1)
+
+option(WAVESHARE_RP2350_ONE "Enable Waveshare RP2350-One LED support" OFF)
+if(WAVESHARE_RP2350_ONE)
+    add_definitions(-DWAVESHARE_RP2350_ONE=1)
+    message(STATUS "Waveshare RP2350-One: \t enabled")
+endif()
+
 include(pico-keys-sdk/pico_keys_sdk_import.cmake)
 
 if(NOT ESP_PLATFORM)

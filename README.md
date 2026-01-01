@@ -74,6 +74,7 @@ PICO_SDK_PATH=/path/to/pico-sdk cmake .. -DPICO_BOARD=board_type -DUSB_VID=0x123
 make
 ```
 Note that `PICO_BOARD`, `USB_VID` and `USB_PID` are optional. If not provided, `pico` board and VID/PID `FEFF:FCFD` will be used.
+For Waveshare RP2350-One board, add `-DWAVESHARE_RP2350_ONE=ON` to enable RGB LED support on GPIO 16.
 
 Additionally, you can pass the `VIDPID=value` parameter to build the firmware with a known VID/PID. The supported values are:
 
@@ -116,6 +117,18 @@ In active mode, the Pico FIDO is awaken and ready to receive a command. It blink
 While processing, the Pico FIDO is busy and cannot receive additional commands until the current is processed. In this state, the Led blinks 20 times in a second.
 
 ![Processing](https://user-images.githubusercontent.com/55573252/162009007-df45111e-2473-4a92-97c5-15c3cd19babd.gif)
+
+### Waveshare RP2350-One RGB LED
+
+The Waveshare RP2350-One uses a WS2812 RGB LED on GPIO 16. Different colors indicate different states:
+
+| State            | Color     | Pattern                         |
+| ---------------- | --------- | ------------------------------- |
+| Not mounted      | 🔴 Red    | 500ms on / 500ms off            |
+| Mounted (active) | 🟢 Green  | 500ms on / 500ms off            |
+| Suspended (idle) | 🔵 Blue   | 1000ms on / 2000ms off          |
+| Processing       | 🟢 Green  | 50ms on / 50ms off (fast blink) |
+| Press to confirm | 🟡 Yellow | 1000ms on / 100ms off           |
 
 ## Driver
 
