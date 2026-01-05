@@ -268,7 +268,6 @@ def test_returned_credential(device):
 
 
     ga_res = device.GA(allow_list=allow_list,options={'up':False})['res']
-    print(ga_res)
 
     # No other credentials should be returned
     with pytest.raises(CtapError) as e:
