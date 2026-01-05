@@ -42,6 +42,22 @@ uint32_t timerx = 0;
 uint8_t *datax = NULL;
 size_t lenx = 0;
 
+void reset_gna_state() {
+    for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
+        credential_free(&credsx[i]);
+    }
+    if (datax) {
+        free(datax);
+        datax = NULL;
+    }
+    lenx = 0;
+    residentx = false;
+    timerx = 0;
+    flagsx = 0;
+    credentialCounter = 0;
+    numberOfCredentialsx = 0;
+}
+
 int cbor_get_next_assertion(const uint8_t *data, size_t len) {
     (void) data;
     (void) len;
@@ -57,19 +73,7 @@ int cbor_get_next_assertion(const uint8_t *data, size_t len) {
     credentialCounter++;
 err:
     if (error != CborNoError || credentialCounter == numberOfCredentialsx) {
-        for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-            credential_free(&credsx[i]);
-        }
-        if (datax) {
-            free(datax);
-            datax = NULL;
-        }
-        lenx = 0;
-        residentx = false;
-        timerx = 0;
-        flagsx = 0;
-        credentialCounter = 0;
-        numberOfCredentialsx = 0;
+        reset_gna_state();
         if (error == CborErrorImproperValue) {
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
         }

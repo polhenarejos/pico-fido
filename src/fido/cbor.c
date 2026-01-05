@@ -41,6 +41,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len);
 int cbor_config(const uint8_t *data, size_t len);
 int cbor_vendor(const uint8_t *data, size_t len);
 int cbor_large_blobs(const uint8_t *data, size_t len);
+extern void reset_gna_state();
 
 extern int cmd_read_config();
 
@@ -59,6 +60,9 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     }
     if (cap_supported(CAP_FIDO2)) {
         if (cmd == CTAPHID_CBOR) {
+            if (data[0] != CTAP_GET_NEXT_ASSERTION) {
+                reset_gna_state();
+            }
             if (data[0] == CTAP_MAKE_CREDENTIAL) {
                 return cbor_make_credential(data + 1, len - 1);
             }
