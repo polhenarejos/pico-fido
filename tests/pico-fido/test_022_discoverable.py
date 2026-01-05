@@ -202,10 +202,29 @@ def test_rk_with_allowlist_of_different_rp(resetdevice):
     assert e.value.code == CtapError.ERR.NO_CREDENTIALS
 
 
+def test_same_prefix_userId(device):
+    """
+    A make credential request with two different UserIds that share the same prefix should NOT overwrite.
+    """
+    rp = {"id": "sameprefix.org", "name": "Example"}
+    user1 = {"id": b"user_12", "name": "A fixed name", "displayName": "A fixed display name"}
+    user2 = {"id": b"user_123", "name": "A fixed name", "displayName": "A fixed display name"}
+
+    mc_res1 = device.MC(rp = rp, options={"rk":True}, user = user1)
+
+    # Should not overwrite the first credential.
+    mc_res2 = device.MC(rp = rp, options={"rk":True}, user = user2)
+
+    ga_res = device.GA(rp_id=rp['id'])['res']
+
+    assert ga_res.number_of_credentials == 2
+
+
 def test_same_userId_overwrites_rk(resetdevice):
     """
     A make credential request with a UserId & Rp that is the same as an existing one should overwrite.
     """
+    resetdevice.reset()
     rp = {"id": "overwrite.org", "name": "Example"}
     user = generate_random_user()
 
@@ -249,6 +268,7 @@ def test_returned_credential(device):
 
 
     ga_res = device.GA(allow_list=allow_list,options={'up':False})['res']
+    print(ga_res)
 
     # No other credentials should be returned
     with pytest.raises(CtapError) as e:
