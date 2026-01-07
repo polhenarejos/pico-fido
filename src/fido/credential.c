@@ -319,7 +319,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
             credential_free(&rcred);
             continue;
         }
-        if (memcmp(rcred.userId.data, cred.userId.data, MIN(rcred.userId.len, cred.userId.len)) == 0) {
+        if (rcred.userId.len == cred.userId.len && memcmp(rcred.userId.data, cred.userId.data, rcred.userId.len) == 0) {
             sloti = i;
             credential_free(&rcred);
             new_record = false;
