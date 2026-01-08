@@ -613,24 +613,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_PROCESSING);
     }
 
-    if (user.id.len > 0 && user.parent.name.len > 0 && user.displayName.len > 0) {
-       if (memcmp(user.parent.name.data, "+pico", 5) == 0) {
-            options.rk = pfalse;
-#ifndef ENABLE_EMULATION
-            uint8_t *p = (uint8_t *)user.parent.name.data + 5;
-            if (memcmp(p, "CommissionProfile", 17) == 0) {
-                ret = phy_unserialize_data(user.id.data, (uint16_t)user.id.len, &phy_data);
-                if (ret == PICOKEY_OK) {
-                    ret = phy_save();
-                }
-            }
-#endif
-            if (ret != PICOKEY_OK) {
-                CBOR_ERROR(CTAP2_ERR_PROCESSING);
-            }
-       }
-    }
-
     uint8_t largeBlobKey[32] = {0};
     if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
         ret = credential_derive_large_blob_key(cred_id, cred_id_len, largeBlobKey);
