@@ -40,6 +40,8 @@
 #define EF_OATH_CODE    0xBAFF
 #define EF_OTP_SLOT1    0xBB00
 #define EF_OTP_SLOT2    0xBB01
+#define EF_OTP_SLOT3    0xBB02
+#define EF_OTP_SLOT4    0xBB03
 #define EF_OTP_PIN      0x10A0 // Nitrokey OTP PIN
 
 extern file_t *ef_keydev;
