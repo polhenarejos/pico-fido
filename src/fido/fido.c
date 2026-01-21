@@ -53,6 +53,11 @@ const uint8_t fido_aid[] = {
     0xA0, 0x00, 0x00, 0x06, 0x47, 0x2F, 0x00, 0x01
 };
 
+const uint8_t fido_aid_backup[] = {
+    8,
+    0xB0, 0x00, 0x00, 0x06, 0x47, 0x2F, 0x00, 0x01
+};
+
 const uint8_t atr_fido[] = {
     23,
     0x3b, 0xfd, 0x13, 0x00, 0x00, 0x81, 0x31, 0xfe, 0x15, 0x80, 0x73, 0xc0, 0x21, 0xc0, 0x57, 0x59,
@@ -86,6 +91,7 @@ INITIALIZER ( fido_ctor ) {
     get_version_major = fido_get_version_major;
     get_version_minor = fido_get_version_minor;
     register_app(fido_select, fido_aid);
+    register_app(fido_select, fido_aid_backup);
 }
 
 int fido_unload() {
@@ -530,18 +536,32 @@ extern int cmd_register();
 extern int cmd_authenticate();
 extern int cmd_version();
 extern int cbor_parse(int, uint8_t *, size_t);
+extern int cbor_vendor(const uint8_t *data, size_t len);
 extern void driver_init_hid();
 
 #define CTAP_CBOR 0x10
+
+int cmd_vendor() {
+    uint8_t *old_buf = res_APDU;
+    driver_init_hid();
+    int ret = cbor_vendor(apdu.data, apdu.nc);
+    res_APDU = old_buf;
+    if (ret != 0) {
+        return SW_EXEC_ERROR();
+    }
+    res_APDU_size += 1;
+    memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
+    return SW_OK();
+}
 
 int cmd_cbor() {
     uint8_t *old_buf = res_APDU;
     driver_init_hid();
     int ret = cbor_parse(0x90, apdu.data, apdu.nc);
+    res_APDU = old_buf;
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
-    res_APDU = old_buf;
     res_APDU_size += 1;
     memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
     return SW_OK();
@@ -552,6 +572,7 @@ static const cmd_t cmds[] = {
     { CTAP_AUTHENTICATE, cmd_authenticate },
     { CTAP_VERSION, cmd_version },
     { CTAP_CBOR, cmd_cbor },
+    { 0x41, cmd_vendor },
     { 0x00, 0x0 }
 };
 
