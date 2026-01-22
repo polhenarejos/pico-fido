@@ -19,7 +19,7 @@ cmake_minimum_required(VERSION 3.13)
 
 if(ESP_PLATFORM)
 set(DENABLE_POWER_ON_RESET 0)
-set(EXTRA_COMPONENT_DIRS src pico-keys-sdk/src)
+set(EXTRA_COMPONENT_DIRS pico-keys-sdk/config/esp32/components src/fido)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 else()
 
@@ -161,7 +161,7 @@ if(ENABLE_EMULATION)
             -Wl,--gc-sections
             )
     endif (APPLE)
-    target_link_libraries(pico_fido PRIVATE pthread m)
+    target_link_libraries(pico_fido PRIVATE pico_keys_sdk mbedtls pthread m)
 else()
 target_link_libraries(pico_fido PRIVATE pico_keys_sdk pico_stdlib pico_multicore hardware_flash hardware_sync hardware_adc pico_unique_id pico_aon_timer tinyusb_device tinyusb_board)
 pico_add_extra_outputs(${CMAKE_PROJECT_NAME})
