@@ -17,6 +17,9 @@
 
 cmake_minimum_required(VERSION 3.13)
 
+set(USB_VID 0x2E8A)
+set(USB_PID 0x10FE)
+
 if(ESP_PLATFORM)
 set(DENABLE_POWER_ON_RESET 0)
 set(EXTRA_COMPONENT_DIRS pico-keys-sdk/config/esp32/components src/fido)
