@@ -29,6 +29,7 @@
 #include "files.h"
 #include "otp.h"
 
+extern bool has_set_rtc();
 int credential_derive_chacha_key(uint8_t *outk, const uint8_t *);
 
 static int credential_silent_tag(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, uint8_t *outk) {
@@ -148,6 +149,10 @@ int credential_create(CborCharString *rpId,
         }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
+    if (has_set_rtc()) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, (uint64_t) get_rtc_time()));
+    }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cred_id);
     *cred_id_len = CRED_PROTO_LEN + CRED_IV_LEN + (uint16_t)rs + CRED_TAG_LEN + CRED_SILENT_TAG_LEN;
@@ -220,7 +225,7 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
                 CBOR_FIELD_GET_TEXT(cred->userDisplayName, 1);
             }
             else if (val_u == 0x06) {
-                CBOR_FIELD_GET_UINT(cred->creation, 1);
+                CBOR_FIELD_GET_UINT(cred->board_creation, 1);
             }
             else if (val_u == 0x07) {
                 cred->extensions.present = true;
@@ -254,6 +259,9 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
                     CBOR_ADVANCE(2);
                 }
                 CBOR_PARSE_MAP_END(_f1, 2);
+            }
+            else if (val_u == 0x0C) {
+                CBOR_FIELD_GET_UINT(cred->rtc_creation, 1);
             }
             else {
                 CBOR_ADVANCE(1);
