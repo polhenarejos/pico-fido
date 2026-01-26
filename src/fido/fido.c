@@ -549,7 +549,7 @@ int cmd_vendor() {
     int ret = cbor_vendor(apdu.data, apdu.nc);
     res_APDU = old_buf;
     if (ret != 0) {
-        return SW_EXEC_ERROR();
+        return set_res_sw(0x64, ret);
     }
     res_APDU_size += 1;
     memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
@@ -562,7 +562,7 @@ int cmd_cbor() {
     int ret = cbor_parse(0x90, apdu.data, apdu.nc);
     res_APDU = old_buf;
     if (ret != 0) {
-        return SW_EXEC_ERROR();
+        return set_res_sw(0x64, ret);
     }
     res_APDU_size += 1;
     memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
