@@ -94,22 +94,22 @@ int oath_select(app_t *a, uint8_t force) {
             res_APDU[res_APDU_size++] = sizeof(challenge);
             memcpy(res_APDU + res_APDU_size, challenge, sizeof(challenge));
             res_APDU_size += sizeof(challenge);
-        }
-        file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
-        if (file_has_data(ef_otp_pin)) {
-            const uint8_t *pin_data = file_get_data(ef_otp_pin);
-            res_APDU[res_APDU_size++] = TAG_PIN_COUNTER;
+            res_APDU[res_APDU_size++] = TAG_ALGO;
             res_APDU[res_APDU_size++] = 1;
-            res_APDU[res_APDU_size++] = *pin_data;
+            res_APDU[res_APDU_size++] = ALG_HMAC_SHA1;
         }
-        res_APDU[res_APDU_size++] = TAG_ALGO;
-        res_APDU[res_APDU_size++] = 1;
-        res_APDU[res_APDU_size++] = ALG_HMAC_SHA1;
         if (is_nk) {
             res_APDU[res_APDU_size++] = TAG_SERIAL_NUMBER;
             res_APDU[res_APDU_size++] = 8;
             memcpy(res_APDU + res_APDU_size, pico_serial_str, 8);
             res_APDU_size += 8;
+            file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
+            if (file_has_data(ef_otp_pin)) {
+                const uint8_t *pin_data = file_get_data(ef_otp_pin);
+                res_APDU[res_APDU_size++] = TAG_PIN_COUNTER;
+                res_APDU[res_APDU_size++] = 1;
+                res_APDU[res_APDU_size++] = *pin_data;
+            }
         }
         apdu.ne = res_APDU_size;
         return PICOKEY_OK;
