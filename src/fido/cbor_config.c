@@ -144,12 +144,6 @@ int cbor_config(const uint8_t *data, size_t len) {
     }
 
     if (subcommand == 0xFF) {
-#ifndef ENABLE_EMULATION
-        const bool is_phy = (vendorCommandId == CTAP_CONFIG_PHY_VIDPID ||
-            vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO ||
-            vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS ||
-            vendorCommandId == CTAP_CONFIG_PHY_OPTS);
-#endif
         if (vendorCommandId == CTAP_CONFIG_AUT_DISABLE){
             if (!file_has_data(ef_keydev_enc)) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
@@ -192,25 +186,6 @@ int cbor_config(const uint8_t *data, size_t len) {
             file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
             low_flash_available();
         }
-
-#ifndef ENABLE_EMULATION
-        else if (vendorCommandId == CTAP_CONFIG_PHY_VIDPID) {
-            phy_data.vid = (vendorParamInt >> 16) & 0xFFFF;
-            phy_data.pid = vendorParamInt & 0xFFFF;
-            phy_data.vidpid_present = true;
-        }
-        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_GPIO) {
-            phy_data.led_gpio = (uint8_t)vendorParamInt;
-            phy_data.led_gpio_present = true;
-        }
-        else if (vendorCommandId == CTAP_CONFIG_PHY_LED_BTNESS) {
-            phy_data.led_brightness = (uint8_t)vendorParamInt;
-            phy_data.led_brightness_present = true;
-        }
-        else if (vendorCommandId == CTAP_CONFIG_PHY_OPTS) {
-            phy_data.opts = (uint16_t)vendorParamInt;
-        }
-#endif
         else if (vendorCommandId == CTAP_CONFIG_EA_UPLOAD) {
             if (vendorParamByteString.present == false) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -239,11 +214,6 @@ int cbor_config(const uint8_t *data, size_t len) {
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
-#ifndef ENABLE_EMULATION
-        if (is_phy && phy_save() != PICOKEY_OK) {
-            CBOR_ERROR(CTAP2_ERR_PROCESSING);
-        }
-#endif
         goto err;
     }
     else if (subcommand == 0x03) {
