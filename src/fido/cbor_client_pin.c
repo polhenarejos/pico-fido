@@ -419,6 +419,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         hsh[1] = pin_len;
         hsh[2] = 1; // New format indicator
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, dhash);
+        mbedtls_platform_zeroize(paddedNewPin, sizeof(paddedNewPin));
         pin_derive_verifier(dhash, 16, hsh + 3);
         file_put_data(ef_pin, hsh, sizeof(hsh));
         low_flash_available();
@@ -430,6 +431,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         mbedtls_platform_zeroize(hsh, sizeof(hsh));
         mbedtls_platform_zeroize(dhash, sizeof(dhash));
+        needs_power_cycle = false;
+
         goto err; //No return
     }
     else if (subcommand == 0x4) { //changePIN
@@ -457,6 +460,9 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.Y, kay.data, kay.len) != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
+        if (needs_power_cycle) {
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
         }
         uint8_t sharedSecret[64];
         int ret = ecdh((uint8_t)pinUvAuthProtocol, &hkey.ctx.mbed_ecdh.Qp, sharedSecret);
@@ -587,6 +593,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         low_flash_available();
         resetPinUvAuthToken();
         resetPersistentPinUvAuthToken();
+        needs_power_cycle = false;
         goto err; // No return
     }
     else if (subcommand == 0x9 || subcommand == 0x5) { //getPinUvAuthTokenUsingPinWithPermissions
@@ -622,6 +629,9 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.Y, kay.data, kay.len) != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
+        if (needs_power_cycle) {
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
         }
         uint8_t sharedSecret[64];
         int ret = ecdh((uint8_t)pinUvAuthProtocol, &hkey.ctx.mbed_ecdh.Qp, sharedSecret);
@@ -720,6 +730,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, pinUvAuthToken_enc, 32 + poff));
+        needs_power_cycle = false;
     }
     else {
         CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);

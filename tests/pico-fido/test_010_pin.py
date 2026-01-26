@@ -51,7 +51,7 @@ def test_lockout(device, resetdevice, client_pin):
         res = client_pin.get_pin_retries()
         assert res[0] == attempts
 
-        if err == CtapError.ERR.PIN_AUTH_BLOCKED:
+        if e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED:
             device.reboot()
             client_pin = ClientPin(resetdevice.client()._backend.ctap2)
 

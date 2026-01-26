@@ -49,6 +49,11 @@ void append_keyboard_buffer(const uint8_t *buf, size_t len) {}
 #define CONFIG_LED_INV      0x10
 #define CONFIG_STATUS_MASK  0x1f
 
+#define CONFIG3_VALID       0x01
+#define CONFIG4_VALID       0x02
+#define CONFIG3_TOUCH       0x04
+#define CONFIG4_TOUCH       0x08
+
 /* EXT Flags */
 #define SERIAL_BTN_VISIBLE  0x01    // Serial number visible at startup (button press)
 #define SERIAL_USB_VISIBLE  0x02    // Serial number visible in USB iSerial field
@@ -161,7 +166,7 @@ extern void scan_all();
 void init_otp() {
     if (scanned == false) {
         scan_all();
-        for (uint8_t i = 0; i < 2; i++) {
+        for (uint8_t i = 0; i < 4; i++) {
             file_t *ef = search_dynamic_file(EF_OTP_SLOT1 + i);
             uint8_t *data = file_get_data(ef);
             otp_config_t *otp_config = (otp_config_t *) data;
@@ -207,7 +212,8 @@ int otp_button_pressed(uint8_t slot) {
     if (!cap_supported(CAP_OTP)) {
         return 3;
     }
-    file_t *ef = search_dynamic_file(slot == 1 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+    uint16_t slot_ef = EF_OTP_SLOT1 + slot - 1;
+    file_t *ef = search_dynamic_file(slot_ef);
     const uint8_t *data = file_get_data(ef);
     otp_config_t *otp_config = (otp_config_t *) data;
     if (file_has_data(ef) == false) {
@@ -333,6 +339,39 @@ int otp_unload() {
 }
 
 uint8_t status_byte = 0x0;
+uint16_t otp_status_ext() {
+    for (int i = 0; i < 4; i++) {
+        file_t *ef = search_dynamic_file(EF_OTP_SLOT1 + i);
+        if (file_has_data(ef)) {
+            res_APDU[res_APDU_size++] = 0xB0 + i;
+            res_APDU[res_APDU_size++] = 0; // Filled later
+            uint8_t *p = res_APDU + res_APDU_size;
+            otp_config_t *otp_config = (otp_config_t *)file_get_data(ef);
+            *p++ = 0xA0;
+            *p++ = 2;
+            *p++ = otp_config->tkt_flags;
+            *p++ = otp_config->cfg_flags;
+            if (otp_config->cfg_flags & CHAL_YUBICO && otp_config->tkt_flags & CHAL_RESP) {
+
+            }
+            else if (otp_config->tkt_flags & OATH_HOTP) {
+            }
+            else if (otp_config->cfg_flags & SHORT_TICKET || otp_config->cfg_flags & STATIC_TICKET) {
+            }
+            else {
+                *p++ = 0xC0;
+                *p++ = 6;
+                memcpy(p, otp_config->fixed_data, 6);
+                p += 6;
+            }
+            uint8_t len = p - (res_APDU + res_APDU_size);
+            res_APDU[res_APDU_size - 1] = len;
+            res_APDU_size += len;
+        }
+    }
+    return SW_OK();
+}
+
 uint16_t otp_status(bool is_otp) {
     if (scanned == false) {
         scan_all();
@@ -384,12 +423,13 @@ bool check_crc(const otp_config_t *data) {
 bool _is_otp = false;
 int cmd_otp() {
     uint8_t p1 = P1(apdu), p2 = P2(apdu);
-    if (p2 != 0x00) {
-        return SW_INCORRECT_P1P2();
-    }
     if (p1 == 0x01 || p1 == 0x03) { // Configure slot
         otp_config_t *odata = (otp_config_t *) apdu.data;
-        file_t *ef = file_new(p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+        if (p1 == 0x03 && p2 != 0x0) {
+            return SW_INCORRECT_P1P2();
+        }
+        uint16_t slot = (p1 == 0x01 ? EF_OTP_SLOT1 : EF_OTP_SLOT2) + p2;
+        file_t *ef = file_new(slot);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
             if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
@@ -415,10 +455,14 @@ int cmd_otp() {
     }
     else if (p1 == 0x04 || p1 == 0x05) { // Update slot
         otp_config_t *odata = (otp_config_t *) apdu.data;
+        if (p1 == 0x05 && p2 != 0x0) {
+            return SW_INCORRECT_P1P2();
+        }
+        uint16_t slot = (p1 == 0x04 ? EF_OTP_SLOT1 : EF_OTP_SLOT2) + p2;
         if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
             return SW_WRONG_DATA();
         }
-        file_t *ef = search_dynamic_file(p1 == 0x04 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+        file_t *ef = search_dynamic_file(slot);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
             if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
@@ -446,8 +490,16 @@ int cmd_otp() {
     else if (p1 == 0x06) { // Swap slots
         uint8_t tmp[otp_config_size + 8];
         bool ef1_data = false;
-        file_t *ef1 = file_new(EF_OTP_SLOT1);
-        file_t *ef2 = file_new(EF_OTP_SLOT2);
+        uint16_t slot1 = EF_OTP_SLOT1, slot2 = EF_OTP_SLOT2;
+        if (apdu.ne > 0) {
+            if (apdu.ne != 2) {
+                return SW_WRONG_LENGTH();
+            }
+            slot1 += apdu.data[0];
+            slot2 += apdu.data[1];
+        }
+        file_t *ef1 = file_new(slot1);
+        file_t *ef2 = file_new(slot2);
         if (file_has_data(ef1)) {
             memcpy(tmp, file_get_data(ef1), file_get_size(ef1));
             ef1_data = true;
@@ -458,7 +510,7 @@ int cmd_otp() {
         else {
             delete_file(ef1);
             // When a dynamic file is deleted, existing referenes are invalidated
-            ef2 = file_new(EF_OTP_SLOT2);
+            ef2 = file_new(slot2);
         }
         if (ef1_data) {
             file_put_data(ef2, tmp, sizeof(tmp));
@@ -478,8 +530,15 @@ int cmd_otp() {
     else if (p1 == 0x13) { // Get config
         man_get_config();
     }
+    else if (p1 == 0x14) {
+        otp_status_ext();
+    }
     else if (p1 == 0x30 || p1 == 0x38 || p1 == 0x20 || p1 == 0x28) { // Calculate OTP
-        file_t *ef = search_dynamic_file(p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2);
+        if ((p1 == 0x38 || p1 == 0x28) && p2 != 0x0) {
+            return SW_INCORRECT_P1P2();
+        }
+        uint16_t slot = (p1 == 0x30 || p1 == 0x20 ? EF_OTP_SLOT1 : EF_OTP_SLOT2) + p2;
+        file_t *ef = search_dynamic_file(slot);
         if (file_has_data(ef)) {
             otp_config_t *otp_config = (otp_config_t *) file_get_data(ef);
             if (!(otp_config->tkt_flags & CHAL_RESP)) {
