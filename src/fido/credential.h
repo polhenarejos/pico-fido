@@ -43,7 +43,7 @@ typedef struct Credential {
     CborByteString userId;
     CborCharString userName;
     CborCharString userDisplayName;
-    uint64_t creation;
+    uint64_t board_creation;
     CredExtensions extensions;
     const bool *use_sign_count;
     int64_t alg;
@@ -51,6 +51,7 @@ typedef struct Credential {
     CborByteString id;
     CredOptions opts;
     bool present;
+    uint64_t rtc_creation;
 } Credential;
 
 #define CRED_PROT_UV_OPTIONAL               0x01

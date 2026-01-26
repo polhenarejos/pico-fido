@@ -206,7 +206,12 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             uint8_t buffer[1024];
             mbedtls_ecdsa_context ekey;
             mbedtls_ecdsa_init(&ekey);
-            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, file_get_data(ef_keydev), file_get_size(ef_keydev));
+            uint8_t keydev[32] = {0};
+            if (load_keydev(keydev) != 0) {
+                CBOR_ERROR(CTAP1_ERR_OTHER);
+            }
+            int ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &ekey, keydev, 32);
+            mbedtls_platform_zeroize(keydev, sizeof(keydev));
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
