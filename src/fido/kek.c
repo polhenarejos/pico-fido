@@ -36,19 +36,6 @@ extern uint8_t session_pin[32];
 uint8_t mkek_mask[MKEK_KEY_SIZE];
 bool has_mkek_mask = false;
 
-#define POLY 0xedb88320
-
-uint32_t crc32c(const uint8_t *buf, size_t len) {
-    uint32_t crc = 0xffffffff;
-    while (len--) {
-        crc ^= *buf++;
-        for (int k = 0; k < 8; k++) {
-            crc = (crc >> 1) ^ (POLY & (0 - (crc & 1)));
-        }
-    }
-    return ~crc;
-}
-
 void mkek_masked(uint8_t *mkek, const uint8_t *mask) {
     if (mask) {
         for (int i = 0; i < MKEK_KEY_SIZE; i++) {
