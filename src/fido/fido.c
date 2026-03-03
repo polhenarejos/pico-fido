@@ -150,7 +150,7 @@ int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
         return FIDO2_CURVE_P256K1;
     }
     else if (id == MBEDTLS_ECP_DP_CURVE25519) {
-        return MBEDTLS_ECP_DP_CURVE25519;
+        return FIDO2_CURVE_X25519;
     }
     else if (id == MBEDTLS_ECP_DP_CURVE448) {
         return FIDO2_CURVE_X448;
