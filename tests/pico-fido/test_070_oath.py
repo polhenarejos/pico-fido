@@ -25,6 +25,7 @@ INS_PUT = 0x01
 INS_DELETE = 0x02
 INS_SET_CODE = 0x03
 INS_RESET = 0x04
+INS_RENAME = 0x05
 INS_LIST = 0xa1
 INS_CALCULATE = 0xa2
 INS_VALIDATE = 0xa3
@@ -88,6 +89,24 @@ def test_life(reset_oath):
     resp = send_apdu(reset_oath, INS_DELETE, p1=0, p2=0, data=data)
     resp = list_apdu(reset_oath)
     assert(len(resp) == 0)
+
+
+def test_rename_prefix_extension(reset_oath):
+    old_name = b"30/test"
+    new_name = b"30/test2"
+    key = list(bytes(b"foo bar"))
+
+    put_data = [TAG_NAME, len(old_name)] + list(old_name)
+    put_data += [TAG_KEY, len(key) + 2, TYPE_TOTP | ALG_SHA1, 6] + key
+    send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=put_data)
+
+    rename_data = [TAG_NAME, len(old_name)] + list(old_name)
+    rename_data += [TAG_NAME, len(new_name)] + list(new_name)
+    send_apdu(reset_oath, INS_RENAME, p1=0, p2=0, data=rename_data)
+
+    resp = list_apdu(reset_oath)
+    exp = [TAG_NAME_LIST, len(new_name) + 1, TYPE_TOTP | ALG_SHA1] + list(new_name)
+    assert resp == exp
 
 def test_overwrite(reset_oath):
     data = data_name + data_key

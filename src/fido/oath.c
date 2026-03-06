@@ -625,7 +625,7 @@ int cmd_rename() {
     if (asn1_find_tag(&ctxi, TAG_NAME, &new_name) == false) {
         return SW_WRONG_DATA();
     }
-    if (memcmp(name.data, new_name.data, name.len) == 0) {
+    if (name.len == new_name.len && memcmp(name.data, new_name.data, name.len) == 0) {
         return SW_WRONG_DATA();
     }
     file_t *ef = find_oath_cred(name.data, name.len);
