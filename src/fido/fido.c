@@ -442,6 +442,7 @@ int scan_files_fido() {
         printf("FATAL ERROR: Global counter not found in memory!\r\n");
     }
     ef_pin = search_by_fid(EF_PIN, NULL, SPECIFY_EF);
+    ef_pin_admin = search_by_fid(EF_PIN_ADMIN, NULL, SPECIFY_EF);
     ef_authtoken = search_by_fid(EF_AUTHTOKEN, NULL, SPECIFY_EF);
     if (ef_authtoken) {
         if (!file_has_data(ef_authtoken)) {

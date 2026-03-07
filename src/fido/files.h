@@ -28,6 +28,7 @@
 #define EF_COUNTER      0xC000
 #define EF_OPTS         0xC001
 #define EF_PIN          0x1080
+#define EF_PIN_ADMIN    0x1084
 #define EF_AUTHTOKEN    0x1090
 #define EF_PAUTHTOKEN   0x1091
 #define EF_MINPINLEN    0x1100
@@ -48,6 +49,7 @@ extern file_t *ef_keydev;
 extern file_t *ef_certdev;
 extern file_t *ef_counter;
 extern file_t *ef_pin;
+extern file_t *ef_pin_admin;
 extern file_t *ef_authtoken;
 extern file_t *ef_keydev_enc;
 extern file_t *ef_largeblob;
