@@ -148,7 +148,10 @@ if(NOT ESP_PLATFORM)
     )
     target_compile_options(pico_fido PRIVATE ${COMMON_COMPILE_OPTIONS})
 
-    pico_keys_apply_strict_flags(SOURCES ${SOURCES})
+    pico_keys_apply_strict_flags(
+        SOURCES ${SOURCES}
+        FILTER_REGEX "/src/fido/|/pico-keys-sdk/src/|/pico-keys-sdk/config/"
+    )
 
     if(NOT MSVC)
         string(FIND ${CMAKE_C_COMPILER} ":" COMPILER_COLON)
