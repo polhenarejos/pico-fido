@@ -42,7 +42,7 @@ uint32_t timerx = 0;
 uint8_t *datax = NULL;
 size_t lenx = 0;
 
-void reset_gna_state() {
+void reset_gna_state(void) {
     for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
         credential_free(&credsx[i]);
     }

@@ -26,7 +26,7 @@
 
 extern int load_mkek(uint8_t *);
 extern int store_mkek(const uint8_t *);
-extern void init_mkek();
+extern void init_mkek(void);
 extern void release_mkek(uint8_t *);
 extern int mkek_encrypt(uint8_t *data, uint16_t len);
 extern int mkek_decrypt(uint8_t *data, uint16_t len);

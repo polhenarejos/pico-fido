@@ -29,7 +29,6 @@
 #include "files.h"
 #include "otp.h"
 
-extern bool has_set_rtc();
 int credential_derive_chacha_key(uint8_t *outk, const uint8_t *);
 
 static int credential_silent_tag(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, uint8_t *outk) {

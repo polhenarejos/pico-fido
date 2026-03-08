@@ -27,8 +27,20 @@
 #include "mbedtls/ecp.h"
 #include "mbedtls/ecdh.h"
 
-extern uint8_t *driver_prepare_response();
+extern uint8_t *driver_prepare_response(void);
 extern void driver_exec_finished(size_t size_next);
+extern int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len);
+extern int cbor_get_info(void);
+extern int cbor_reset(void);
+extern int cbor_make_credential(const uint8_t *data, size_t len);
+extern int cbor_client_pin(const uint8_t *data, size_t len);
+extern int cbor_selection(void);
+extern int cbor_get_next_assertion(const uint8_t *data, size_t len);
+extern int cbor_cred_mgmt(const uint8_t *data, size_t len);
+extern int cbor_config(const uint8_t *data, size_t len);
+extern int cbor_large_blobs(const uint8_t *data, size_t len);
+extern int cbor_vendor(const uint8_t *data, size_t len);
+extern void reset_gna_state(void);
 extern int cbor_process(uint8_t, const uint8_t *data, size_t len);
 extern const uint8_t aaguid[16];
 

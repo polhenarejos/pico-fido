@@ -24,7 +24,6 @@
 #include "asn1.h"
 #include "crypto_utils.h"
 #include "management.h"
-extern bool is_nk;
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
@@ -63,8 +62,8 @@ extern bool is_nk;
 #define PROP_TOUCH          0x02
 #define PROP_PIN            0x03
 
-int oath_process_apdu();
-int oath_unload();
+static int oath_process_apdu(void);
+static int oath_unload(void);
 
 static bool validated = true;
 static uint8_t challenge[CHALLENGE_LEN] = { 0 };
@@ -74,7 +73,7 @@ const uint8_t oath_aid[] = {
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01
 };
 
-int oath_select(app_t *a, uint8_t force) {
+static int oath_select(app_t *a, uint8_t force) {
     (void) force;
     if (cap_supported(CAP_OATH)) {
         a->process_apdu = oath_process_apdu;
@@ -121,11 +120,11 @@ INITIALIZER ( oath_ctor ) {
     register_app(oath_select, oath_aid);
 }
 
-int oath_unload() {
+static int oath_unload(void) {
     return PICOKEY_OK;
 }
 
-file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
+static file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = search_dynamic_file((uint16_t)(EF_OATH_CRED + i));
         asn1_ctx_t ctxi, ef_tag = { 0 };
@@ -137,7 +136,7 @@ file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
     return NULL;
 }
 
-int cmd_put() {
+static int cmd_put(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
@@ -185,7 +184,7 @@ int cmd_put() {
 }
 
 
-int cmd_delete() {
+static int cmd_delete(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
@@ -202,7 +201,7 @@ int cmd_delete() {
     return SW_INCORRECT_PARAMS();
 }
 
-const mbedtls_md_info_t *get_oath_md_info(uint8_t alg) {
+static const mbedtls_md_info_t *get_oath_md_info(uint8_t alg) {
     if ((alg & ALG_MASK) == ALG_HMAC_SHA1) {
         return mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
     }
@@ -215,7 +214,7 @@ const mbedtls_md_info_t *get_oath_md_info(uint8_t alg) {
     return NULL;
 }
 
-int cmd_set_code() {
+static int cmd_set_code(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
@@ -261,7 +260,7 @@ int cmd_set_code() {
     return SW_OK();
 }
 
-int cmd_reset() {
+static int cmd_reset(void) {
     if (P1(apdu) != 0xde || P2(apdu) != 0xad) {
         return SW_INCORRECT_P1P2();
     }
@@ -278,7 +277,7 @@ int cmd_reset() {
     return SW_OK();
 }
 
-int cmd_list() {
+static int cmd_list(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
@@ -310,7 +309,7 @@ int cmd_list() {
     return SW_OK();
 }
 
-int cmd_validate() {
+static int cmd_validate(void) {
     asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, resp = { 0 };
     asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
     if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
@@ -380,7 +379,7 @@ int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const u
     return PICOKEY_OK;
 }
 
-int cmd_calculate() {
+static int cmd_calculate(void) {
     if (P2(apdu) != 0x0 && P2(apdu) != 0x1) {
         return SW_INCORRECT_P1P2();
     }
@@ -435,7 +434,7 @@ int cmd_calculate() {
     return SW_OK();
 }
 
-int cmd_calculate_all() {
+static int cmd_calculate_all(void) {
     asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, prop = { 0 };
     asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
     if (P2(apdu) != 0x0 && P2(apdu) != 0x1) {
@@ -485,11 +484,11 @@ int cmd_calculate_all() {
     return SW_OK();
 }
 
-int cmd_send_remaining() {
+static int cmd_send_remaining(void) {
     return SW_OK();
 }
 
-int cmd_set_otp_pin() {
+static int cmd_set_otp_pin(void) {
     uint8_t hsh[33] = { 0 };
     file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (file_has_data(ef_otp_pin)) {
@@ -507,7 +506,7 @@ int cmd_set_otp_pin() {
     return SW_OK();
 }
 
-int cmd_change_otp_pin() {
+static int cmd_change_otp_pin(void) {
     uint8_t hsh[33] = { 0 };
     file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (!file_has_data(ef_otp_pin)) {
@@ -532,7 +531,7 @@ int cmd_change_otp_pin() {
     return SW_OK();
 }
 
-int cmd_verify_otp_pin() {
+static int cmd_verify_otp_pin(void) {
     uint8_t hsh[33] = { 0 }, data_hsh[33];
     file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (!file_has_data(ef_otp_pin)) {
@@ -561,7 +560,7 @@ int cmd_verify_otp_pin() {
     return SW_OK();
 }
 
-int cmd_verify_hotp() {
+static int cmd_verify_hotp(void) {
     asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, code = { 0 };
     asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
     uint32_t code_int = 0;
@@ -607,7 +606,7 @@ int cmd_verify_hotp() {
     return SW_OK();
 }
 
-int cmd_rename() {
+static int cmd_rename(void) {
     asn1_ctx_t ctxi, name = { 0 }, new_name = { 0 };
 
     if (validated == false) {
@@ -649,7 +648,7 @@ int cmd_rename() {
     return SW_OK();
 }
 
-int cmd_get_credential() {
+static int cmd_get_credential(void) {
     asn1_ctx_t ctxi, name = { 0 };
     if (apdu.nc < 3) {
         return SW_INCORRECT_PARAMS();
@@ -731,7 +730,7 @@ static const cmd_t cmds[] = {
     { 0x00, 0x0 }
 };
 
-int oath_process_apdu() {
+static int oath_process_apdu(void) {
     if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
     }

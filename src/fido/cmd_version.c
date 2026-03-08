@@ -17,8 +17,9 @@
 
 #include "apdu.h"
 #include "pico_keys.h"
+#include "fido.h"
 
-int cmd_version() {
+int cmd_version(void) {
     memcpy(res_APDU, "U2F_V2", strlen("U2F_V2"));
     res_APDU_size = (uint16_t)strlen("U2F_V2");
     return SW_OK();

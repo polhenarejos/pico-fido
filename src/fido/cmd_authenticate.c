@@ -23,7 +23,7 @@
 #include "files.h"
 #include "credential.h"
 
-int cmd_authenticate() {
+int cmd_authenticate(void) {
     CTAP_AUTHENTICATE_REQ *req = (CTAP_AUTHENTICATE_REQ *) apdu.data;
     CTAP_AUTHENTICATE_RESP *resp = (CTAP_AUTHENTICATE_RESP *) res_APDU;
     //if (scan_files_fido(true) != PICOKEY_OK)

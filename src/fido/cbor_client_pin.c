@@ -44,9 +44,8 @@ uint32_t max_usage_time_period  = 600 * 1000;
 bool needs_power_cycle = false;
 static mbedtls_ecdh_context hkey;
 static bool hkey_init = false;
-extern int encrypt_keydev_f1(const uint8_t keydev[32]);
 
-int beginUsingPinUvAuthToken(bool userIsPresent) {
+static int beginUsingPinUvAuthToken(bool userIsPresent) {
     paut.user_present = userIsPresent;
     paut.user_verified = true;
     initial_usage_time_limit = board_millis();
@@ -55,25 +54,25 @@ int beginUsingPinUvAuthToken(bool userIsPresent) {
     return 0;
 }
 
-void clearUserPresentFlag() {
+void clearUserPresentFlag(void) {
     if (paut.in_use == true) {
         paut.user_present = false;
     }
 }
 
-void clearUserVerifiedFlag() {
+void clearUserVerifiedFlag(void) {
     if (paut.in_use == true) {
         paut.user_verified = false;
     }
 }
 
-void clearPinUvAuthTokenPermissionsExceptLbw() {
+void clearPinUvAuthTokenPermissionsExceptLbw(void) {
     if (paut.in_use == true) {
         paut.permissions = CTAP_PERMISSION_LBW;
     }
 }
 
-void stopUsingPinUvAuthToken() {
+static void stopUsingPinUvAuthToken(void) {
     paut.permissions = 0;
     usage_timer = 0;
     paut.in_use = false;
@@ -84,21 +83,21 @@ void stopUsingPinUvAuthToken() {
     user_present_time_limit = 0;
 }
 
-bool getUserPresentFlagValue() {
+bool getUserPresentFlagValue(void) {
     if (paut.in_use != true) {
         paut.user_present = false;
     }
     return paut.user_present;
 }
 
-bool getUserVerifiedFlagValue() {
+bool getUserVerifiedFlagValue(void) {
     if (paut.in_use != true) {
         paut.user_verified = false;
     }
     return paut.user_verified;
 }
 
-int regenerate() {
+static int regenerate(void) {
     if (hkey_init == true) {
         mbedtls_ecdh_free(&hkey);
     }
@@ -114,7 +113,7 @@ int regenerate() {
     return 0;
 }
 
-int kdf(uint8_t protocol, const mbedtls_mpi *z, uint8_t *sharedSecret) {
+static int kdf(uint8_t protocol, const mbedtls_mpi *z, uint8_t *sharedSecret) {
     int ret = 0;
     uint8_t buf[32];
     ret = mbedtls_mpi_write_binary(z, buf, sizeof(buf));
@@ -144,7 +143,7 @@ int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret) {
     return ret;
 }
 
-void resetAuthToken(bool persistent) {
+static void resetAuthToken(bool persistent) {
     uint16_t fid = EF_AUTHTOKEN;
     if (persistent) {
         fid = EF_PAUTHTOKEN;
@@ -156,7 +155,7 @@ void resetAuthToken(bool persistent) {
     low_flash_available();
 }
 
-int resetPinUvAuthToken() {
+int resetPinUvAuthToken(void) {
     resetAuthToken(false);
     paut.permissions = 0;
     paut.data = file_get_data(ef_authtoken);
@@ -164,7 +163,7 @@ int resetPinUvAuthToken() {
     return 0;
 }
 
-int resetPersistentPinUvAuthToken() {
+int resetPersistentPinUvAuthToken(void) {
     resetAuthToken(true);
     file_t *ef_pauthtoken = search_by_fid(EF_PAUTHTOKEN, NULL, SPECIFY_EF);
     ppaut.permissions = 0;
@@ -200,7 +199,7 @@ int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in
     return -1;
 }
 
-int authenticate(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign) {
+static int __attribute__((unused)) authenticate(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign) {
     uint8_t hmac[32];
     int ret =
         mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, hmac);
@@ -236,16 +235,16 @@ int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t l
     return -1;
 }
 
-int initialize() {
+static int initialize(void) {
     regenerate();
     return resetPinUvAuthToken();
 }
 
-int getPublicKey() {
+static int __attribute__((unused)) getPublicKey(void) {
     return 0;
 }
 
-int pinUvAuthTokenUsageTimerObserver() {
+static int __attribute__((unused)) pinUvAuthTokenUsageTimerObserver(void) {
     if (usage_timer == 0) {
         return -1;
     }
@@ -266,7 +265,7 @@ int pinUvAuthTokenUsageTimerObserver() {
     return 0;
 }
 
-int check_keydev_encrypted(const uint8_t pin_token[32]) {
+static int check_keydev_encrypted(const uint8_t pin_token[32]) {
     if (file_get_data(ef_keydev) && *file_get_data(ef_keydev) == 0x01) {
         uint8_t tmp_keydev[61];
         tmp_keydev[0] = 0x02; // Change format to encrypted

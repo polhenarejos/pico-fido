@@ -31,9 +31,6 @@
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
-extern void resetPersistentPinUvAuthToken();
-extern void resetPinUvAuthToken();
-
 int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;

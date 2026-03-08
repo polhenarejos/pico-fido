@@ -39,15 +39,17 @@
 #define SHA256_DIGEST_LENGTH (32)
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
-extern int scan_files_fido();
+extern int scan_files_fido(void);
 extern int derive_key(const uint8_t *app_id,
                       bool new_key,
                       uint8_t *key_handle,
                       int,
                       mbedtls_ecp_keypair *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *);
-extern bool wait_button_pressed();
-extern void init_fido();
+extern bool wait_button_pressed(void);
+extern void init_fido(void);
+extern void init_otp(void);
+extern void scan_all(void);
 extern mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve);
 extern int mbedtls_curve_to_fido(mbedtls_ecp_group_id id);
 extern int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key);
@@ -95,14 +97,14 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #define FIDO2_OPT_AUV           0x02 // User Verification
 
 #define MAX_PIN_RETRIES 8
-extern bool getUserPresentFlagValue();
-extern bool getUserVerifiedFlagValue();
-extern void clearUserPresentFlag();
-extern void clearUserVerifiedFlag();
-extern void clearPinUvAuthTokenPermissionsExceptLbw();
-extern void send_keepalive();
-extern uint32_t get_sign_counter();
-extern uint8_t get_opts();
+extern bool getUserPresentFlagValue(void);
+extern bool getUserVerifiedFlagValue(void);
+extern void clearUserPresentFlag(void);
+extern void clearUserVerifiedFlag(void);
+extern void clearPinUvAuthTokenPermissionsExceptLbw(void);
+extern void send_keepalive(void);
+extern uint32_t get_sign_counter(void);
+extern uint8_t get_opts(void);
 extern void set_opts(uint8_t);
 #define MAX_CREDENTIAL_COUNT_IN_LIST 16
 #define MAX_CRED_ID_LENGTH        1024
@@ -123,7 +125,19 @@ extern const known_app_t *find_app_by_rp_id_hash(const uint8_t *rp_id_hash);
 
 #define TRANSPORT_TIME_LIMIT (30 * 1000) //USB
 
-bool check_user_presence();
+bool check_user_presence(void);
+int fido_process_apdu(void);
+int cmd_register(void);
+int cmd_authenticate(void);
+int cmd_version(void);
+int calculate_oath(uint8_t truncate,
+                   const uint8_t *key,
+                   size_t key_len,
+                   const uint8_t *chal,
+                   size_t chal_len);
+int encrypt_keydev_f1(const uint8_t keydev[32]);
+int resetPinUvAuthToken(void);
+int resetPersistentPinUvAuthToken(void);
 
 typedef struct pinUvAuthToken {
     uint8_t *data;

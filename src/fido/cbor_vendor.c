@@ -42,7 +42,7 @@ int mse_decrypt_ct(uint8_t *data, size_t len) {
     return ret;
 }
 
-int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
+static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;

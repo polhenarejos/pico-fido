@@ -29,10 +29,10 @@ const uint8_t u2f_aid[] = {
     0xA0, 0x00, 0x00, 0x05, 0x27, 0x10, 0x02
 };
 
-int u2f_unload();
-int u2f_process_apdu();
+static int u2f_unload(void);
+static int u2f_process_apdu(void);
 
-int u2f_select(app_t *a, uint8_t force) {
+static int u2f_select(app_t *a, uint8_t force) {
     (void) force;
     if (cap_supported(CAP_U2F)) {
         a->process_apdu = u2f_process_apdu;
@@ -46,15 +46,14 @@ INITIALIZER ( u2f_ctor ) {
     register_app(u2f_select, u2f_aid);
 }
 
-int u2f_unload() {
+int u2f_unload(void) {
     return PICOKEY_OK;
 }
 
 const uint8_t *bogus_firefox = (const uint8_t *) "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 const uint8_t *bogus_chrome = (const uint8_t *) "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-extern int ctap_error(uint8_t error);
-int cmd_register() {
+int cmd_register(void) {
     CTAP_REGISTER_REQ *req = (CTAP_REGISTER_REQ *) apdu.data;
     CTAP_REGISTER_RESP *resp = (CTAP_REGISTER_RESP *) res_APDU;
     resp->registerId = CTAP_REGISTER_ID;
@@ -116,10 +115,6 @@ int cmd_register() {
     return SW_OK();
 }
 
-extern int cmd_register();
-extern int cmd_authenticate();
-extern int cmd_version();
-
 static const cmd_t cmds[] = {
     { CTAP_REGISTER, cmd_register },
     { CTAP_AUTHENTICATE, cmd_authenticate },
@@ -127,7 +122,7 @@ static const cmd_t cmds[] = {
     { 0x00, 0x0 }
 };
 
-int u2f_process_apdu() {
+int u2f_process_apdu(void) {
     if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
     }

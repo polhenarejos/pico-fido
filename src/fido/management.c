@@ -25,16 +25,14 @@
 
 bool is_gpg = true;
 
-int man_process_apdu();
-int man_unload();
+static int man_process_apdu(void);
+static int man_unload(void);
 
 const uint8_t man_aid[] = {
     8,
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x47, 0x11, 0x17
 };
-extern void scan_all();
-extern void init_otp();
-int man_select(app_t *a, uint8_t force) {
+static int man_select(app_t *a, uint8_t force) {
     a->process_apdu = man_process_apdu;
     a->unload = man_unload;
     sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
@@ -54,7 +52,7 @@ INITIALIZER ( man_ctor ) {
     register_app(man_select, man_aid);
 }
 
-int man_unload() {
+static int man_unload(void) {
     return PICOKEY_OK;
 }
 
@@ -88,7 +86,7 @@ static uint8_t _piv_aid[] = {
     0xA0, 0x00, 0x00, 0x03, 0x8,
 };
 
-int man_get_config() {
+int man_get_config(void) {
     file_t *ef = search_dynamic_file(EF_DEV_CONF);
     res_APDU_size = 0;
     res_APDU[res_APDU_size++] = 0; // Overall length. Filled later
@@ -155,12 +153,12 @@ int man_get_config() {
     return 0;
 }
 
-int cmd_read_config() {
+static int cmd_read_config(void) {
     man_get_config();
     return SW_OK();
 }
 
-int cmd_write_config() {
+static int cmd_write_config(void) {
     if (apdu.data[0] != apdu.nc - 1) {
         return SW_WRONG_DATA();
     }
@@ -179,8 +177,8 @@ int cmd_write_config() {
     return SW_OK();
 }
 
-extern int cbor_reset();
-int cmd_factory_reset() {
+extern int cbor_reset(void);
+static int cmd_factory_reset(void) {
     cbor_reset();
     return SW_OK();
 }
@@ -196,7 +194,7 @@ static const cmd_t cmds[] = {
     { 0x00, 0x0 }
 };
 
-int man_process_apdu() {
+static int man_process_apdu(void) {
     if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
     }

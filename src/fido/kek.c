@@ -32,11 +32,10 @@
 #include "files.h"
 #include "otp.h"
 
-extern uint8_t session_pin[32];
 uint8_t mkek_mask[MKEK_KEY_SIZE];
 bool has_mkek_mask = false;
 
-void mkek_masked(uint8_t *mkek, const uint8_t *mask) {
+static void mkek_masked(uint8_t *mkek, const uint8_t *mask) {
     if (mask) {
         for (int i = 0; i < MKEK_KEY_SIZE; i++) {
             MKEK_KEY(mkek)[i] ^= mask[i];
@@ -58,7 +57,9 @@ int load_mkek(uint8_t *mkek) {
         if (ret != 0) {
             return PICOKEY_EXEC_ERROR;
         }
-        if (crc32c(MKEK_KEY(mkek), MKEK_KEY_SIZE) != *(uint32_t *) MKEK_CHECKSUM(mkek)) {
+        uint32_t mkek_checksum = 0;
+        memcpy(&mkek_checksum, MKEK_CHECKSUM(mkek), sizeof(mkek_checksum));
+        if (crc32c(MKEK_KEY(mkek), MKEK_KEY_SIZE) != mkek_checksum) {
             return PICOKEY_WRONG_DKEK;
         }
         if (otp_key_1) {

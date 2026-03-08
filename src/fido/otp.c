@@ -28,8 +28,15 @@
 #include "bsp/board.h"
 #endif
 #ifdef ENABLE_EMULATION
-void add_keyboard_buffer(const uint8_t *buf, size_t len, bool press_enter) {}
-void append_keyboard_buffer(const uint8_t *buf, size_t len) {}
+void add_keyboard_buffer(const uint8_t *buf, size_t len, bool press_enter) {
+    (void)buf;
+    (void)len;
+    (void)press_enter;
+}
+void append_keyboard_buffer(const uint8_t *buf, size_t len) {
+    (void)buf;
+    (void)len;
+}
 #else
 #include "tusb.h"
 #endif
@@ -119,22 +126,21 @@ typedef struct otp_config {
 }) otp_config_t;
 
 #define otp_config_size sizeof(otp_config_t)
-uint16_t otp_status(bool is_otp);
-
-int otp_process_apdu();
-int otp_unload();
+static uint16_t otp_status(bool is_otp);
+static int otp_process_apdu(void);
+static int otp_unload(void);
 
 extern int (*hid_set_report_cb)(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, uint16_t);
 extern uint16_t (*hid_get_report_cb)(uint8_t, uint8_t, hid_report_type_t, uint8_t *, uint16_t);
-int otp_hid_set_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, uint16_t);
-uint16_t otp_hid_get_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t *, uint16_t);
+static int otp_hid_set_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t const *, uint16_t);
+static uint16_t otp_hid_get_report_cb(uint8_t, uint8_t, hid_report_type_t, uint8_t *, uint16_t);
 
 const uint8_t otp_aid[] = {
     7,
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x20, 0x01
 };
 
-int otp_select(app_t *a, uint8_t force) {
+static int otp_select(app_t *a, uint8_t force) {
     (void) force;
     if (cap_supported(CAP_OTP)) {
         a->process_apdu = otp_process_apdu;
@@ -154,7 +160,7 @@ int otp_select(app_t *a, uint8_t force) {
 
 uint8_t modhex_tab[] =
 { 'c', 'b', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'n', 'r', 't', 'u', 'v' };
-int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
+static int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
     for (size_t l = 0; l < len; l++) {
         *out++ = modhex_tab[in[l] >> 4];
         *out++ = modhex_tab[in[l] & 0xf];
@@ -162,8 +168,7 @@ int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
     return 0;
 }
 static bool scanned = false;
-extern void scan_all();
-void init_otp() {
+void init_otp(void) {
     if (scanned == false) {
         scan_all();
         for (uint8_t i = 0; i < 4; i++) {
@@ -185,13 +190,7 @@ void init_otp() {
         low_flash_available();
     }
 }
-extern int calculate_oath(uint8_t truncate,
-                          const uint8_t *key,
-                          size_t key_len,
-                          const uint8_t *chal,
-                          size_t chal_len);
-
-uint16_t calculate_crc(const uint8_t *data, size_t data_len) {
+static uint16_t calculate_crc(const uint8_t *data, size_t data_len) {
     uint16_t crc = 0xFFFF;
     for (size_t idx = 0; idx < data_len; idx++) {
         crc ^= data[idx];
@@ -207,7 +206,7 @@ uint16_t calculate_crc(const uint8_t *data, size_t data_len) {
 }
 
 static uint8_t session_counter[2] = { 0 };
-int otp_button_pressed(uint8_t slot) {
+static int otp_button_pressed(uint8_t slot) {
     init_otp();
     if (!cap_supported(CAP_OTP)) {
         return 3;
@@ -334,12 +333,12 @@ INITIALIZER( otp_ctor ) {
     hid_get_report_cb = otp_hid_get_report_cb;
 }
 
-int otp_unload() {
+static int otp_unload(void) {
     return PICOKEY_OK;
 }
 
 uint8_t status_byte = 0x0;
-uint16_t otp_status_ext() {
+static uint16_t otp_status_ext(void) {
     for (int i = 0; i < 4; i++) {
         file_t *ef = search_dynamic_file(EF_OTP_SLOT1 + i);
         if (file_has_data(ef)) {
@@ -372,7 +371,7 @@ uint16_t otp_status_ext() {
     return SW_OK();
 }
 
-uint16_t otp_status(bool is_otp) {
+static uint16_t otp_status(bool is_otp) {
     if (scanned == false) {
         scan_all();
         scanned = true;
@@ -415,13 +414,13 @@ uint16_t otp_status(bool is_otp) {
     return SW_OK();
 }
 
-bool check_crc(const otp_config_t *data) {
+static bool check_crc(const otp_config_t *data) {
     uint16_t crc = calculate_crc((const uint8_t *) data, otp_config_size);
     return crc == 0xF0B8;
 }
 
 bool _is_otp = false;
-int cmd_otp() {
+static int cmd_otp(void) {
     uint8_t p1 = P1(apdu), p2 = P2(apdu);
     if (p1 == 0x01 || p1 == 0x03) { // Configure slot
         otp_config_t *odata = (otp_config_t *) apdu.data;
@@ -436,7 +435,7 @@ int cmd_otp() {
                 return SW_SECURITY_STATUS_NOT_SATISFIED();
             }
         }
-        for (int c = 0; c < otp_config_size; c++) {
+        for (size_t c = 0; c < otp_config_size; c++) {
             if (apdu.data[c] != 0) {
                 if (odata->rfu[0] != 0 || odata->rfu[1] != 0 || check_crc(odata) == false) {
                     return SW_WRONG_DATA();
@@ -608,7 +607,7 @@ static const cmd_t cmds[] = {
     { 0x00, 0x0 }
 };
 
-int otp_process_apdu() {
+static int otp_process_apdu(void) {
     if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
     }
@@ -628,9 +627,7 @@ uint8_t otp_frame_tx[70] = {0};
 uint8_t otp_exp_seq = 0, otp_curr_seq = 0;
 uint8_t otp_header[4] = {0};
 
-extern uint16_t *get_send_buffer_size(uint8_t itf);
-
-int otp_send_frame(uint8_t *frame, size_t frame_len) {
+static int otp_send_frame(uint8_t *frame, size_t frame_len) {
     uint16_t crc = calculate_crc(frame, frame_len);
     frame_len += put_uint16_t_le(~crc, frame + frame_len);
     *get_send_buffer_size(ITF_KEYBOARD) = frame_len;
@@ -642,7 +639,9 @@ int otp_send_frame(uint8_t *frame, size_t frame_len) {
     return 0;
 }
 
-int otp_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const *buffer, uint16_t bufsize) {
+static int otp_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const *buffer, uint16_t bufsize) {
+    (void)itf;
+    (void)report_id;
     if (report_type == 3) {
         DEBUG_PAYLOAD(buffer, bufsize);
         if (buffer[7] == 0xFF) { // reset
@@ -690,11 +689,11 @@ int otp_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t repo
     return 0;
 }
 
-uint16_t otp_hid_get_report_cb(uint8_t itf,
-                               uint8_t report_id,
-                               hid_report_type_t report_type,
-                               uint8_t *buffer,
-                               uint16_t reqlen) {
+static uint16_t otp_hid_get_report_cb(uint8_t itf,
+                                      uint8_t report_id,
+                                      hid_report_type_t report_type,
+                                      uint8_t *buffer,
+                                      uint16_t reqlen) {
     // TODO not Implemented
     (void) itf;
     (void) report_id;

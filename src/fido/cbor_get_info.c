@@ -24,7 +24,7 @@
 #include "apdu.h"
 #include "version.h"
 
-int cbor_get_info() {
+int cbor_get_info(void) {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);

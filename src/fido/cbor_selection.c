@@ -17,9 +17,10 @@
 
 #include "pico_keys.h"
 #include "fido.h"
+#include "ctap2_cbor.h"
 #include "ctap.h"
 
-int cbor_selection() {
+int cbor_selection(void) {
     if (wait_button_pressed() == true) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     }

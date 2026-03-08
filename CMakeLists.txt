@@ -148,12 +148,9 @@ if(NOT ESP_PLATFORM)
     )
     target_compile_options(pico_fido PRIVATE ${COMMON_COMPILE_OPTIONS})
 
-    if(NOT MSVC)
-        set(NON_MSVC_COMPILE_OPTIONS
-            -Werror
-        )
-        target_compile_options(pico_fido PRIVATE ${NON_MSVC_COMPILE_OPTIONS})
+    pico_keys_apply_strict_flags(SOURCES ${SOURCES})
 
+    if(NOT MSVC)
         string(FIND ${CMAKE_C_COMPILER} ":" COMPILER_COLON)
         if(${COMPILER_COLON} GREATER_EQUAL 0)
             target_compile_options(pico_fido PRIVATE

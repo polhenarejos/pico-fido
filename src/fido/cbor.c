@@ -30,20 +30,7 @@
 
 const bool _btrue = true, _bfalse = false;
 
-int cbor_reset();
-int cbor_get_info();
-int cbor_make_credential(const uint8_t *data, size_t len);
-int cbor_client_pin(const uint8_t *data, size_t len);
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
-int cbor_get_next_assertion(const uint8_t *data, size_t len);
-int cbor_selection();
-int cbor_cred_mgmt(const uint8_t *data, size_t len);
-int cbor_config(const uint8_t *data, size_t len);
-int cbor_vendor(const uint8_t *data, size_t len);
-int cbor_large_blobs(const uint8_t *data, size_t len);
-extern void reset_gna_state();
-
-extern int cmd_read_config();
 
 const uint8_t aaguid[16] = { 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45 }; // First 16 bytes of SHA256("Pico FIDO2")
 
@@ -98,7 +85,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
             return cbor_vendor(data, len);
         }
         else if (cmd == 0xC2) {
-            if (cmd_read_config() == 0x9000) {
+            if (man_get_config() == 0) {
                 memmove(res_APDU-1, res_APDU, res_APDU_size);
                 res_APDU_size -= 1;
                 return 0;
@@ -108,6 +95,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     return CTAP1_ERR_INVALID_CMD;
 }
 
+void *cbor_thread(void *arg) __attribute__((unused));
 void *cbor_thread(void *arg) {
     (void)arg;
     card_init_core1();
@@ -152,7 +140,7 @@ int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     return 2; // CBOR processing
 }
 
-CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedtls_ecp_point *Q, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
+static CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedtls_ecp_point *Q, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
     CborError error = CborNoError;
     int kty = 1;
     if (crv == FIDO2_CURVE_P256 || crv == FIDO2_CURVE_P384 || crv == FIDO2_CURVE_P521 ||
