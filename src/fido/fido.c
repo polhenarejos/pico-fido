@@ -17,7 +17,6 @@
 
 #include "pico_keys.h"
 #include "fido.h"
-#include "kek.h"
 #include "apdu.h"
 #include "ctap.h"
 #include "files.h"
@@ -226,9 +225,6 @@ int load_keydev(uint8_t key[32]) {
         uint16_t fid_size = file_get_size(ef_keydev);
         if (fid_size == 32) {
             memcpy(key, file_get_data(ef_keydev), 32);
-            if (mkek_decrypt(key, 32) != PICOKEY_OK) {
-                return PICOKEY_EXEC_ERROR;
-            }
             if (otp_key_1 && aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != PICOKEY_OK) {
                 return PICOKEY_EXEC_ERROR;
             }
@@ -372,7 +368,6 @@ int encrypt_keydev_f1(const uint8_t keydev[32]) {
 int scan_files_fido(void) {
     ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
-    ef_mkek = search_by_fid(EF_MKEK, NULL, SPECIFY_EF);
     if (ef_keydev) {
         if (!file_has_data(ef_keydev) && !file_has_data(ef_keydev_enc)) {
             printf("KEY DEVICE is empty. Generating SECP256R1 curve...");

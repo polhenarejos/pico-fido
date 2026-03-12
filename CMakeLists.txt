@@ -97,7 +97,6 @@ endif()
 list(APPEND SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/files.c
-    ${CMAKE_CURRENT_LIST_DIR}/src/fido/kek.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_register.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_authenticate.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cmd_version.c

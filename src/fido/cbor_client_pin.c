@@ -37,7 +37,6 @@
 #include "random.h"
 #include "crypto_utils.h"
 #include "apdu.h"
-#include "kek.h"
 
 uint32_t usage_timer = 0, initial_usage_time_limit = 0;
 uint32_t max_usage_time_period  = 600 * 1000;
