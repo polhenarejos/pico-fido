@@ -231,14 +231,25 @@ int load_keydev(uint8_t key[32]) {
         }
         else if (fid_size == 33 || fid_size == 61) {
             uint8_t format = *file_get_data(ef_keydev);
-            if (format == 0x01 || format == 0x02) { // Format indicator
-                if (format == 0x02) {
-                    uint8_t tmp_key[61];
+            if (format == 0x01 || format == 0x02 || format == 0x03) { // Format indicator
+                if (format == 0x02 || format == 0x03) {
+                    uint8_t tmp_key[61], version = format == 0x03 ? 2 : 1;
                     memcpy(tmp_key, file_get_data(ef_keydev), sizeof(tmp_key));
-                    int ret = decrypt_with_aad(session_pin, tmp_key + 1, 60, key);
+                    int ret = decrypt_with_aad(session_pin, tmp_key + 1, 60, version, key);
                     if (ret != PICOKEY_OK) {
                         return PICOKEY_EXEC_ERROR;
                     }
+                    if (format == 0x02) {
+                        tmp_key[0] = 0x03;
+                        ret = encrypt_with_aad(session_pin, key, 32, 2, tmp_key + 1);
+                        if (ret != PICOKEY_OK) {
+                            mbedtls_platform_zeroize(tmp_key, sizeof(tmp_key));
+                            return PICOKEY_EXEC_ERROR;
+                        }
+                        file_put_data(ef_keydev, tmp_key, sizeof(tmp_key));
+                        low_flash_available();
+                    }
+                    mbedtls_platform_zeroize(tmp_key, sizeof(tmp_key));
                 }
                 else {
                     memcpy(key, file_get_data(ef_keydev) + 1, 32);
