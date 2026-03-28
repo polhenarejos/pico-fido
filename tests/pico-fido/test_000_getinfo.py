@@ -20,10 +20,12 @@
 
 import pytest
 from fido2.client import CtapError
+from fido2.webauthn import Aaguid
 
+DEFAULT_AAGUID = "89fb94b7-06c9-3673-9b7e-30526d968145"
 
-def test_getinfo(device):
-    pass
+def test_getinfo_aaguid(info):
+    assert(info.aaguid == Aaguid.parse(DEFAULT_AAGUID))
 
 
 def test_get_info_version(info):
