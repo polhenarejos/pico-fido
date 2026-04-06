@@ -21,11 +21,6 @@
 #if defined(PICO_PLATFORM)
 #include "pico/stdlib.h"
 #endif
-#ifndef ESP_PLATFORM
-#include "common.h"
-#else
-#define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#endif
 
 #include "mbedtls/ecdsa.h"
 #ifdef MBEDTLS_EDDSA_C

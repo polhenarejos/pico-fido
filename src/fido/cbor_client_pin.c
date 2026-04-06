@@ -16,11 +16,6 @@
  */
 
 #include "pico_keys.h"
-#ifndef ESP_PLATFORM
-#include "common.h"
-#else
-#define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#endif
 #include "mbedtls/ecp.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/sha256.h"
