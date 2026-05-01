@@ -217,7 +217,7 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
-            ret = mbedtls_ecp_mul(&ekey.grp, &ekey.Q, &ekey.d, &ekey.grp.G, random_fill_iterator, NULL);
+            ret = mbedtls_ecp_keypair_calc_public(&ekey, random_fill_iterator, NULL);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);

@@ -349,12 +349,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         if (r != 0) {
             return r;
         }
-#ifdef MBEDTLS_EDDSA_C
-        if (curve == MBEDTLS_ECP_DP_ED25519) {
-            return mbedtls_ecp_point_edwards(&key->grp, &key->Q, &key->d, random_fill_iterator, NULL);
-        }
-#endif
-        return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_fill_iterator, NULL);
+        return mbedtls_ecp_keypair_calc_public(key, random_fill_iterator, NULL);
     }
     mbedtls_platform_zeroize(outk, sizeof(outk));
     return r;
@@ -426,7 +421,7 @@ int scan_files_fido(void) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
             }
-            ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, random_fill_iterator, NULL);
+            ret = mbedtls_ecp_keypair_calc_public(&key, random_fill_iterator, NULL);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
