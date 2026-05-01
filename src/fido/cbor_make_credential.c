@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "cbor_make_credential.h"
 #include "ctap2_cbor.h"
 #include "hid/ctap_hid.h"
@@ -352,7 +352,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         Credential ecred = {0};
         if (credential_is_resident(excludeList[e].id.data, excludeList[e].id.len)) {
             for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-                file_t *ef_cred = search_dynamic_file((uint16_t)(EF_CRED + i));
+                file_t *ef_cred = file_search((uint16_t)(EF_CRED + i));
                 if (!file_has_data(ef_cred) || memcmp(file_get_data(ef_cred), rp_id_hash, 32) != 0) {
                     continue;
                 }
@@ -423,7 +423,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             l++;
         }
         if (extensions.minPinLength == ptrue) {
-            file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+            file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
             if (file_has_data(ef_minpin)) {
                 uint8_t *minpin_data = file_get_data(ef_minpin);
                 for (int o = 2; o < file_get_size(ef_minpin); o += 32) {
@@ -517,7 +517,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
             if (pin_complexity_policy == ptrue) {
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "pinComplexityPolicy"));
-                file_t *ef_pin_complexity_policy = search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
+                file_t *ef_pin_complexity_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
                 CBOR_CHECK(cbor_encode_boolean(&mapEncoder, file_has_data(ef_pin_complexity_policy)));
             }
 
@@ -550,16 +550,16 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint8_t *pa = aut_data;
     memcpy(pa, rp_id_hash, 32); pa += 32;
     *pa++ = flags;
-    pa += put_uint32_t_be(ctr, pa);
+    pa += put_uint32_be(ctr, pa);
     memcpy(pa, aaguid, 16); pa += 16;
     if (options.rk == ptrue) {
         uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
-        pa += put_uint16_t_be(sizeof(cred_idr), pa);
+        pa += put_uint16_be(sizeof(cred_idr), pa);
         credential_derive_resident(cred_id, cred_id_len, cred_idr);
         memcpy(pa, cred_idr, sizeof(cred_idr)); pa += sizeof(cred_idr);
     }
     else {
-        pa += put_uint16_t_be(cred_id_len, pa);
+        pa += put_uint16_be(cred_id_len, pa);
         memcpy(pa, cred_id, cred_id_len); pa += (uint16_t)cred_id_len;
     }
     memcpy(pa, cbor_buf, rs); pa += (uint16_t)rs;
@@ -601,11 +601,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         self_attestation = false;
     }
     if (md != NULL) {
-        ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+        ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_fill_iterator, NULL);
     }
 #ifdef MBEDTLS_EDDSA_C
     else {
-        ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_gen, NULL);
+        ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_fill_iterator, NULL);
     }
 #endif
     mbedtls_ecp_keypair_free(&ekey);
@@ -646,7 +646,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CborEncoder arrEncoder;
         file_t *ef_cert = NULL;
         if (enterpriseAttestation == 2) {
-            ef_cert = search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
+            ef_cert = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
         }
         if (!file_has_data(ef_cert)) {
             ef_cert = ef_certdev;
@@ -678,7 +678,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     ctr++;
     file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
-    low_flash_available();
+    flash_commit();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

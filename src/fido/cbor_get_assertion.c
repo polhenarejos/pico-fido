@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "cbor.h"
 #include "ctap.h"
 #if defined(PICO_PLATFORM)
@@ -301,7 +301,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 if (credential_is_resident(allowList[e].id.data, allowList[e].id.len)) {
                     for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                        file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+                        file_t *ef = file_search((uint16_t)(EF_CRED + i));
                         if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
                             continue;
                         }
@@ -328,7 +328,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                         // Even we provide allowList, we need to check if the credential is resident
                         if (!resident) {
                             for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                                file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+                                file_t *ef = file_search((uint16_t)(EF_CRED + i));
                                 if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
                                     continue;
                                 }
@@ -347,7 +347,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         else {
             for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+                file_t *ef = file_search((uint16_t)(EF_CRED + i));
                 if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
                     continue;
                 }
@@ -401,7 +401,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     }
                     if (credential_is_resident(allowList[e].id.data, allowList[e].id.len)) {
                         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                            file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+                            file_t *ef = file_search((uint16_t)(EF_CRED + i));
                             if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
                                 continue;
                             }
@@ -611,7 +611,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     uint8_t *pa = aut_data;
     memcpy(pa, rp_id_hash, 32); pa += 32;
     *pa++ = flags;
-    pa += put_uint32_t_be(ctr, pa);
+    pa += put_uint32_be(ctr, pa);
     memcpy(pa, ext, ext_len); pa += ext_len;
     if ((size_t)(pa - aut_data) != aut_data_len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -644,11 +644,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
 #endif
         if (md != NULL) {
             ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
-            ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+            ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_fill_iterator, NULL);
         }
 #ifdef MBEDTLS_EDDSA_C
         else {
-            ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_gen, NULL);
+            ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_fill_iterator, NULL);
         }
 #endif
     }
@@ -739,7 +739,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     ctr++;
     file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
-    low_flash_available();
+    flash_commit();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

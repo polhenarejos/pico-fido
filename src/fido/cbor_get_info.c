@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "ctap2_cbor.h"
 #include "hid/ctap_hid.h"
 #include "fido.h"
@@ -36,7 +36,7 @@ int cbor_get_info(void) {
 #else
     lfields++;
 #endif
-    file_t *ef_pin_policy = search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
+    file_t *ef_pin_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
     if (file_has_data(ef_pin_policy)) {
         lfields += 2;
     }
@@ -144,7 +144,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0B));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_LARGE_BLOB_SIZE)); // maxSerializedLargeBlobArray
 
-    file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+    file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0C));
     if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
         CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));

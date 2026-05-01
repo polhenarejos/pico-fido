@@ -16,7 +16,7 @@
  */
 
 #include "apdu.h"
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "fido.h"
 
 int cmd_version(void) {

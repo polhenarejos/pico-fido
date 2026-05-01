@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "mbedtls/ecp.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/sha256.h"
@@ -99,7 +99,7 @@ static int regenerate(void) {
     mbedtls_ecdh_init(&hkey);
     hkey_init = true;
     mbedtls_ecdh_setup(&hkey, MBEDTLS_ECP_DP_SECP256R1);
-    int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_gen, NULL);
+    int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_fill_iterator, NULL);
     mbedtls_mpi_lset(&hkey.ctx.mbed_ecdh.Qp.Z, 1);
     if (ret != 0) {
         return ret;
@@ -131,7 +131,7 @@ static int kdf(uint8_t protocol, const mbedtls_mpi *z, uint8_t *sharedSecret) {
 int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSecret) {
     mbedtls_mpi z;
     mbedtls_mpi_init(&z);
-    int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, Q, &hkey.ctx.mbed_ecdh.d, random_gen, NULL);
+    int ret = mbedtls_ecdh_compute_shared(&hkey.ctx.mbed_ecdh.grp, &z, Q, &hkey.ctx.mbed_ecdh.d, random_fill_iterator, NULL);
     ret = kdf(protocol, &z, sharedSecret);
     mbedtls_mpi_free(&z);
     return ret;
@@ -142,11 +142,11 @@ static void resetAuthToken(bool persistent) {
     if (persistent) {
         fid = EF_PAUTHTOKEN;
     }
-    file_t *ef = search_by_fid(fid, NULL, SPECIFY_EF);
+    file_t *ef = file_search_by_fid(fid, NULL, SPECIFY_EF);
     uint8_t t[32];
-    random_gen(NULL, t, sizeof(t));
+    random_fill_buffer(t, sizeof(t));
     file_put_data(ef, t, sizeof(t));
-    low_flash_available();
+    flash_commit();
 }
 
 int resetPinUvAuthToken(void) {
@@ -159,7 +159,7 @@ int resetPinUvAuthToken(void) {
 
 int resetPersistentPinUvAuthToken(void) {
     resetAuthToken(true);
-    file_t *ef_pauthtoken = search_by_fid(EF_PAUTHTOKEN, NULL, SPECIFY_EF);
+    file_t *ef_pauthtoken = file_search_by_fid(EF_PAUTHTOKEN, NULL, SPECIFY_EF);
     ppaut.permissions = 0;
     ppaut.data = file_get_data(ef_pauthtoken);
     ppaut.len = file_get_size(ef_pauthtoken);
@@ -169,12 +169,12 @@ int resetPersistentPinUvAuthToken(void) {
 int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out) {
     if (protocol == 1) {
         memcpy(out, in, in_len);
-        return aes_encrypt(key, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len);
+        return aes_encrypt(key, NULL, 32 * 8, PICOKEYS_AES_MODE_CBC, out, in_len);
     }
     else if (protocol == 2) {
-        random_gen(NULL, out, IV_SIZE);
+        random_fill_buffer(out, IV_SIZE);
         memcpy(out + IV_SIZE, in, in_len);
-        return aes_encrypt(key + 32, out, 32 * 8, PICO_KEYS_AES_MODE_CBC, out + IV_SIZE, in_len);
+        return aes_encrypt(key + 32, out, 32 * 8, PICOKEYS_AES_MODE_CBC, out + IV_SIZE, in_len);
     }
 
     return -1;
@@ -183,11 +183,11 @@ int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in
 int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out) {
     if (protocol == 1) {
         memcpy(out, in, in_len);
-        return aes_decrypt(key, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len);
+        return aes_decrypt(key, NULL, 32 * 8, PICOKEYS_AES_MODE_CBC, out, in_len);
     }
     else if (protocol == 2) {
         memcpy(out, in + IV_SIZE, in_len - IV_SIZE);
-        return aes_decrypt(key + 32, in, 32 * 8, PICO_KEYS_AES_MODE_CBC, out, in_len - IV_SIZE);
+        return aes_decrypt(key + 32, in, 32 * 8, PICOKEYS_AES_MODE_CBC, out, in_len - IV_SIZE);
     }
 
     return -1;
@@ -266,9 +266,9 @@ static int check_keydev_encrypted(const uint8_t pin_token[32]) {
         encrypt_with_aad(pin_token, file_get_data(ef_keydev) + 1, 32, 2, tmp_keydev + 1);
         file_put_data(ef_keydev, tmp_keydev, sizeof(tmp_keydev));
         mbedtls_platform_zeroize(tmp_keydev, sizeof(tmp_keydev));
-        low_flash_available();
+        flash_commit();
     }
-    return PICOKEY_OK;
+    return PICOKEYS_OK;
 }
 
 uint8_t new_pin_mismatches = 0;
@@ -400,7 +400,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             pin_len++;
         }
         uint8_t minPin = 4;
-        file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+        file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
         if (file_has_data(ef_minpin)) {
             minPin = *file_get_data(ef_minpin);
         }
@@ -415,11 +415,11 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         mbedtls_platform_zeroize(paddedNewPin, sizeof(paddedNewPin));
         pin_derive_verifier(dhash, 16, hsh + 3);
         file_put_data(ef_pin, hsh, sizeof(hsh));
-        low_flash_available();
+        flash_commit();
 
         pin_derive_session(dhash, 16, session_pin);
         ret = check_keydev_encrypted(session_pin);
-        if (ret != PICOKEY_OK) {
+        if (ret != PICOKEYS_OK) {
             CBOR_ERROR(ret);
         }
         mbedtls_platform_zeroize(hsh, sizeof(hsh));
@@ -474,7 +474,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         memcpy(pin_data, file_get_data(ef_pin), file_get_size(ef_pin));
         pin_data[0] -= 1;
         file_put_data(ef_pin, pin_data, file_get_size(ef_pin));
-        low_flash_available();
+        flash_commit();
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64];
         ret = decrypt((uint8_t)pinUvAuthProtocol, sharedSecret, pinHashEnc.data, (uint16_t)pinHashEnc.len, paddedNewPin);
@@ -512,7 +512,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
 
             hash_multi(paddedNewPin, 16, session_pin);
             ret = load_keydev(keydev);
-            if (ret != PICOKEY_OK) {
+            if (ret != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
             }
             encrypt_keydev_f1(keydev);
@@ -520,10 +520,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         pin_derive_session(paddedNewPin, 16, session_pin);
         pin_data[0] = MAX_PIN_RETRIES;
         file_put_data(ef_pin, pin_data, sizeof(pin_data));
-        low_flash_available();
+        flash_commit();
 
         ret = check_keydev_encrypted(session_pin);
-        if (ret != PICOKEY_OK) {
+        if (ret != PICOKEYS_OK) {
             CBOR_ERROR(ret);
         }
 
@@ -541,7 +541,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             pin_len++;
         }
         uint8_t minPin = 4;
-        file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+        file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
         if (file_has_data(ef_minpin)) {
             minPin = *file_get_data(ef_minpin);
         }
@@ -551,7 +551,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
 
         // New PIN is valid and verified
         ret = load_keydev(keydev);
-        if (ret != PICOKEY_OK) {
+        if (ret != PICOKEYS_OK) {
             CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
         }
         encrypt_keydev_f1(keydev);
@@ -559,10 +559,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_len, dhash);
         pin_derive_session(dhash, 16, session_pin);
         ret = check_keydev_encrypted(session_pin);
-        if (ret != PICOKEY_OK) {
+        if (ret != PICOKEYS_OK) {
             CBOR_ERROR(ret);
         }
-        low_flash_available();
+        flash_commit();
 
         pin_data[0] = MAX_PIN_RETRIES;
         pin_data[1] = pin_len;
@@ -583,7 +583,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             file_put_data(ef_minpin, tmpf, file_get_size(ef_minpin));
             free(tmpf);
         }
-        low_flash_available();
+        flash_commit();
         resetPinUvAuthToken();
         resetPersistentPinUvAuthToken();
         needs_power_cycle = false;
@@ -636,7 +636,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         memcpy(pin_data, file_get_data(ef_pin), file_get_size(ef_pin));
         pin_data[0] -= 1;
         file_put_data(ef_pin, pin_data, file_get_size(ef_pin));
-        low_flash_available();
+        flash_commit();
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64], poff = ((uint8_t)pinUvAuthProtocol - 1) * IV_SIZE;
         ret = decrypt((uint8_t)pinUvAuthProtocol, sharedSecret, pinHashEnc.data, (uint16_t)pinHashEnc.len, paddedNewPin);
@@ -675,7 +675,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             pin_derive_verifier(paddedNewPin, 16, pin_data + 3);
             hash_multi(paddedNewPin, 16, session_pin);
             ret = load_keydev(keydev);
-            if (ret != PICOKEY_OK) {
+            if (ret != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
             }
             encrypt_keydev_f1(keydev);
@@ -683,7 +683,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
 
         pin_derive_session(paddedNewPin, 16, session_pin);
         ret = check_keydev_encrypted(session_pin);
-        if (ret != PICOKEY_OK) {
+        if (ret != PICOKEYS_OK) {
             CBOR_ERROR(ret);
         }
 
@@ -693,8 +693,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         file_put_data(ef_pin, pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
 
-        low_flash_available();
-        file_t *ef_minpin = search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+        flash_commit();
+        file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
             CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
         }

@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "fido.h"
 #include "ctap.h"
 #include "hid/ctap_hid.h"
@@ -137,7 +137,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         uint8_t existing = 0;
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-            if (file_has_data(search_dynamic_file((uint16_t)(EF_CRED + i)))) {
+            if (file_has_data(file_search((uint16_t)(EF_CRED + i)))) {
                 existing++;
             }
         }
@@ -173,7 +173,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         uint8_t skip = 0;
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-            file_t *tef = search_dynamic_file((uint16_t)(EF_RP + i));
+            file_t *tef = file_search((uint16_t)(EF_RP + i));
             if (file_has_data(tef) && *file_get_data(tef) > 0) {
                 if (++skip == rp_counter) {
                     if (rp_ef == NULL) {
@@ -239,7 +239,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         file_t *cred_ef = NULL;
         uint8_t skip = 0;
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-            file_t *tef = search_dynamic_file((uint16_t)(EF_CRED + i));
+            file_t *tef = file_search((uint16_t)(EF_CRED + i));
             if (file_has_data(tef) && memcmp(file_get_data(tef), rpIdHash.data, 32) == 0) {
                 if (++skip == cred_counter) {
                     if (cred_ef == NULL) {
@@ -373,20 +373,20 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-            file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+            file_t *ef = file_search((uint16_t)(EF_CRED + i));
             if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, CRED_RESIDENT_LEN) == 0) {
                 uint8_t *rp_id_hash = file_get_data(ef);
-                if (delete_file(ef) != 0) {
+                if (file_delete(ef) != 0) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
                 for (int j = 0; j < MAX_RESIDENT_CREDENTIALS; j++) {
-                    file_t *rp_ef = search_dynamic_file((uint16_t)(EF_RP + j));
+                    file_t *rp_ef = file_search((uint16_t)(EF_RP + j));
                     if (file_has_data(rp_ef) && memcmp(file_get_data(rp_ef) + 1, rp_id_hash, 32) == 0) {
                         uint8_t *rp_data = (uint8_t *) calloc(1, file_get_size(rp_ef));
                         memcpy(rp_data, file_get_data(rp_ef), file_get_size(rp_ef));
                         rp_data[0] -= 1;
                         if (rp_data[0] == 0) {
-                            delete_file(rp_ef);
+                            file_delete(rp_ef);
                         }
                         else {
                             file_put_data(rp_ef, rp_data, file_get_size(rp_ef));
@@ -395,7 +395,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                         break;
                     }
                 }
-                low_flash_available();
+                flash_commit();
                 goto err; //no error
             }
         }
@@ -415,7 +415,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-            file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
+            file_t *ef = file_search((uint16_t)(EF_CRED + i));
             if (file_has_data(ef) && memcmp(file_get_data(ef) + 32, credentialId.id.data, CRED_RESIDENT_LEN) == 0) {
                 Credential cred = { 0 };
                 uint8_t *rp_id_hash = file_get_data(ef);
@@ -439,7 +439,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                 if (credential_store(newcred, newcred_len, rp_id_hash) != 0) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
-                low_flash_available();
+                flash_commit();
                 goto err; //no error
             }
         }

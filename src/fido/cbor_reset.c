@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "file.h"
 #include "fido.h"
 #include "ctap2_cbor.h"
@@ -39,7 +39,7 @@ int cbor_reset(void) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     }
 #endif
-    initialize_flash(true);
+    file_initialize_flash(true);
     init_fido();
     return 0;
 }

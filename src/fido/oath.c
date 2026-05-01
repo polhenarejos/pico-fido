@@ -15,7 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
+#include "serial.h"
 #include "fido.h"
 #include "apdu.h"
 #include "files.h"
@@ -87,8 +88,8 @@ static int oath_select(app_t *a, uint8_t force) {
         res_APDU[res_APDU_size++] = TAG_NAME;
         res_APDU[res_APDU_size++] = 8;
         memcpy(res_APDU + res_APDU_size, pico_serial_str, 8); res_APDU_size += 8;
-        if (file_has_data(search_dynamic_file(EF_OATH_CODE)) == true) {
-            random_gen(NULL, challenge, sizeof(challenge));
+        if (file_has_data(file_search(EF_OATH_CODE)) == true) {
+            random_fill_buffer(challenge, sizeof(challenge));
             res_APDU[res_APDU_size++] = TAG_CHALLENGE;
             res_APDU[res_APDU_size++] = sizeof(challenge);
             memcpy(res_APDU + res_APDU_size, challenge, sizeof(challenge));
@@ -102,7 +103,7 @@ static int oath_select(app_t *a, uint8_t force) {
             res_APDU[res_APDU_size++] = 8;
             memcpy(res_APDU + res_APDU_size, pico_serial_str, 8);
             res_APDU_size += 8;
-            file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
+            file_t *ef_otp_pin = file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
             if (file_has_data(ef_otp_pin)) {
                 const uint8_t *pin_data = file_get_data(ef_otp_pin);
                 res_APDU[res_APDU_size++] = TAG_PIN_COUNTER;
@@ -111,9 +112,9 @@ static int oath_select(app_t *a, uint8_t force) {
             }
         }
         apdu.ne = res_APDU_size;
-        return PICOKEY_OK;
+        return PICOKEYS_OK;
     }
-    return PICOKEY_ERR_FILE_NOT_FOUND;
+    return PICOKEYS_ERR_FILE_NOT_FOUND;
 }
 
 INITIALIZER ( oath_ctor ) {
@@ -121,12 +122,12 @@ INITIALIZER ( oath_ctor ) {
 }
 
 static int oath_unload(void) {
-    return PICOKEY_OK;
+    return PICOKEYS_OK;
 }
 
 static file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
     for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = search_dynamic_file((uint16_t)(EF_OATH_CRED + i));
+        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
         asn1_ctx_t ctxi, ef_tag = { 0 };
         asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
         if (file_has_data(ef) && asn1_find_tag(&ctxi, TAG_NAME, &ef_tag) == true && ef_tag.len == name_len && memcmp(ef_tag.data, name, name_len) == 0) {
@@ -166,15 +167,15 @@ static int cmd_put(void) {
     file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef)) {
         file_put_data(ef, apdu.data, (uint16_t)apdu.nc);
-        low_flash_available();
+        flash_commit();
     }
     else {
         for (int i = 0; i < MAX_OATH_CRED; i++) {
-            file_t *tef = search_dynamic_file((uint16_t)(EF_OATH_CRED + i));
+            file_t *tef = file_search((uint16_t)(EF_OATH_CRED + i));
             if (!file_has_data(tef)) {
                 tef = file_new((uint16_t)(EF_OATH_CRED + i));
                 file_put_data(tef, apdu.data, (uint16_t)apdu.nc);
-                low_flash_available();
+                flash_commit();
                 return SW_OK();
             }
         }
@@ -193,7 +194,7 @@ static int cmd_delete(void) {
     if (asn1_find_tag(&ctxi, TAG_NAME, &ctxo) == true) {
         file_t *ef = find_oath_cred(ctxo.data, ctxo.len);
         if (ef) {
-            delete_file(ef);
+            file_delete(ef);
             return SW_OK();
         }
         return SW_DATA_INVALID();
@@ -219,7 +220,7 @@ static int cmd_set_code(void) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     if (apdu.nc == 0) {
-        delete_file(search_dynamic_file(EF_OATH_CODE));
+        file_delete(file_search(EF_OATH_CODE));
         validated = true;
         return SW_OK();
     }
@@ -229,7 +230,7 @@ static int cmd_set_code(void) {
         return SW_INCORRECT_PARAMS();
     }
     if (key.len == 0) {
-        delete_file(search_dynamic_file(EF_OATH_CODE));
+        file_delete(file_search(EF_OATH_CODE));
         validated = true;
         return SW_OK();
     }
@@ -252,10 +253,10 @@ static int cmd_set_code(void) {
     if (memcmp(hmac, resp.data, resp.len) != 0) {
         return SW_DATA_INVALID();
     }
-    random_gen(NULL, challenge, sizeof(challenge));
+    random_fill_buffer(challenge, sizeof(challenge));
     file_t *ef = file_new(EF_OATH_CODE);
     file_put_data(ef, key.data, key.len);
-    low_flash_available();
+    flash_commit();
     validated = false;
     return SW_OK();
 }
@@ -265,14 +266,14 @@ static int cmd_reset(void) {
         return SW_INCORRECT_P1P2();
     }
     for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = search_dynamic_file((uint16_t)(EF_OATH_CRED + i));
+        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
         if (file_has_data(ef)) {
-            delete_file(ef);
+            file_delete(ef);
         }
     }
-    delete_file(search_dynamic_file(EF_OATH_CODE));
-    flash_clear_file(search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF));
-    low_flash_available();
+    file_delete(file_search(EF_OATH_CODE));
+    flash_clear_file(file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF));
+    flash_commit();
     validated = true;
     return SW_OK();
 }
@@ -283,7 +284,7 @@ static int cmd_list(void) {
     }
     bool ext = (apdu.nc == 1 && apdu.data[0] == 0x01);
     for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = search_dynamic_file((uint16_t)(EF_OATH_CRED + i));
+        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
         if (file_has_data(ef)) {
             asn1_ctx_t ctxi, key = { 0 }, name = { 0 }, pws = { 0 };
             asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
@@ -318,7 +319,7 @@ static int cmd_validate(void) {
     if (asn1_find_tag(&ctxi, TAG_RESPONSE, &resp) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    file_t *ef = search_dynamic_file(EF_OATH_CODE);
+    file_t *ef = file_search(EF_OATH_CODE);
     if (file_has_data(ef) == false) {
         validated = true;
         return SW_DATA_INVALID();
@@ -359,7 +360,7 @@ int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const u
     int r = mbedtls_md_hmac(md_info, key + 2, key_len - 2, chal, chal_len, hmac);
     size_t hmac_size = mbedtls_md_get_size(md_info);
     if (r != 0) {
-        return PICOKEY_EXEC_ERROR;
+        return PICOKEYS_EXEC_ERROR;
     }
     if (truncate == 0x01) {
         res_APDU[res_APDU_size++] = 4 + 1;
@@ -376,7 +377,7 @@ int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const u
         memcpy(res_APDU + res_APDU_size, hmac, hmac_size); res_APDU_size += (uint16_t)hmac_size;
     }
     apdu.ne = res_APDU_size;
-    return PICOKEY_OK;
+    return PICOKEYS_OK;
 }
 
 static int cmd_calculate(void) {
@@ -413,11 +414,11 @@ static int cmd_calculate(void) {
     res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
 
     int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
-    if (ret != PICOKEY_OK) {
+    if (ret != PICOKEYS_OK) {
         return SW_EXEC_ERROR();
     }
     if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
-        uint64_t v = get_uint64_t_be(chal.data);
+        uint64_t v = get_uint64_be(chal.data);
         size_t ef_size = file_get_size(ef);
         v++;
         uint8_t *tmp = (uint8_t *) calloc(1, ef_size);
@@ -425,9 +426,9 @@ static int cmd_calculate(void) {
         asn1_ctx_t ctxt;
         asn1_ctx_init(tmp, (uint16_t)ef_size, &ctxt);
         asn1_find_tag(&ctxt, TAG_IMF, &chal);
-        put_uint64_t_be(v, chal.data);
+        put_uint64_be(v, chal.data);
         file_put_data(ef, tmp, (uint16_t)ef_size);
-        low_flash_available();
+        flash_commit();
         free(tmp);
     }
     apdu.ne = res_APDU_size;
@@ -448,7 +449,7 @@ static int cmd_calculate_all(void) {
     }
     res_APDU_size = 0;
     for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = search_dynamic_file((uint16_t)(EF_OATH_CRED + i));
+        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
         if (file_has_data(ef)) {
             const uint8_t *ef_data = file_get_data(ef);
             size_t ef_len = file_get_size(ef);
@@ -473,7 +474,7 @@ static int cmd_calculate_all(void) {
             else {
                 res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
                 int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
-                if (ret != PICOKEY_OK) {
+                if (ret != PICOKEYS_OK) {
                     res_APDU[res_APDU_size++] = 1;
                     res_APDU[res_APDU_size++] = key.data[1];
                 }
@@ -490,7 +491,7 @@ static int cmd_send_remaining(void) {
 
 static int cmd_set_otp_pin(void) {
     uint8_t hsh[33] = { 0 };
-    file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
+    file_t *ef_otp_pin = file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
@@ -502,13 +503,13 @@ static int cmd_set_otp_pin(void) {
     hsh[0] = MAX_OTP_COUNTER;
     double_hash_pin(pw.data, pw.len, hsh + 1);
     file_put_data(ef_otp_pin, hsh, sizeof(hsh));
-    low_flash_available();
+    flash_commit();
     return SW_OK();
 }
 
 static int cmd_change_otp_pin(void) {
     uint8_t hsh[33] = { 0 };
-    file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
+    file_t *ef_otp_pin = file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (!file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
@@ -527,13 +528,13 @@ static int cmd_change_otp_pin(void) {
     hsh[0] = MAX_OTP_COUNTER;
     double_hash_pin(new_pw.data, new_pw.len, hsh + 1);
     file_put_data(ef_otp_pin, hsh, sizeof(hsh));
-    low_flash_available();
+    flash_commit();
     return SW_OK();
 }
 
 static int cmd_verify_otp_pin(void) {
     uint8_t hsh[33] = { 0 }, data_hsh[33];
-    file_t *ef_otp_pin = search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
+    file_t *ef_otp_pin = file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
     if (!file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
@@ -549,13 +550,13 @@ static int cmd_verify_otp_pin(void) {
             data_hsh[0] -= 1;
         }
         file_put_data(ef_otp_pin, data_hsh, sizeof(data_hsh));
-        low_flash_available();
+        flash_commit();
         validated = false;
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     data_hsh[0] = MAX_OTP_COUNTER;
     file_put_data(ef_otp_pin, data_hsh, sizeof(data_hsh));
-    low_flash_available();
+    flash_commit();
     validated = true;
     return SW_OK();
 }
@@ -567,7 +568,7 @@ static int cmd_verify_hotp(void) {
     if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    file_t *ef = find_oath_cred(name.data, name.len);
+    file_t *ef = file_search_by_fid(EF_OATH_CRED, NULL, SPECIFY_EF);
     if (file_has_data(ef) == false) {
         return SW_DATA_INVALID();
     }
@@ -584,14 +585,14 @@ static int cmd_verify_hotp(void) {
         return SW_INCORRECT_PARAMS();
     }
     if (asn1_find_tag(&ctxi, TAG_RESPONSE, &code) == true) {
-        code_int = get_uint32_t_be(code.data);
+        code_int = get_uint32_be(code.data);
     }
 
     int ret = calculate_oath(0x01, key.data, key.len, chal.data, chal.len);
-    if (ret != PICOKEY_OK) {
+    if (ret != PICOKEYS_OK) {
         return SW_EXEC_ERROR();
     }
-    uint32_t res_int = get_uint32_t_be(res_APDU + 2);
+    uint32_t res_int = get_uint32_be(res_APDU + 2);
     if (res_APDU[1] == 6) {
         res_int %= (uint32_t) 1e6;
     }
@@ -643,7 +644,7 @@ static int cmd_rename(void) {
     memcpy(new_data + (name.data - fdata), new_name.data, new_name.len);
     memcpy(new_data + (name.data - fdata) + new_name.len, name.data + name.len, fsize - (name.data + name.len - fdata));
     file_put_data(ef, new_data, fsize + new_name.len - name.len);
-    low_flash_available();
+    flash_commit();
     free(new_data);
     return SW_OK();
 }

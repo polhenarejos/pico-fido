@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #if defined(PICO_PLATFORM)
 #include "pico/stdlib.h"
 #endif

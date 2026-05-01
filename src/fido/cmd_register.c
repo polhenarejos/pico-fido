@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "fido.h"
 #include "apdu.h"
 #include "ctap.h"
@@ -37,9 +37,9 @@ static int u2f_select(app_t *a, uint8_t force) {
     if (cap_supported(CAP_U2F)) {
         a->process_apdu = u2f_process_apdu;
         a->unload = u2f_unload;
-        return PICOKEY_OK;
+        return PICOKEYS_OK;
     }
-    return PICOKEY_ERR_FILE_NOT_FOUND;
+    return PICOKEYS_ERR_FILE_NOT_FOUND;
 }
 
 INITIALIZER ( u2f_ctor ) {
@@ -47,7 +47,7 @@ INITIALIZER ( u2f_ctor ) {
 }
 
 int u2f_unload(void) {
-    return PICOKEY_OK;
+    return PICOKEYS_OK;
 }
 
 const uint8_t *bogus_firefox = (const uint8_t *) "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
@@ -58,7 +58,7 @@ int cmd_register(void) {
     CTAP_REGISTER_RESP *resp = (CTAP_REGISTER_RESP *) res_APDU;
     resp->registerId = CTAP_REGISTER_ID;
     resp->keyHandleLen = KEY_HANDLE_LEN;
-    //if (scan_files_fido(true) != PICOKEY_OK)
+    //if (scan_files_fido(true) != PICOKEYS_OK)
     //    return SW_EXEC_ERROR();
     if (apdu.nc != CTAP_APPID_SIZE + CTAP_CHAL_SIZE) {
         return SW_WRONG_LENGTH();
@@ -72,7 +72,7 @@ int cmd_register(void) {
     mbedtls_ecdsa_context key;
     mbedtls_ecdsa_init(&key);
     int ret = derive_key(req->appId, true, resp->keyHandleCertSig, MBEDTLS_ECP_DP_SECP256R1, &key);
-    if (ret != PICOKEY_OK) {
+    if (ret != PICOKEYS_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
@@ -97,16 +97,16 @@ int cmd_register(void) {
     mbedtls_ecdsa_init(&key);
     uint8_t key_dev[32] = {0};
     ret = load_keydev(key_dev);
-    if (ret != PICOKEY_OK) {
+    if (ret != PICOKEYS_OK) {
         return SW_EXEC_ERROR();
     }
     ret = mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &key, key_dev, 32);
     mbedtls_platform_zeroize(key_dev, sizeof(key_dev));
-    if (ret != PICOKEY_OK) {
+    if (ret != PICOKEYS_OK) {
         mbedtls_ecdsa_free(&key);
         return SW_EXEC_ERROR();
     }
-    ret = mbedtls_ecdsa_write_signature(&key,MBEDTLS_MD_SHA256, hash, 32, (uint8_t *) resp->keyHandleCertSig + KEY_HANDLE_LEN + ef_certdev_size, CTAP_MAX_EC_SIG_SIZE, &olen, random_gen, NULL);
+    ret = mbedtls_ecdsa_write_signature(&key,MBEDTLS_MD_SHA256, hash, 32, (uint8_t *) resp->keyHandleCertSig + KEY_HANDLE_LEN + ef_certdev_size, CTAP_MAX_EC_SIG_SIZE, &olen, random_fill_iterator, NULL);
     mbedtls_ecdsa_free(&key);
     if (ret != 0) {
         return SW_EXEC_ERROR();

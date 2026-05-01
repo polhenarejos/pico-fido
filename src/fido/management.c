@@ -15,7 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include <stdio.h>
+#include "picokeys.h"
+#include "serial.h"
 #include "fido.h"
 #include "apdu.h"
 #include "version.h"
@@ -45,7 +47,7 @@ static int man_select(app_t *a, uint8_t force) {
 #endif
     }
     is_gpg = false;
-    return PICOKEY_OK;
+    return PICOKEYS_OK;
 }
 
 INITIALIZER ( man_ctor ) {
@@ -53,11 +55,11 @@ INITIALIZER ( man_ctor ) {
 }
 
 static int man_unload(void) {
-    return PICOKEY_OK;
+    return PICOKEYS_OK;
 }
 
 bool cap_supported(uint16_t cap) {
-    file_t *ef = search_dynamic_file(EF_DEV_CONF);
+    file_t *ef = file_search(EF_DEV_CONF);
     if (file_has_data(ef)) {
         uint16_t tag = 0x0;
         uint8_t *tag_data = NULL, *p = NULL;
@@ -68,7 +70,7 @@ bool cap_supported(uint16_t cap) {
             if (tag == TAG_USB_ENABLED) {
                 uint16_t ecaps = tag_data[0];
                 if (tag_len == 2) {
-                    ecaps = get_uint16_t_be(tag_data);
+                    ecaps = get_uint16_be(tag_data);
                 }
                 return ecaps & cap;
             }
@@ -87,7 +89,7 @@ static uint8_t _piv_aid[] = {
 };
 
 int man_get_config(void) {
-    file_t *ef = search_dynamic_file(EF_DEV_CONF);
+    file_t *ef = file_search(EF_DEV_CONF);
     res_APDU_size = 0;
     res_APDU[res_APDU_size++] = 0; // Overall length. Filled later
     res_APDU[res_APDU_size++] = TAG_USB_SUPPORTED;
@@ -164,7 +166,7 @@ static int cmd_write_config(void) {
     }
     file_t *ef = file_new(EF_DEV_CONF);
     file_put_data(ef, apdu.data + 1, (uint16_t)(apdu.nc - 1));
-    low_flash_available();
+    flash_commit();
 #ifndef ENABLE_EMULATION
     if (cap_supported(CAP_OTP)) {
         phy_data.enabled_usb_itf |= PHY_USB_ITF_KB;

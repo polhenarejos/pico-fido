@@ -88,10 +88,10 @@ else()
 endif()
 
 set(USB_ITF_HID 1)
-include(pico-keys-sdk/pico_keys_sdk_import.cmake)
+include(pico-keys-sdk/picokeys_sdk_import.cmake)
 
 if(NOT ESP_PLATFORM)
-    set(SOURCES ${PICO_KEYS_SOURCES})
+    set(SOURCES ${PICOKEYS_SOURCES})
 endif()
 
 list(APPEND SOURCES
@@ -147,7 +147,7 @@ if(NOT ESP_PLATFORM)
     )
     target_compile_options(pico_fido PRIVATE ${COMMON_COMPILE_OPTIONS})
 
-    pico_keys_apply_strict_flags(
+    picokeys_apply_strict_flags(
         SOURCES ${SOURCES}
         FILTER_REGEX "/src/fido/|/pico-keys-sdk/src/|/pico-keys-sdk/config/"
     )
@@ -193,12 +193,12 @@ if(NOT ESP_PLATFORM)
             target_link_options(pico_fido PRIVATE ${EMULATION_NON_APPLE_LINK_OPTIONS})
         endif()
 
-        target_link_libraries(pico_fido PRIVATE pico_keys_sdk mbedtls pthread m)
+        target_link_libraries(pico_fido PRIVATE picokeys_sdk mbedtls pthread m)
     else()
         target_link_libraries(
             pico_fido
             PRIVATE
-                pico_keys_sdk
+                picokeys_sdk
                 pico_stdlib
                 pico_multicore
                 hardware_flash

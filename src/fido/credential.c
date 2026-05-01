@@ -15,7 +15,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
+#include "serial.h"
+#include "pico_time.h"
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "credential.h"
@@ -158,7 +160,7 @@ int credential_create(CborCharString *rpId,
     uint8_t key[32] = {0};
     credential_derive_chacha_key(key, (const uint8_t *)CRED_PROTO);
     uint8_t iv[CRED_IV_LEN] = {0};
-    random_gen(NULL, iv, sizeof(iv));
+    random_fill_buffer(iv, sizeof(iv));
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
@@ -310,7 +312,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         return ret;
     }
     for (uint16_t i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-        file_t *ef = search_dynamic_file(EF_CRED + i);
+        file_t *ef = file_search(EF_CRED + i);
         Credential rcred = { 0 };
         if (!file_has_data(ef)) {
             if (sloti == -1) {
@@ -350,7 +352,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     if (new_record == true) { //increase rps
         sloti = -1;
         for (uint16_t i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
-            ef = search_dynamic_file(EF_RP + i);
+            ef = file_search(EF_RP + i);
             if (!file_has_data(ef)) {
                 if (sloti == -1) {
                     sloti = i;
@@ -365,7 +367,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         if (sloti == -1) {
             return -1;
         }
-        ef = search_dynamic_file((uint16_t)(EF_RP + sloti));
+        ef = file_search((uint16_t)(EF_RP + sloti));
         if (file_has_data(ef)) {
             data = (uint8_t *) calloc(1, file_get_size(ef));
             memcpy(data, file_get_data(ef), file_get_size(ef));
@@ -384,7 +386,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         }
     }
     credential_free(&cred);
-    low_flash_available();
+    flash_commit();
     return 0;
 }
 
