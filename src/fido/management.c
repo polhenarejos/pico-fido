@@ -42,7 +42,7 @@ static int man_select(app_t *a, uint8_t force) {
     apdu.ne = res_APDU_size;
     if (force) {
         scan_all();
-#ifdef ENABLE_OTP_APP
+#if ENABLE_OTP_APP
         init_otp();
 #endif
     }

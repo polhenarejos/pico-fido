@@ -224,7 +224,7 @@ static int otp_button_pressed(uint8_t slot) {
     if (otp_config->cfg_flags & CHAL_YUBICO && otp_config->tkt_flags & CHAL_RESP) {
         return 2;
     }
-#ifdef ENABLE_OATH_APP
+#if ENABLE_OATH_APP
     if (otp_config->tkt_flags & OATH_HOTP) {
         uint8_t tmp_key[KEY_SIZE + 2];
         tmp_key[0] = 0x01;
