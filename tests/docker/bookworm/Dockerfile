@@ -22,6 +22,9 @@ RUN apt install -y libccid \
     cmake \
     libfuse-dev \
     python3-pyscard \
+    libtss2-dev \
+    tpm2-tools \
+    swtpm \
     && rm -rf /var/lib/apt/lists/*
 RUN pip3 install pytest pycvc cryptography inputimeout fido2==2.0.0 --break-system-packages
 WORKDIR /
