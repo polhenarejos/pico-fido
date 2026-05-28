@@ -20,6 +20,7 @@
 #include "mbedtls/ecdh.h"
 #include "mbedtls/sha256.h"
 #include "mbedtls/hkdf.h"
+#include "mbedtls/constant_time.h"
 #include "cbor.h"
 #include "ctap.h"
 #include "ctap2_cbor.h"
@@ -221,10 +222,10 @@ int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t l
         return ret;
     }
     if (protocol == 1) {
-        return ct_memcmp(sign, hmac, 16);
+        return mbedtls_ct_memcmp(sign, hmac, 16);
     }
     else if (protocol == 2) {
-        return ct_memcmp(sign, hmac, 32);
+        return mbedtls_ct_memcmp(sign, hmac, 32);
     }
     return -1;
 }
@@ -491,7 +492,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             pin_derive_verifier(paddedNewPin, 16, dhash);
         }
 
-        if (ct_memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
+        if (mbedtls_ct_memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
@@ -569,7 +570,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         pin_data[2] = 1; // New format indicator
         pin_derive_verifier(dhash, 16, pin_data + 3);
 
-        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 && ct_memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
+        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 && mbedtls_ct_memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
         file_put_data(ef_pin, pin_data, sizeof(pin_data));
@@ -652,7 +653,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         else {
             pin_derive_verifier(paddedNewPin, 16, dhash);
         }
-        if (ct_memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
+        if (mbedtls_ct_memcmp(dhash, file_get_data(ef_pin) + off, 32) != 0) {
             regenerate();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             mbedtls_platform_zeroize(dhash, sizeof(dhash));

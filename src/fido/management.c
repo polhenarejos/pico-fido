@@ -22,7 +22,7 @@
 #include "apdu.h"
 #include "version.h"
 #include "files.h"
-#include "asn1.h"
+#include "tlv.h"
 #include "management.h"
 
 bool is_gpg = true;
@@ -64,9 +64,9 @@ bool cap_supported(uint16_t cap) {
         uint16_t tag = 0x0;
         uint8_t *tag_data = NULL, *p = NULL;
         uint16_t tag_len = 0;
-        asn1_ctx_t ctxi;
-        asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
-        while (walk_tlv(&ctxi, &p, &tag, &tag_len, &tag_data)) {
+        tlv_ctx_t ctxi;
+        tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+        while (tlv_walk(&ctxi, &p, &tag, &tag_len, &tag_data)) {
             if (tag == TAG_USB_ENABLED) {
                 uint16_t ecaps = tag_data[0];
                 if (tag_len == 2) {

@@ -22,7 +22,7 @@
 #include "files.h"
 #include "random.h"
 #include "version.h"
-#include "asn1.h"
+#include "tlv.h"
 #include "crypto_utils.h"
 #include "management.h"
 
@@ -128,9 +128,9 @@ static int oath_unload(void) {
 static file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
-        asn1_ctx_t ctxi, ef_tag = { 0 };
-        asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
-        if (file_has_data(ef) && asn1_find_tag(&ctxi, TAG_NAME, &ef_tag) == true && ef_tag.len == name_len && memcmp(ef_tag.data, name, name_len) == 0) {
+        tlv_ctx_t ctxi, ef_tag = { 0 };
+        tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+        if (file_has_data(ef) && tlv_find_tag(&ctxi, TAG_NAME, &ef_tag) == true && ef_tag.len == name_len && memcmp(ef_tag.data, name, name_len) == 0) {
             return ef;
         }
     }
@@ -141,16 +141,16 @@ static int cmd_put(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    asn1_ctx_t ctxi, key = { 0 }, name = { 0 }, imf = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_KEY, &key) == false) {
+    tlv_ctx_t ctxi, key = { 0 }, name = { 0 }, imf = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+    if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
     if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
-        if (asn1_find_tag(&ctxi, TAG_IMF, &imf) == false) {
+        if (tlv_find_tag(&ctxi, TAG_IMF, &imf) == false) {
             memcpy(apdu.data + apdu.nc, "\x7a\x08\x00\x00\x00\x00\x00\x00\x00\x00", 10);
             apdu.nc += 10;
         }
@@ -189,9 +189,9 @@ static int cmd_delete(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    asn1_ctx_t ctxi, ctxo = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_NAME, &ctxo) == true) {
+    tlv_ctx_t ctxi, ctxo = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_NAME, &ctxo) == true) {
         file_t *ef = find_oath_cred(ctxo.data, ctxo.len);
         if (ef) {
             file_delete(ef);
@@ -224,9 +224,9 @@ static int cmd_set_code(void) {
         validated = true;
         return SW_OK();
     }
-    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, resp = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_KEY, &key) == false) {
+    tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, resp = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
     if (key.len == 0) {
@@ -234,10 +234,10 @@ static int cmd_set_code(void) {
         validated = true;
         return SW_OK();
     }
-    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
+    if (tlv_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(&ctxi, TAG_RESPONSE, &resp) == false) {
+    if (tlv_find_tag(&ctxi, TAG_RESPONSE, &resp) == false) {
         return SW_INCORRECT_PARAMS();
     }
 
@@ -286,19 +286,19 @@ static int cmd_list(void) {
     for (int i = 0; i < MAX_OATH_CRED; i++) {
         file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
         if (file_has_data(ef)) {
-            asn1_ctx_t ctxi, key = { 0 }, name = { 0 }, pws = { 0 };
-            asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
-            if (asn1_find_tag(&ctxi, TAG_NAME, &name) == true && asn1_find_tag(&ctxi, TAG_KEY, &key) == true) {
+            tlv_ctx_t ctxi, key = { 0 }, name = { 0 }, pws = { 0 };
+            tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+            if (tlv_find_tag(&ctxi, TAG_NAME, &name) == true && tlv_find_tag(&ctxi, TAG_KEY, &key) == true) {
                 res_APDU[res_APDU_size++] = TAG_NAME_LIST;
                 res_APDU[res_APDU_size++] = (uint8_t)(name.len + 1 + (ext ? 1 : 0));
                 res_APDU[res_APDU_size++] = key.data[0];
                 memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
                 if (ext) {
                     uint8_t props = 0x0;
-                    if (asn1_find_tag(&ctxi, TAG_PWS_LOGIN, &pws) == true || asn1_find_tag(&ctxi, TAG_PWS_PASSWORD, &pws) == true || asn1_find_tag(&ctxi, TAG_PWS_METADATA, &pws) == true) {
+                    if (tlv_find_tag(&ctxi, TAG_PWS_LOGIN, &pws) == true || tlv_find_tag(&ctxi, TAG_PWS_PASSWORD, &pws) == true || tlv_find_tag(&ctxi, TAG_PWS_METADATA, &pws) == true) {
                         props |= 0x4;
                     }
-                    if (asn1_find_tag(&ctxi, TAG_PROPERTY, &pws) == true && (pws.data[0] & PROP_TOUCH)) {
+                    if (tlv_find_tag(&ctxi, TAG_PROPERTY, &pws) == true && (pws.data[0] & PROP_TOUCH)) {
                         props |= 0x1;
                     }
                     res_APDU[res_APDU_size++] = props;
@@ -311,12 +311,12 @@ static int cmd_list(void) {
 }
 
 static int cmd_validate(void) {
-    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, resp = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
+    tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, resp = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(&ctxi, TAG_RESPONSE, &resp) == false) {
+    if (tlv_find_tag(&ctxi, TAG_RESPONSE, &resp) == false) {
         return SW_INCORRECT_PARAMS();
     }
     file_t *ef = file_search(EF_OATH_CODE);
@@ -387,26 +387,26 @@ static int cmd_calculate(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
+    tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+    if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
     file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef) == false) {
         return SW_DATA_INVALID();
     }
-    asn1_ctx_t ctxe;
-    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
-    if (asn1_find_tag(&ctxe, TAG_KEY, &key) == false) {
+    tlv_ctx_t ctxe;
+    tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
+    if (tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
 
     if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
-        if (asn1_find_tag(&ctxe, TAG_IMF, &chal) == false) {
+        if (tlv_find_tag(&ctxe, TAG_IMF, &chal) == false) {
             return SW_INCORRECT_PARAMS();
         }
     }
@@ -423,9 +423,9 @@ static int cmd_calculate(void) {
         v++;
         uint8_t *tmp = (uint8_t *) calloc(1, ef_size);
         memcpy(tmp, file_get_data(ef), ef_size);
-        asn1_ctx_t ctxt;
-        asn1_ctx_init(tmp, (uint16_t)ef_size, &ctxt);
-        asn1_find_tag(&ctxt, TAG_IMF, &chal);
+        tlv_ctx_t ctxt;
+        tlv_ctx_init(tmp, (uint16_t)ef_size, &ctxt);
+        tlv_find_tag(&ctxt, TAG_IMF, &chal);
         put_uint64_be(v, chal.data);
         file_put_data(ef, tmp, (uint16_t)ef_size);
         flash_commit();
@@ -436,15 +436,15 @@ static int cmd_calculate(void) {
 }
 
 static int cmd_calculate_all(void) {
-    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, prop = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, prop = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
     if (P2(apdu) != 0x0 && P2(apdu) != 0x1) {
         return SW_INCORRECT_P1P2();
     }
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
+    if (tlv_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
     res_APDU_size = 0;
@@ -453,9 +453,9 @@ static int cmd_calculate_all(void) {
         if (file_has_data(ef)) {
             const uint8_t *ef_data = file_get_data(ef);
             size_t ef_len = file_get_size(ef);
-            asn1_ctx_t ctxe;
-            asn1_ctx_init((uint8_t *)ef_data, (uint16_t)ef_len, &ctxe);
-            if (asn1_find_tag(&ctxe, TAG_NAME, &name) == false || asn1_find_tag(&ctxe, TAG_KEY, &key) == false) {
+            tlv_ctx_t ctxe;
+            tlv_ctx_init((uint8_t *)ef_data, (uint16_t)ef_len, &ctxe);
+            if (tlv_find_tag(&ctxe, TAG_NAME, &name) == false || tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
                 continue;
             }
             res_APDU[res_APDU_size++] = TAG_NAME;
@@ -466,7 +466,7 @@ static int cmd_calculate_all(void) {
                 res_APDU[res_APDU_size++] = 1;
                 res_APDU[res_APDU_size++] = key.data[1];
             }
-            else if (asn1_find_tag(&ctxe, TAG_PROPERTY, &prop) == true && (prop.data[0] & PROP_TOUCH)) {
+            else if (tlv_find_tag(&ctxe, TAG_PROPERTY, &prop) == true && (prop.data[0] & PROP_TOUCH)) {
                 res_APDU[res_APDU_size++] = TAG_TOUCH_RESPONSE;
                 res_APDU[res_APDU_size++] = 1;
                 res_APDU[res_APDU_size++] = key.data[1];
@@ -495,9 +495,9 @@ static int cmd_set_otp_pin(void) {
     if (file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    asn1_ctx_t ctxi, pw = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_PASSWORD, &pw) == false) {
+    tlv_ctx_t ctxi, pw = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_PASSWORD, &pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
     hsh[0] = MAX_OTP_COUNTER;
@@ -513,16 +513,16 @@ static int cmd_change_otp_pin(void) {
     if (!file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    asn1_ctx_t ctxi, pw = { 0 }, new_pw = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_PASSWORD,  &pw) == false) {
+    tlv_ctx_t ctxi, pw = { 0 }, new_pw = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_PASSWORD,  &pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
     double_hash_pin(pw.data, pw.len, hsh + 1);
     if (memcmp(file_get_data(ef_otp_pin) + 1, hsh + 1, 32) != 0) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    if (asn1_find_tag(&ctxi, TAG_NEW_PASSWORD, &new_pw) == false) {
+    if (tlv_find_tag(&ctxi, TAG_NEW_PASSWORD, &new_pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
     hsh[0] = MAX_OTP_COUNTER;
@@ -538,9 +538,9 @@ static int cmd_verify_otp_pin(void) {
     if (!file_has_data(ef_otp_pin)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
-    asn1_ctx_t ctxi, pw = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_PASSWORD, &pw) == false) {
+    tlv_ctx_t ctxi, pw = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_PASSWORD, &pw) == false) {
         return SW_INCORRECT_PARAMS();
     }
     double_hash_pin(pw.data, pw.len, hsh + 1);
@@ -562,29 +562,29 @@ static int cmd_verify_otp_pin(void) {
 }
 
 static int cmd_verify_hotp(void) {
-    asn1_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, code = { 0 };
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, code = { 0 };
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
     uint32_t code_int = 0;
-    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+    if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
     file_t *ef = file_search_by_fid(EF_OATH_CRED, NULL, SPECIFY_EF);
     if (file_has_data(ef) == false) {
         return SW_DATA_INVALID();
     }
-    asn1_ctx_t ctxe;
-    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
-    if (asn1_find_tag(&ctxe, TAG_KEY, &key) == false) {
+    tlv_ctx_t ctxe;
+    tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
+    if (tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
 
     if ((key.data[0] & OATH_TYPE_MASK) != OATH_TYPE_HOTP) {
         return SW_DATA_INVALID();
     }
-    if (asn1_find_tag(&ctxe, TAG_IMF, &chal) == false) {
+    if (tlv_find_tag(&ctxe, TAG_IMF, &chal) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    if (asn1_find_tag(&ctxi, TAG_RESPONSE, &code) == true) {
+    if (tlv_find_tag(&ctxi, TAG_RESPONSE, &code) == true) {
         code_int = get_uint32_be(code.data);
     }
 
@@ -608,7 +608,7 @@ static int cmd_verify_hotp(void) {
 }
 
 static int cmd_rename(void) {
-    asn1_ctx_t ctxi, name = { 0 }, new_name = { 0 };
+    tlv_ctx_t ctxi, name = { 0 }, new_name = { 0 };
 
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
@@ -616,13 +616,13 @@ static int cmd_rename(void) {
     if (apdu.data[0] != TAG_NAME) {
         return SW_WRONG_DATA();
     }
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_WRONG_DATA();
     }
 
-    asn1_ctx_init(name.data + name.len, (uint16_t)(apdu.nc - (name.data + name.len - apdu.data)), &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_NAME, &new_name) == false) {
+    tlv_ctx_init(name.data + name.len, (uint16_t)(apdu.nc - (name.data + name.len - apdu.data)), &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_NAME, &new_name) == false) {
         return SW_WRONG_DATA();
     }
     if (name.len == new_name.len && memcmp(name.data, new_name.data, name.len) == 0) {
@@ -634,8 +634,8 @@ static int cmd_rename(void) {
     }
     uint8_t *fdata = file_get_data(ef);
     uint16_t fsize = file_get_size(ef);
-    asn1_ctx_init(fdata, fsize, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+    tlv_ctx_init(fdata, fsize, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_WRONG_DATA();
     }
     uint8_t *new_data = (uint8_t *) calloc(fsize + new_name.len - name.len, sizeof(uint8_t));
@@ -650,44 +650,44 @@ static int cmd_rename(void) {
 }
 
 static int cmd_get_credential(void) {
-    asn1_ctx_t ctxi, name = { 0 };
+    tlv_ctx_t ctxi, name = { 0 };
     if (apdu.nc < 3) {
         return SW_INCORRECT_PARAMS();
     }
     if (apdu.data[0] != TAG_NAME) {
         return SW_WRONG_DATA();
     }
-    asn1_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == false) {
+    tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_WRONG_DATA();
     }
     file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef) == false) {
         return SW_DATA_INVALID();
     }
-    asn1_ctx_t login = { 0 }, pw = { 0 }, meta = { 0 }, prop = { 0 };
-    asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
-    if (asn1_find_tag(&ctxi, TAG_NAME, &name) == true) {
+    tlv_ctx_t login = { 0 }, pw = { 0 }, meta = { 0 }, prop = { 0 };
+    tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_NAME, &name) == true) {
         res_APDU[res_APDU_size++] = TAG_NAME;
         res_APDU[res_APDU_size++] = (uint8_t)(name.len);
         memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
     }
-    if (asn1_find_tag(&ctxi, TAG_PWS_LOGIN, &login) == true) {
+    if (tlv_find_tag(&ctxi, TAG_PWS_LOGIN, &login) == true) {
         res_APDU[res_APDU_size++] = TAG_PWS_LOGIN;
         res_APDU[res_APDU_size++] = (uint8_t)(login.len);
         memcpy(res_APDU + res_APDU_size, login.data, login.len); res_APDU_size += login.len;
     }
-    if (asn1_find_tag(&ctxi, TAG_PWS_PASSWORD, &pw) == true) {
+    if (tlv_find_tag(&ctxi, TAG_PWS_PASSWORD, &pw) == true) {
         res_APDU[res_APDU_size++] = TAG_PWS_PASSWORD;
         res_APDU[res_APDU_size++] = (uint8_t)(pw.len);
         memcpy(res_APDU + res_APDU_size, pw.data, pw.len); res_APDU_size += pw.len;
     }
-    if (asn1_find_tag(&ctxi, TAG_PWS_METADATA, &meta) == true) {
+    if (tlv_find_tag(&ctxi, TAG_PWS_METADATA, &meta) == true) {
         res_APDU[res_APDU_size++] = TAG_PWS_METADATA;
         res_APDU[res_APDU_size++] = (uint8_t)(meta.len);
         memcpy(res_APDU + res_APDU_size, meta.data, meta.len); res_APDU_size += meta.len;
     }
-    if (asn1_find_tag(&ctxi, TAG_PROPERTY, &prop) == true) {
+    if (tlv_find_tag(&ctxi, TAG_PROPERTY, &prop) == true) {
         res_APDU[res_APDU_size++] = TAG_PROPERTY;
         res_APDU[res_APDU_size++] = (uint8_t)(prop.len);
         memcpy(res_APDU + res_APDU_size, prop.data, prop.len); res_APDU_size += prop.len;

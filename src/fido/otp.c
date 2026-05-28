@@ -24,7 +24,6 @@
 #include "files.h"
 #include "random.h"
 #include "version.h"
-#include "asn1.h"
 #include "hid/ctap_hid.h"
 #include "usb.h"
 #if defined(PICO_PLATFORM)
@@ -148,8 +147,7 @@ static int otp_select(app_t *a, uint8_t force) {
     if (cap_supported(CAP_OTP)) {
         a->process_apdu = otp_process_apdu;
         a->unload = otp_unload;
-        if (file_has_data(file_search(EF_OTP_SLOT1)) ||
-            file_has_data(file_search(EF_OTP_SLOT2))) {
+        if (file_has_data(file_search(EF_OTP_SLOT1)) || file_has_data(file_search(EF_OTP_SLOT2))) {
             config_seq = 1;
         }
         else {
