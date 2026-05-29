@@ -498,6 +498,16 @@ void init_fido(void) {
     needs_power_cycle = false;
 }
 
+// Run heavy first-time init (key/cert generation, OTP counter increment, flash_commit)
+// at boot — BEFORE USB enumeration starts. Otherwise the first CTAPHID_INIT triggers
+// it from inside the set_report callback, and the resulting flash writes hang the USB
+// pipe long enough that macOS times out and refuses further transfers until physical
+// re-plug. See init_fido() above and pico-keys-sdk hid.c CTAPHID_INIT handler.
+int picokey_init(void) {
+    init_fido();
+    return 0;
+}
+
 bool wait_button_pressed(void) {
     uint32_t val = EV_PRESS_BUTTON;
 #if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
