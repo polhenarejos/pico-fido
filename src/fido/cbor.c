@@ -32,8 +32,7 @@ const bool _btrue = true, _bfalse = false;
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
 
-const uint8_t aaguid[16] = { 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9B, 0x7E, 0x30, 0x52, 0x6D, 0x96, 0x81, 0x45 }; // First 16 bytes of SHA256("Pico FIDO2")
-
+const uint8_t aaguid[16] = { AAGUID };
 const uint8_t *cbor_data = NULL;
 size_t cbor_len = 0;
 uint8_t cbor_cmd = 0;

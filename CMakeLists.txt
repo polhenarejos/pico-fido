@@ -212,3 +212,13 @@ if(NOT ESP_PLATFORM)
         pico_add_extra_outputs(${CMAKE_PROJECT_NAME})
     endif()
 endif()
+
+# Set AAGUID, by default first 16 bytes of SHA256("Pico FIDO2")
+set(AAGUID "89fb94b7-06c9-3673-9b7e-30526d968145" CACHE STRING "Set AAGUID of the authenticator")
+message(STATUS "AAGUID:\t\t\t ${AAGUID}")
+string(REPLACE "-" "" AAGUID "${AAGUID}")
+
+# Transform 112233... to 0x11, 0x22, 0x33, ...
+string(REGEX REPLACE "(..)" "0x\\1, " AAGUID_LIST "${AAGUID}")
+string(REGEX REPLACE ", $" "" AAGUID_LIST "${AAGUID_LIST}")
+add_compile_definitions(AAGUID=${AAGUID_LIST})
