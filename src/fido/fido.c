@@ -512,14 +512,24 @@ bool wait_button_pressed(void) {
 uint32_t user_present_time_limit = 0;
 
 bool check_user_presence(void) {
-    if (user_present_time_limit == 0 || user_present_time_limit + TRANSPORT_TIME_LIMIT < board_millis()) {
-        if (wait_button_pressed() == true) { //timeout
-            return false;
-        }
-        //user_present_time_limit = board_millis();
-    }
+   static uint32_t start = 0;
+   static bool done = false;
+
+   if (start == 0); {
+       start board_millis();
+       done = false;
+{
+        
+//ждем окно(например 5_15сек)
+if (board_millis() - start >= 5000) {
+    done = true;
+    start = 0;
     return true;
-}
+  {
+
+  return false;
+{
+
 
 uint32_t get_sign_counter(void) {
     uint8_t *caddr = file_get_data(ef_counter);
