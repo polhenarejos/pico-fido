@@ -28,6 +28,8 @@
 #include "random.h"
 #include "crypto_utils.h"
 
+char *rp_id = NULL, *user_name = NULL, *display_name = NULL;
+
 int cbor_make_credential(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
@@ -192,6 +194,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
     CBOR_PARSE_MAP_END(map, 1);
+    rp_id = rp.id.data;
+    user_name = user.parent.name.data;
+    display_name = user.displayName.data;
 
     uint8_t flags = FIDO2_AUT_FLAG_AT;
     uint8_t rp_id_hash[32] = {0};

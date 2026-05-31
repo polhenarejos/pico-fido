@@ -32,6 +32,7 @@
 #include "random.h"
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
+extern char *rp_id, *user_name, *display_name;
 
 bool residentx = false;
 Credential credsx[MAX_CREDENTIAL_COUNT_IN_LIST] = { 0 };
@@ -205,6 +206,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     if (rpId.present == false || clientDataHash.present == false) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
     }
+    rp_id = rpId.data;
+    user_name = NULL;
+    display_name = NULL;
 
     uint8_t flags = 0;
     uint8_t rp_id_hash[32] = {0};
