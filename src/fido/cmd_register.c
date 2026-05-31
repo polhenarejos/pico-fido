@@ -63,7 +63,7 @@ int cmd_register(void) {
     if (apdu.nc != CTAP_APPID_SIZE + CTAP_CHAL_SIZE) {
         return SW_WRONG_LENGTH();
     }
-    if (wait_button_pressed() == true) {
+    if (wait_button_pressed() > 0) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     if (memcmp(req->appId, bogus_firefox,

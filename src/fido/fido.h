@@ -41,7 +41,7 @@ extern int derive_key(const uint8_t *app_id,
                       int,
                       mbedtls_ecp_keypair *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *);
-extern bool wait_button_pressed(void);
+extern int wait_button_pressed(void);
 extern void init_fido(void);
 extern void init_otp(void);
 extern void scan_all(void);

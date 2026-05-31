@@ -20,9 +20,16 @@
 #include "ctap2_cbor.h"
 #include "ctap.h"
 
+extern char *rp_id, *user_name, *display_name;
+
 int cbor_selection(void) {
-    if (wait_button_pressed() == true) {
+    rp_id = user_name = display_name = NULL;
+    int ret = wait_button_pressed() ;
+    if (ret == 1) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
+    }
+    else if (ret == 2) {
+        return CTAP2_ERR_OPERATION_DENIED;
     }
     return CTAP2_OK;
 }

@@ -34,7 +34,7 @@ int cmd_authenticate(void) {
     if (req->keyHandleLen < KEY_HANDLE_LEN) {
         return SW_INCORRECT_PARAMS();
     }
-    if (P1(apdu) == CTAP_AUTH_ENFORCE && wait_button_pressed() == true) {
+    if (P1(apdu) == CTAP_AUTH_ENFORCE && wait_button_pressed() > 0) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
 

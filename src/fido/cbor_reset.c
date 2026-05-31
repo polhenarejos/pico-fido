@@ -35,7 +35,7 @@ int cbor_reset(void) {
         return CTAP2_ERR_NOT_ALLOWED;
     }
 #endif
-    if (wait_button_pressed() == true) {
+    if (wait_button_pressed() > 0) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     }
 #endif
