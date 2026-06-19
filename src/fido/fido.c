@@ -492,7 +492,7 @@ void scan_all(void) {
 extern bool needs_power_cycle;
 void init_fido(void) {
     scan_all();
-#ifdef ENABLE_OTP_APP
+#if ENABLE_OTP_APP
     init_otp();
 #endif
     needs_power_cycle = false;
