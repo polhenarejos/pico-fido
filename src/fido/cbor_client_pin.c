@@ -39,6 +39,18 @@ uint32_t max_usage_time_period  = 600 * 1000;
 bool needs_power_cycle = false;
 static mbedtls_ecdh_context hkey;
 static bool hkey_init = false;
+#define PIN_RETRY_COMMIT_TIMEOUT_MS 500
+
+static bool persist_pin_retry_counter(file_t *ef, const uint8_t *pin_data, uint16_t pin_data_len) {
+    if (file_put_data(ef, pin_data, pin_data_len) != PICOKEYS_OK) {
+        return false;
+    }
+    // Do not trust the decremented RAM copy until core0 has drained the flash queue.
+    if (!flash_commit_sync(PIN_RETRY_COMMIT_TIMEOUT_MS) || file_get_size(ef) != pin_data_len || !file_get_data(ef)) {
+        return false;
+    }
+    return file_get_data(ef)[0] == pin_data[0];
+}
 
 static int beginUsingPinUvAuthToken(bool userIsPresent) {
     paut.user_present = userIsPresent;
@@ -472,10 +484,13 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
         uint8_t pin_data[35];
-        memcpy(pin_data, file_get_data(ef_pin), file_get_size(ef_pin));
+        uint16_t pin_data_len = file_get_size(ef_pin);
+        memcpy(pin_data, file_get_data(ef_pin), pin_data_len);
         pin_data[0] -= 1;
-        file_put_data(ef_pin, pin_data, file_get_size(ef_pin));
-        flash_commit();
+        if (!persist_pin_retry_counter(ef_pin, pin_data, pin_data_len)) {
+            mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64];
         ret = decrypt((uint8_t)pinUvAuthProtocol, sharedSecret, pinHashEnc.data, (uint16_t)pinHashEnc.len, paddedNewPin);
@@ -634,10 +649,13 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
         uint8_t pin_data[35];
-        memcpy(pin_data, file_get_data(ef_pin), file_get_size(ef_pin));
+        uint16_t pin_data_len = file_get_size(ef_pin);
+        memcpy(pin_data, file_get_data(ef_pin), pin_data_len);
         pin_data[0] -= 1;
-        file_put_data(ef_pin, pin_data, file_get_size(ef_pin));
-        flash_commit();
+        if (!persist_pin_retry_counter(ef_pin, pin_data, pin_data_len)) {
+            mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
         uint8_t retries = pin_data[0];
         uint8_t paddedNewPin[64], poff = ((uint8_t)pinUvAuthProtocol - 1) * IV_SIZE;
         ret = decrypt((uint8_t)pinUvAuthProtocol, sharedSecret, pinHashEnc.data, (uint16_t)pinHashEnc.len, paddedNewPin);
