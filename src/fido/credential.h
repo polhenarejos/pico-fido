@@ -61,6 +61,7 @@ typedef struct Credential {
 #define CRED_PROTO_21_S                     "\xf1\xd0\x02\x01"
 #define CRED_PROTO_22_S                     "\xf1\xd0\x02\x02"
 #define CRED_PROTO_23_S                     "\xf1\xd0\x02\x03"
+#define CRED_PROTO_RP_S                     "\xf1\xd0\x02\x04"
 
 #define CRED_PROTO                          CRED_PROTO_22_S
 
@@ -105,5 +106,7 @@ extern int credential_derive_large_blob_key(const uint8_t *cred_id,
 extern int credential_derive_resident(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
 extern bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len);
 extern int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Credential *cred);
+extern int credential_rp_id_decrypt(const file_t *ef, uint8_t **rp_id, size_t *rp_id_len);
+extern int credential_migrate_rp_secure(void);
 
 #endif // _CREDENTIAL_H_

@@ -36,6 +36,7 @@
 #include "management.h"
 #include "hid/ctap_hid.h"
 #include "ctap2_cbor.h"
+#include "credential.h"
 #include "version.h"
 #include "crypto_utils.h"
 #include "otp.h"
@@ -493,6 +494,7 @@ void scan_all(void) {
 extern bool needs_power_cycle;
 void init_fido(void) {
     scan_all();
+    credential_migrate_rp_secure();
 #ifdef ENABLE_OTP_APP
     init_otp();
 #endif

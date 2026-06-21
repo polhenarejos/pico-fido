@@ -33,6 +33,150 @@
 
 int credential_derive_chacha_key(uint8_t *outk, const uint8_t *);
 
+#define RP_RECORD_COUNT_LEN                 1
+#define RP_RECORD_HASH_LEN                  32
+#define RP_RECORD_HEADER_LEN                (RP_RECORD_COUNT_LEN + RP_RECORD_HASH_LEN)
+#define RP_SECURE_OVERHEAD                  (CRED_PROTO_LEN + CRED_IV_LEN + CRED_TAG_LEN)
+
+static void credential_rp_id_iv(const uint8_t *rp_id_hash, uint8_t iv[CRED_IV_LEN]) {
+    uint8_t digest[32];
+    mbedtls_sha256_context ctx;
+    mbedtls_sha256_init(&ctx);
+    mbedtls_sha256_starts(&ctx, 0);
+    mbedtls_sha256_update(&ctx, (const uint8_t *) CRED_PROTO_RP_S, CRED_PROTO_LEN);
+    mbedtls_sha256_update(&ctx, rp_id_hash, RP_RECORD_HASH_LEN);
+    mbedtls_sha256_finish(&ctx, digest);
+    mbedtls_sha256_free(&ctx);
+    memcpy(iv, digest, CRED_IV_LEN);
+    mbedtls_platform_zeroize(digest, sizeof(digest));
+}
+
+static bool credential_rp_id_is_secure(const file_t *ef) {
+    if (!file_has_data(ef) || file_get_size(ef) < RP_RECORD_HEADER_LEN + RP_SECURE_OVERHEAD) {
+        return false;
+    }
+    return memcmp(file_get_data(ef) + RP_RECORD_HEADER_LEN, CRED_PROTO_RP_S, CRED_PROTO_LEN) == 0;
+}
+
+static int credential_rp_id_encrypt(const uint8_t *rp_id_hash, const uint8_t *rp_id, size_t rp_id_len, uint8_t **out, size_t *out_len) {
+    uint8_t key[32] = {0};
+    uint8_t iv[CRED_IV_LEN] = {0};
+    int ret = credential_derive_chacha_key(key, (const uint8_t *)CRED_PROTO_RP_S);
+    if (ret != 0) {
+        return ret;
+    }
+    *out_len = CRED_PROTO_LEN + CRED_IV_LEN + rp_id_len + CRED_TAG_LEN;
+    *out = (uint8_t *) calloc(1, *out_len);
+    if (*out == NULL) {
+        mbedtls_platform_zeroize(key, sizeof(key));
+        return -1;
+    }
+    memcpy(*out, CRED_PROTO_RP_S, CRED_PROTO_LEN);
+    credential_rp_id_iv(rp_id_hash, iv);
+    memcpy(*out + CRED_PROTO_LEN, iv, CRED_IV_LEN);
+
+    mbedtls_chachapoly_context chatx;
+    mbedtls_chachapoly_init(&chatx);
+    mbedtls_chachapoly_setkey(&chatx, key);
+    ret = mbedtls_chachapoly_encrypt_and_tag(&chatx, rp_id_len, iv, rp_id_hash, RP_RECORD_HASH_LEN, rp_id, *out + CRED_PROTO_LEN + CRED_IV_LEN, *out + CRED_PROTO_LEN + CRED_IV_LEN + rp_id_len);
+    mbedtls_chachapoly_free(&chatx);
+    mbedtls_platform_zeroize(key, sizeof(key));
+    mbedtls_platform_zeroize(iv, sizeof(iv));
+    if (ret != 0) {
+        free(*out);
+        *out = NULL;
+        *out_len = 0;
+    }
+    return ret;
+}
+
+int credential_rp_id_decrypt(const file_t *ef, uint8_t **rp_id, size_t *rp_id_len) {
+    if (!file_has_data(ef) || file_get_size(ef) < RP_RECORD_HEADER_LEN) {
+        return -1;
+    }
+    uint8_t *record = file_get_data(ef);
+    uint16_t record_len = file_get_size(ef);
+    uint8_t *tail = record + RP_RECORD_HEADER_LEN;
+    size_t tail_len = record_len - RP_RECORD_HEADER_LEN;
+    *rp_id = NULL;
+    *rp_id_len = 0;
+
+    if (!credential_rp_id_is_secure(ef)) {
+        *rp_id = (uint8_t *) calloc(1, tail_len + 1);
+        if (*rp_id == NULL) {
+            return -1;
+        }
+        memcpy(*rp_id, tail, tail_len);
+        *rp_id_len = tail_len;
+        return 0;
+    }
+
+    if (tail_len < RP_SECURE_OVERHEAD) {
+        return -1;
+    }
+    size_t plaintext_len = tail_len - RP_SECURE_OVERHEAD;
+    *rp_id = (uint8_t *) calloc(1, plaintext_len + 1);
+    if (*rp_id == NULL) {
+        return -1;
+    }
+
+    uint8_t key[32] = {0};
+    int ret = credential_derive_chacha_key(key, (const uint8_t *) CRED_PROTO_RP_S);
+    if (ret == 0) {
+        mbedtls_chachapoly_context chatx;
+        mbedtls_chachapoly_init(&chatx);
+        mbedtls_chachapoly_setkey(&chatx, key);
+        ret = mbedtls_chachapoly_auth_decrypt(&chatx, plaintext_len, tail + CRED_PROTO_LEN, record + RP_RECORD_COUNT_LEN, RP_RECORD_HASH_LEN, tail + CRED_PROTO_LEN + CRED_IV_LEN + plaintext_len, tail + CRED_PROTO_LEN + CRED_IV_LEN, *rp_id);
+        mbedtls_chachapoly_free(&chatx);
+    }
+    mbedtls_platform_zeroize(key, sizeof(key));
+    if (ret != 0) {
+        free(*rp_id);
+        *rp_id = NULL;
+        *rp_id_len = 0;
+        return ret;
+    }
+    *rp_id_len = plaintext_len;
+    return 0;
+}
+
+int credential_migrate_rp_secure(void) {
+    bool changed = false;
+    for (uint16_t i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+        file_t *ef = file_search((uint16_t)(EF_RP + i));
+        if (!file_has_data(ef) || credential_rp_id_is_secure(ef)) {
+            continue;
+        }
+        uint8_t *record = file_get_data(ef);
+        uint16_t record_len = file_get_size(ef);
+        if (record_len < RP_RECORD_HEADER_LEN) {
+            continue;
+        }
+        uint8_t *out = NULL;
+        size_t out_len = 0;
+        int ret = credential_rp_id_encrypt(record + RP_RECORD_COUNT_LEN, record + RP_RECORD_HEADER_LEN, record_len - RP_RECORD_HEADER_LEN, &out, &out_len);
+        if (ret != 0) {
+            free(out);
+            continue;
+        }
+        uint8_t *data = (uint8_t *)calloc(1, RP_RECORD_HEADER_LEN + out_len);
+        if (data == NULL) {
+            free(out);
+            continue;
+        }
+        memcpy(data, record, RP_RECORD_HEADER_LEN);
+        memcpy(data + RP_RECORD_HEADER_LEN, out, out_len);
+        file_put_data(ef, data, (uint16_t)(RP_RECORD_HEADER_LEN + out_len));
+        free(data);
+        free(out);
+        changed = true;
+    }
+    if (changed) {
+        flash_commit();
+    }
+    return PICOKEYS_OK;
+}
+
 static int credential_silent_tag(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, uint8_t *outk) {
     mbedtls_sha256_context ctx;
     mbedtls_sha256_init(&ctx);
@@ -85,17 +229,7 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
     return ret;
 }
 
-int credential_create(CborCharString *rpId,
-                      CborByteString *userId,
-                      CborCharString *userName,
-                      CborCharString *userDisplayName,
-                      CredOptions *opts,
-                      CredExtensions *extensions,
-                      bool use_sign_count,
-                      int alg,
-                      int curve,
-                      uint8_t *cred_id,
-                      uint16_t *cred_id_len) {
+int credential_create(CborCharString *rpId, CborByteString *userId, CborCharString *userName, CborCharString *userDisplayName, CredOptions *opts, CredExtensions *extensions, bool use_sign_count, int alg, int curve, uint8_t *cred_id, uint16_t *cred_id_len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     CborError error = CborNoError;
     uint8_t rp_id_hash[32];
@@ -207,8 +341,7 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
         memset(cred, 0, sizeof(Credential));
         cred->curve = FIDO2_CURVE_P256;
         cred->alg = FIDO2_ALG_ES256;
-        CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser,
-                                    &map));
+        CBOR_CHECK(cbor_parser_init(copy_cred_id + 4 + 12, cred_id_len - (4 + 12 + 16), 0, &parser, &map));
         CBOR_PARSE_MAP_START(map, 1)
         {
             uint64_t val_u = 0;
@@ -377,12 +510,28 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         }
         else {
             ef = file_new((uint16_t)(EF_RP + sloti));
-            data = (uint8_t *) calloc(1, 1 + 32 + cred.rpId.len);
+            if (ef == NULL) {
+                credential_free(&cred);
+                return -1;
+            }
+            uint8_t *out = NULL;
+            size_t out_len = 0;
+            if (credential_rp_id_encrypt(rp_id_hash, (uint8_t *)cred.rpId.data, cred.rpId.len, &out, &out_len) != 0) {
+                credential_free(&cred);
+                return -1;
+            }
+            data = (uint8_t *)calloc(1, RP_RECORD_HEADER_LEN + out_len);
+            if (data == NULL) {
+                free(out);
+                credential_free(&cred);
+                return -1;
+            }
             data[0] = 1;
             memcpy(data + 1, rp_id_hash, 32);
-            memcpy(data + 1 + 32, cred.rpId.data, cred.rpId.len);
-            file_put_data(ef, data, (uint16_t)(1 + 32 + cred.rpId.len));
+            memcpy(data + RP_RECORD_HEADER_LEN, out, out_len);
+            file_put_data(ef, data, (uint16_t)(RP_RECORD_HEADER_LEN + out_len));
             free(data);
+            free(out);
         }
     }
     credential_free(&cred);

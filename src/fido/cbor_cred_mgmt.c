@@ -196,8 +196,17 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 1));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
-        CBOR_CHECK(cbor_encode_text_string(&mapEncoder2, (char *) file_get_data(rp_ef) + 33,
-                                           file_get_size(rp_ef) - 33));
+        uint8_t *rp_id = NULL;
+        size_t rp_id_len = 0;
+        if (credential_rp_id_decrypt(rp_ef, &rp_id, &rp_id_len) != 0) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+        error = cbor_encode_text_string(&mapEncoder2, (char *) rp_id, rp_id_len);
+        free(rp_id);
+        if (error != CborNoError) {
+            printf("Cannot encode CBOR [%s:%d]: cbor_encode_text_string(&mapEncoder2, (char *) rp_id, rp_id_len) (%d)\n", __FILE__, __LINE__, error);
+            goto err;
+        }
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(rp_ef) + 1, 32));
