@@ -26,10 +26,12 @@
 #include "crypto_utils.h"
 #include "management.h"
 #include "mbedtls/constant_time.h"
+#include <stdlib.h>
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
 #define MAX_OTP_COUNTER 3
+#define OATH_CRED_BITMAP_SIZE ((MAX_OATH_CRED + 7) / 8)
 
 #define TAG_NAME            0x71
 #define TAG_NAME_LIST       0x72
@@ -69,6 +71,13 @@ static int oath_unload(void);
 
 static bool validated = true;
 static uint8_t challenge[CHALLENGE_LEN] = { 0 };
+
+typedef struct {
+    file_t **files;
+    uint16_t *fids;
+    size_t len;
+    size_t cap;
+} oath_cred_list_t;
 
 const uint8_t oath_aid[] = {
     7,
@@ -126,9 +135,52 @@ static int oath_unload(void) {
     return PICOKEYS_OK;
 }
 
+static int cmp_file_fid(const void *a, const void *b) {
+    const file_t *fa = *(const file_t * const *)a;
+    const file_t *fb = *(const file_t * const *)b;
+    return (fa->fid > fb->fid) - (fa->fid < fb->fid);
+}
+
+static int cmp_u16(const void *a, const void *b) {
+    const uint16_t fa = *(const uint16_t *)a;
+    const uint16_t fb = *(const uint16_t *)b;
+    return (fa > fb) - (fa < fb);
+}
+
+static bool collect_oath_cred(file_t *file, void *ctx) {
+    oath_cred_list_t *list = (oath_cred_list_t *)ctx;
+    if (file->fid < EF_OATH_CRED || file->fid >= EF_OATH_CRED + MAX_OATH_CRED || list->len >= list->cap) {
+        return true;
+    }
+    if (list->files) {
+        list->files[list->len] = file;
+    }
+    if (list->fids) {
+        list->fids[list->len] = file->fid;
+    }
+    list->len++;
+    return true;
+}
+
+static size_t present_oath_cred_files(file_t **files, size_t cap) {
+    oath_cred_list_t list = { .files = files, .fids = NULL, .len = 0, .cap = cap };
+    file_for_each_dynamic(collect_oath_cred, &list);
+    qsort(files, list.len, sizeof(files[0]), cmp_file_fid);
+    return list.len;
+}
+
+static size_t present_oath_cred_fids(uint16_t *fids, size_t cap) {
+    oath_cred_list_t list = { .files = NULL, .fids = fids, .len = 0, .cap = cap };
+    file_for_each_dynamic(collect_oath_cred, &list);
+    qsort(fids, list.len, sizeof(fids[0]), cmp_u16);
+    return list.len;
+}
+
 static file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
-    for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
+    file_t *creds[MAX_OATH_CRED];
+    size_t num_creds = present_oath_cred_files(creds, MAX_OATH_CRED);
+    for (size_t i = 0; i < num_creds; i++) {
+        file_t *ef = creds[i];
         tlv_ctx_t ctxi, ef_tag = { 0 };
         tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
         if (file_has_data(ef) && tlv_find_tag(&ctxi, TAG_NAME, &ef_tag) == true && ef_tag.len == name_len && memcmp(ef_tag.data, name, name_len) == 0) {
@@ -171,10 +223,19 @@ static int cmd_put(void) {
         flash_commit();
     }
     else {
+        uint16_t fids[MAX_OATH_CRED];
+        uint8_t used[OATH_CRED_BITMAP_SIZE] = { 0 };
+        size_t num_creds = present_oath_cred_fids(fids, MAX_OATH_CRED);
+        for (size_t j = 0; j < num_creds; j++) {
+            uint16_t slot = (uint16_t)(fids[j] - EF_OATH_CRED);
+            used[slot / 8] |= (uint8_t)(1u << (slot % 8));
+        }
         for (int i = 0; i < MAX_OATH_CRED; i++) {
-            file_t *tef = file_search((uint16_t)(EF_OATH_CRED + i));
-            if (!file_has_data(tef)) {
-                tef = file_new((uint16_t)(EF_OATH_CRED + i));
+            if ((used[i / 8] & (1u << (i % 8))) == 0) {
+                file_t *tef = file_new((uint16_t)(EF_OATH_CRED + i));
+                if (!tef) {
+                    return SW_FILE_FULL();
+                }
                 file_put_data(tef, apdu.data, (uint16_t)apdu.nc);
                 flash_commit();
                 return SW_OK();
@@ -266,13 +327,15 @@ static int cmd_reset(void) {
     if (P1(apdu) != 0xde || P2(apdu) != 0xad) {
         return SW_INCORRECT_P1P2();
     }
-    for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
+    uint16_t fids[MAX_OATH_CRED];
+    size_t num_creds = present_oath_cred_fids(fids, MAX_OATH_CRED);
+    for (size_t i = 0; i < num_creds; i++) {
+        file_t *ef = file_search(fids[i]);
         if (file_has_data(ef)) {
-            file_delete(ef);
+            file_delete_no_commit(ef);
         }
     }
-    file_delete(file_search(EF_OATH_CODE));
+    file_delete_no_commit(file_search(EF_OATH_CODE));
     flash_clear_file(file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF));
     flash_commit();
     validated = true;
@@ -284,8 +347,10 @@ static int cmd_list(void) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     bool ext = (apdu.nc == 1 && apdu.data[0] == 0x01);
-    for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
+    file_t *creds[MAX_OATH_CRED];
+    size_t num_creds = present_oath_cred_files(creds, MAX_OATH_CRED);
+    for (size_t i = 0; i < num_creds; i++) {
+        file_t *ef = creds[i];
         if (file_has_data(ef)) {
             tlv_ctx_t ctxi, key = { 0 }, name = { 0 }, pws = { 0 };
             tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
@@ -449,8 +514,10 @@ static int cmd_calculate_all(void) {
         return SW_INCORRECT_PARAMS();
     }
     res_APDU_size = 0;
-    for (int i = 0; i < MAX_OATH_CRED; i++) {
-        file_t *ef = file_search((uint16_t)(EF_OATH_CRED + i));
+    file_t *creds[MAX_OATH_CRED];
+    size_t num_creds = present_oath_cred_files(creds, MAX_OATH_CRED);
+    for (size_t i = 0; i < num_creds; i++) {
+        file_t *ef = creds[i];
         if (file_has_data(ef)) {
             const uint8_t *ef_data = file_get_data(ef);
             size_t ef_len = file_get_size(ef);
