@@ -43,6 +43,7 @@ void append_keyboard_buffer(const uint8_t *buf, size_t len) {
 #include "tusb.h"
 #endif
 #include "mbedtls/aes.h"
+#include "mbedtls/constant_time.h"
 #include "management.h"
 
 #define FIXED_SIZE          16
@@ -432,7 +433,7 @@ static int cmd_otp(void) {
         file_t *ef = file_new(slot);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
-            if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
+            if (mbedtls_ct_memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
                 return SW_SECURITY_STATUS_NOT_SATISFIED();
             }
         }
@@ -465,7 +466,7 @@ static int cmd_otp(void) {
         file_t *ef = file_search(slot);
         if (file_has_data(ef)) {
             otp_config_t *otpc = (otp_config_t *) file_get_data(ef);
-            if (memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
+            if (mbedtls_ct_memcmp(otpc->acc_code, apdu.data + otp_config_size, ACC_CODE_SIZE) != 0) {
                 return SW_SECURITY_STATUS_NOT_SATISFIED();
             }
             memcpy(apdu.data, file_get_data(ef), FIXED_SIZE + UID_SIZE + KEY_SIZE);

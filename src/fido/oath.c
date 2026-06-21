@@ -25,6 +25,7 @@
 #include "tlv.h"
 #include "crypto_utils.h"
 #include "management.h"
+#include "mbedtls/constant_time.h"
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
@@ -250,7 +251,7 @@ static int cmd_set_code(void) {
     if (r != 0) {
         return SW_EXEC_ERROR();
     }
-    if (memcmp(hmac, resp.data, resp.len) != 0) {
+    if (mbedtls_ct_memcmp(hmac, resp.data, resp.len) != 0) {
         return SW_DATA_INVALID();
     }
     random_fill_buffer(challenge, sizeof(challenge));
@@ -335,7 +336,7 @@ static int cmd_validate(void) {
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
-    if (memcmp(hmac, resp.data, resp.len) != 0) {
+    if (mbedtls_ct_memcmp(hmac, resp.data, resp.len) != 0) {
         return SW_DATA_INVALID();
     }
     ret = mbedtls_md_hmac(md_info, key.data + 1, key.len - 1, chal.data, chal.len, hmac);
@@ -519,7 +520,7 @@ static int cmd_change_otp_pin(void) {
         return SW_INCORRECT_PARAMS();
     }
     double_hash_pin(pw.data, pw.len, hsh + 1);
-    if (memcmp(file_get_data(ef_otp_pin) + 1, hsh + 1, 32) != 0) {
+    if (mbedtls_ct_memcmp(file_get_data(ef_otp_pin) + 1, hsh + 1, 32) != 0) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     if (tlv_find_tag(&ctxi, TAG_NEW_PASSWORD, &new_pw) == false) {
@@ -545,7 +546,7 @@ static int cmd_verify_otp_pin(void) {
     }
     double_hash_pin(pw.data, pw.len, hsh + 1);
     memcpy(data_hsh, file_get_data(ef_otp_pin), sizeof(data_hsh));
-    if (data_hsh[0] == 0 || memcmp(data_hsh + 1, hsh + 1, 32) != 0) {
+    if (data_hsh[0] == 0 || mbedtls_ct_memcmp(data_hsh + 1, hsh + 1, 32) != 0) {
         if (data_hsh[0] > 0) {
             data_hsh[0] -= 1;
         }

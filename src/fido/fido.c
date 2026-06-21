@@ -25,6 +25,7 @@
 #include "random.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/hkdf.h"
+#include "mbedtls/constant_time.h"
 #if defined(USB_ITF_CCID)
 #include "ccid/ccid.h"
 #endif
@@ -301,7 +302,7 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypa
     memcpy(key_base + CTAP_APPID_SIZE, keyHandle, KEY_PATH_LEN);
     ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
     mbedtls_platform_zeroize(d, sizeof(d));
-    return memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
+    return mbedtls_ct_memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
 }
 
 int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecp_keypair *key) {
