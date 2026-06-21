@@ -26,12 +26,17 @@
 #include "crypto_utils.h"
 #include "management.h"
 #include "mbedtls/constant_time.h"
+#include "mbedtls/gcm.h"
+#include "mbedtls/hkdf.h"
+#include "mbedtls/md.h"
 #include <stdlib.h>
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
 #define MAX_OTP_COUNTER 3
 #define OATH_CRED_BITMAP_SIZE ((MAX_OATH_CRED + 7) / 8)
+#define OATH_SECURE_KEY_VERSION 1
+#define OATH_SECURE_KEY_OVERHEAD (sizeof(oath_secure_key_magic) + 1 + 12 + 16)
 
 #define TAG_NAME            0x71
 #define TAG_NAME_LIST       0x72
@@ -68,9 +73,12 @@
 
 static int oath_process_apdu(void);
 static int oath_unload(void);
+static int oath_migrate_secrets(void);
 
 static bool validated = true;
+static bool oath_migration_done = false;
 static uint8_t challenge[CHALLENGE_LEN] = { 0 };
+static const uint8_t oath_secure_key_magic[] = { 'O', 'A', 'T', 'H' };
 
 typedef struct {
     file_t **files;
@@ -78,6 +86,11 @@ typedef struct {
     size_t len;
     size_t cap;
 } oath_cred_list_t;
+
+typedef struct {
+    int ret;
+    bool changed;
+} oath_migration_ctx_t;
 
 const uint8_t oath_aid[] = {
     7,
@@ -87,6 +100,10 @@ const uint8_t oath_aid[] = {
 static int oath_select(app_t *a, uint8_t force) {
     (void) force;
     if (cap_supported(CAP_OATH)) {
+        int migration_ret = oath_migrate_secrets();
+        if (migration_ret != PICOKEYS_OK) {
+            return migration_ret;
+        }
         a->process_apdu = oath_process_apdu;
         a->unload = oath_unload;
         res_APDU_size = 0;
@@ -132,6 +149,216 @@ INITIALIZER ( oath_ctor ) {
 }
 
 static int oath_unload(void) {
+    return PICOKEYS_OK;
+}
+
+static bool oath_key_is_secure(const uint8_t *data, uint16_t len) {
+    return data != NULL && len > OATH_SECURE_KEY_OVERHEAD && memcmp(data, oath_secure_key_magic, sizeof(oath_secure_key_magic)) == 0 && data[sizeof(oath_secure_key_magic)] == OATH_SECURE_KEY_VERSION;
+}
+
+static int oath_derive_key(uint8_t key[32]) {
+    uint8_t kbase[32];
+    derive_kbase(kbase);
+    int ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), pico_serial_hash, sizeof(pico_serial_hash), kbase, sizeof(kbase), (const uint8_t *)"OATH/KEYS", 9, key, 32);
+    mbedtls_platform_zeroize(kbase, sizeof(kbase));
+    return ret == 0 ? PICOKEYS_OK : PICOKEYS_EXEC_ERROR;
+}
+
+static int oath_encrypt_key(const uint8_t *plain, uint16_t plain_len, uint8_t **encrypted, uint16_t *encrypted_len) {
+    if (plain == NULL || encrypted == NULL || encrypted_len == NULL) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    size_t out_len = OATH_SECURE_KEY_OVERHEAD + plain_len;
+    if (out_len > UINT16_MAX) {
+        return PICOKEYS_WRONG_DATA;
+    }
+    uint8_t *out = (uint8_t *)calloc(1, out_len);
+    if (out == NULL) {
+        return PICOKEYS_EXEC_ERROR;
+    }
+    memcpy(out, oath_secure_key_magic, sizeof(oath_secure_key_magic));
+    out[sizeof(oath_secure_key_magic)] = OATH_SECURE_KEY_VERSION;
+
+    uint8_t oath_key[32];
+    int ret = oath_derive_key(oath_key);
+    if (ret == PICOKEYS_OK) {
+        ret = encrypt_with_aad(oath_key, plain, plain_len, PIN_KDF_V2, out + sizeof(oath_secure_key_magic) + 1);
+    }
+    mbedtls_platform_zeroize(oath_key, sizeof(oath_key));
+    if (ret != PICOKEYS_OK) {
+        mbedtls_platform_zeroize(out, out_len);
+        free(out);
+        return ret;
+    }
+    *encrypted = out;
+    *encrypted_len = (uint16_t)out_len;
+    return PICOKEYS_OK;
+}
+
+static int oath_decrypt_key(const uint8_t *stored, uint16_t stored_len, uint8_t **decrypted, uint16_t *decrypted_len) {
+    if (stored == NULL || decrypted == NULL || decrypted_len == NULL) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    if (!oath_key_is_secure(stored, stored_len)) {
+        uint8_t *copy = (uint8_t *)calloc(1, stored_len);
+        if (copy == NULL) {
+            return PICOKEYS_EXEC_ERROR;
+        }
+        memcpy(copy, stored, stored_len);
+        *decrypted = copy;
+        *decrypted_len = stored_len;
+        return PICOKEYS_OK;
+    }
+
+    uint16_t out_len = stored_len - OATH_SECURE_KEY_OVERHEAD;
+    uint8_t *out = (uint8_t *)calloc(1, out_len);
+    if (out == NULL) {
+        return PICOKEYS_EXEC_ERROR;
+    }
+    uint8_t oath_key[32];
+    int ret = oath_derive_key(oath_key);
+    if (ret == PICOKEYS_OK) {
+        ret = decrypt_with_aad(oath_key, stored + sizeof(oath_secure_key_magic) + 1, stored_len - sizeof(oath_secure_key_magic) - 1, PIN_KDF_V2, out);
+    }
+    mbedtls_platform_zeroize(oath_key, sizeof(oath_key));
+    if (ret != PICOKEYS_OK) {
+        mbedtls_platform_zeroize(out, out_len);
+        free(out);
+        return ret;
+    }
+    *decrypted = out;
+    *decrypted_len = out_len;
+    return PICOKEYS_OK;
+}
+
+static uint8_t *tlv_append(uint8_t *out, uint16_t tag, const uint8_t *data, uint16_t len) {
+    if (tag > 0xff) {
+        *out++ = (uint8_t)(tag >> 8);
+    }
+    *out++ = (uint8_t)tag;
+    out += tlv_format_len(len, out);
+    if (len > 0) {
+        memcpy(out, data, len);
+    }
+    return out + len;
+}
+
+static int oath_put_credential_data(file_t *ef, const uint8_t *data, uint16_t len) {
+    tlv_ctx_t ctxi;
+    tlv_ctx_init((uint8_t *)data, len, &ctxi);
+    tlv_ctx_t key = { 0 };
+    if (tlv_find_tag(&ctxi, TAG_KEY, &key) == false || oath_key_is_secure(key.data, key.len)) {
+        return file_put_data(ef, data, len);
+    }
+
+    uint8_t *encrypted = NULL;
+    uint16_t encrypted_len = 0;
+    int ret = oath_encrypt_key(key.data, key.len, &encrypted, &encrypted_len);
+    if (ret != PICOKEYS_OK) {
+        return ret;
+    }
+
+    uint16_t out_len = 0;
+    uint8_t *p = NULL, *tdata = NULL;
+    uint16_t tag = 0, tag_len = 0;
+    while (tlv_walk(&ctxi, &p, &tag, &tag_len, &tdata)) {
+        out_len += tlv_len_tag(tag, tag == TAG_KEY ? encrypted_len : tag_len);
+    }
+    uint8_t *out = (uint8_t *)calloc(1, out_len);
+    if (out == NULL) {
+        mbedtls_platform_zeroize(encrypted, encrypted_len);
+        free(encrypted);
+        return PICOKEYS_EXEC_ERROR;
+    }
+    p = NULL;
+    uint8_t *op = out;
+    while (tlv_walk(&ctxi, &p, &tag, &tag_len, &tdata)) {
+        if (tag == TAG_KEY) {
+            op = tlv_append(op, tag, encrypted, encrypted_len);
+        }
+        else {
+            op = tlv_append(op, tag, tdata, tag_len);
+        }
+    }
+
+    ret = file_put_data(ef, out, out_len);
+    mbedtls_platform_zeroize(encrypted, encrypted_len);
+    mbedtls_platform_zeroize(out, out_len);
+    free(encrypted);
+    free(out);
+    return ret;
+}
+
+static int oath_put_code_key(file_t *ef, const uint8_t *key, uint16_t key_len) {
+    if (oath_key_is_secure(key, key_len)) {
+        return file_put_data(ef, key, key_len);
+    }
+    uint8_t *encrypted = NULL;
+    uint16_t encrypted_len = 0;
+    int ret = oath_encrypt_key(key, key_len, &encrypted, &encrypted_len);
+    if (ret != PICOKEYS_OK) {
+        return ret;
+    }
+    ret = file_put_data(ef, encrypted, encrypted_len);
+    mbedtls_platform_zeroize(encrypted, encrypted_len);
+    free(encrypted);
+    return ret;
+}
+
+static int oath_migrate_credential(file_t *ef, bool *changed) {
+    if (!file_has_data(ef)) {
+        return PICOKEYS_OK;
+    }
+    tlv_ctx_t ctxi, key = { 0 };
+    tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+    if (tlv_find_tag(&ctxi, TAG_KEY, &key) == false || oath_key_is_secure(key.data, key.len)) {
+        return PICOKEYS_OK;
+    }
+    int ret = oath_put_credential_data(ef, file_get_data(ef), file_get_size(ef));
+    if (ret == PICOKEYS_OK && changed != NULL) {
+        *changed = true;
+    }
+    return ret;
+}
+
+static bool oath_migrate_cred_cb(file_t *file, void *ctx) {
+    if (file->fid < EF_OATH_CRED || file->fid >= EF_OATH_CRED + MAX_OATH_CRED) {
+        return true;
+    }
+    oath_migration_ctx_t *migration = (oath_migration_ctx_t *)ctx;
+    bool changed = false;
+    migration->ret = oath_migrate_credential(file, &changed);
+    if (migration->ret == PICOKEYS_OK && changed) {
+        migration->changed = true;
+    }
+    return migration->ret == PICOKEYS_OK;
+}
+
+static int oath_migrate_secrets(void) {
+    if (oath_migration_done) {
+        return PICOKEYS_OK;
+    }
+
+    oath_migration_ctx_t migration = { .ret = PICOKEYS_OK, .changed = false };
+    file_for_each_dynamic(oath_migrate_cred_cb, &migration);
+    bool changed = migration.changed;
+    if (migration.ret != PICOKEYS_OK) {
+        return migration.ret;
+    }
+
+    file_t *ef_code = file_search(EF_OATH_CODE);
+    if (file_has_data(ef_code) && !oath_key_is_secure(file_get_data(ef_code), file_get_size(ef_code))) {
+        int ret = oath_put_code_key(ef_code, file_get_data(ef_code), file_get_size(ef_code));
+        if (ret != PICOKEYS_OK) {
+            return ret;
+        }
+        changed = true;
+    }
+
+    if (changed) {
+        flash_commit();
+    }
+    oath_migration_done = true;
     return PICOKEYS_OK;
 }
 
@@ -199,6 +426,9 @@ static int cmd_put(void) {
     if (tlv_find_tag(&ctxi, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
+    if (key.len < 2) {
+        return SW_WRONG_DATA();
+    }
     if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
@@ -219,7 +449,10 @@ static int cmd_put(void) {
     }
     file_t *ef = find_oath_cred(name.data, name.len);
     if (file_has_data(ef)) {
-        file_put_data(ef, apdu.data, (uint16_t)apdu.nc);
+        int ret = oath_put_credential_data(ef, apdu.data, (uint16_t)apdu.nc);
+        if (ret != PICOKEYS_OK) {
+            return SW_EXEC_ERROR();
+        }
         flash_commit();
     }
     else {
@@ -236,7 +469,10 @@ static int cmd_put(void) {
                 if (!tef) {
                     return SW_FILE_FULL();
                 }
-                file_put_data(tef, apdu.data, (uint16_t)apdu.nc);
+                int ret = oath_put_credential_data(tef, apdu.data, (uint16_t)apdu.nc);
+                if (ret != PICOKEYS_OK) {
+                    return SW_EXEC_ERROR();
+                }
                 flash_commit();
                 return SW_OK();
             }
@@ -291,6 +527,9 @@ static int cmd_set_code(void) {
     if (tlv_find_tag(&ctxi, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
+    if (key.len == 1) {
+        return SW_WRONG_DATA();
+    }
     if (key.len == 0) {
         file_delete(file_search(EF_OATH_CODE));
         validated = true;
@@ -317,7 +556,9 @@ static int cmd_set_code(void) {
     }
     random_fill_buffer(challenge, sizeof(challenge));
     file_t *ef = file_new(EF_OATH_CODE);
-    file_put_data(ef, key.data, key.len);
+    if (oath_put_code_key(ef, key.data, key.len) != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
     flash_commit();
     validated = false;
     return SW_OK();
@@ -355,9 +596,18 @@ static int cmd_list(void) {
             tlv_ctx_t ctxi, key = { 0 }, name = { 0 }, pws = { 0 };
             tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
             if (tlv_find_tag(&ctxi, TAG_NAME, &name) == true && tlv_find_tag(&ctxi, TAG_KEY, &key) == true) {
+                uint8_t *plain_key = NULL;
+                uint16_t plain_key_len = 0;
+                if (oath_decrypt_key(key.data, key.len, &plain_key, &plain_key_len) != PICOKEYS_OK || plain_key_len < 2) {
+                    if (plain_key != NULL) {
+                        mbedtls_platform_zeroize(plain_key, plain_key_len);
+                        free(plain_key);
+                    }
+                    continue;
+                }
                 res_APDU[res_APDU_size++] = TAG_NAME_LIST;
                 res_APDU[res_APDU_size++] = (uint8_t)(name.len + 1 + (ext ? 1 : 0));
-                res_APDU[res_APDU_size++] = key.data[0];
+                res_APDU[res_APDU_size++] = plain_key[0];
                 memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
                 if (ext) {
                     uint8_t props = 0x0;
@@ -369,6 +619,8 @@ static int cmd_list(void) {
                     }
                     res_APDU[res_APDU_size++] = props;
                 }
+                mbedtls_platform_zeroize(plain_key, plain_key_len);
+                free(plain_key);
             }
         }
     }
@@ -390,24 +642,44 @@ static int cmd_validate(void) {
         validated = true;
         return SW_DATA_INVALID();
     }
-    key.data = file_get_data(ef);
-    key.len = file_get_size(ef);
+    uint8_t *plain_key = NULL;
+    uint16_t plain_key_len = 0;
+    if (oath_decrypt_key(file_get_data(ef), file_get_size(ef), &plain_key, &plain_key_len) != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
+    key.data = plain_key;
+    key.len = plain_key_len;
+    if (plain_key_len < 2) {
+        mbedtls_platform_zeroize(plain_key, plain_key_len);
+        free(plain_key);
+        return SW_WRONG_DATA();
+    }
     const mbedtls_md_info_t *md_info = get_oath_md_info(key.data[0]);
     if (md_info == NULL) {
+        mbedtls_platform_zeroize(key.data, key.len);
+        free(key.data);
         return SW_INCORRECT_PARAMS();
     }
     uint8_t hmac[64];
     int ret = mbedtls_md_hmac(md_info, key.data + 1, key.len - 1, challenge, sizeof(challenge), hmac);
     if (ret != 0) {
+        mbedtls_platform_zeroize(key.data, key.len);
+        free(key.data);
         return SW_EXEC_ERROR();
     }
     if (mbedtls_ct_memcmp(hmac, resp.data, resp.len) != 0) {
+        mbedtls_platform_zeroize(key.data, key.len);
+        free(key.data);
         return SW_DATA_INVALID();
     }
     ret = mbedtls_md_hmac(md_info, key.data + 1, key.len - 1, chal.data, chal.len, hmac);
     if (ret != 0) {
+        mbedtls_platform_zeroize(key.data, key.len);
+        free(key.data);
         return SW_EXEC_ERROR();
     }
+    mbedtls_platform_zeroize(key.data, key.len);
+    free(key.data);
     validated = true;
     res_APDU[res_APDU_size++] = TAG_RESPONSE;
     res_APDU[res_APDU_size++] = mbedtls_md_get_size(md_info);
@@ -418,6 +690,9 @@ static int cmd_validate(void) {
 }
 
 int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const uint8_t *chal, size_t chal_len) {
+    if (key == NULL || key_len < 2) {
+        return PICOKEYS_WRONG_DATA;
+    }
     const mbedtls_md_info_t *md_info = get_oath_md_info(key[0]);
     if (md_info == NULL) {
         return SW_INCORRECT_PARAMS();
@@ -470,20 +745,38 @@ static int cmd_calculate(void) {
     if (tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
+    uint8_t *plain_key = NULL;
+    uint16_t plain_key_len = 0;
+    if (oath_decrypt_key(key.data, key.len, &plain_key, &plain_key_len) != PICOKEYS_OK || plain_key_len < 2) {
+        if (plain_key != NULL) {
+            mbedtls_platform_zeroize(plain_key, plain_key_len);
+            free(plain_key);
+        }
+        return SW_EXEC_ERROR();
+    }
+    key.data = plain_key;
+    key.len = plain_key_len;
 
     if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
         if (tlv_find_tag(&ctxe, TAG_IMF, &chal) == false) {
+            mbedtls_platform_zeroize(plain_key, plain_key_len);
+            free(plain_key);
             return SW_INCORRECT_PARAMS();
         }
     }
 
     res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
 
+    bool is_hotp = (key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP;
     int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
     if (ret != PICOKEYS_OK) {
+        mbedtls_platform_zeroize(plain_key, plain_key_len);
+        free(plain_key);
         return SW_EXEC_ERROR();
     }
-    if ((key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP) {
+    mbedtls_platform_zeroize(plain_key, plain_key_len);
+    free(plain_key);
+    if (is_hotp) {
         uint64_t v = get_uint64_be(chal.data);
         size_t ef_size = file_get_size(ef);
         v++;
@@ -526,6 +819,17 @@ static int cmd_calculate_all(void) {
             if (tlv_find_tag(&ctxe, TAG_NAME, &name) == false || tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
                 continue;
             }
+            uint8_t *plain_key = NULL;
+            uint16_t plain_key_len = 0;
+            if (oath_decrypt_key(key.data, key.len, &plain_key, &plain_key_len) != PICOKEYS_OK || plain_key_len < 2) {
+                if (plain_key != NULL) {
+                    mbedtls_platform_zeroize(plain_key, plain_key_len);
+                    free(plain_key);
+                }
+                continue;
+            }
+            key.data = plain_key;
+            key.len = plain_key_len;
             res_APDU[res_APDU_size++] = TAG_NAME;
             res_APDU[res_APDU_size++] = (uint8_t)name.len;
             memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
@@ -547,6 +851,8 @@ static int cmd_calculate_all(void) {
                     res_APDU[res_APDU_size++] = key.data[1];
                 }
             }
+            mbedtls_platform_zeroize(plain_key, plain_key_len);
+            free(plain_key);
         }
     }
     apdu.ne = res_APDU_size;
@@ -645,11 +951,26 @@ static int cmd_verify_hotp(void) {
     if (tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
         return SW_INCORRECT_PARAMS();
     }
+    uint8_t *plain_key = NULL;
+    uint16_t plain_key_len = 0;
+    if (oath_decrypt_key(key.data, key.len, &plain_key, &plain_key_len) != PICOKEYS_OK || plain_key_len < 2) {
+        if (plain_key != NULL) {
+            mbedtls_platform_zeroize(plain_key, plain_key_len);
+            free(plain_key);
+        }
+        return SW_EXEC_ERROR();
+    }
+    key.data = plain_key;
+    key.len = plain_key_len;
 
     if ((key.data[0] & OATH_TYPE_MASK) != OATH_TYPE_HOTP) {
+        mbedtls_platform_zeroize(plain_key, plain_key_len);
+        free(plain_key);
         return SW_DATA_INVALID();
     }
     if (tlv_find_tag(&ctxe, TAG_IMF, &chal) == false) {
+        mbedtls_platform_zeroize(plain_key, plain_key_len);
+        free(plain_key);
         return SW_INCORRECT_PARAMS();
     }
     if (tlv_find_tag(&ctxi, TAG_RESPONSE, &code) == true) {
@@ -658,8 +979,12 @@ static int cmd_verify_hotp(void) {
 
     int ret = calculate_oath(0x01, key.data, key.len, chal.data, chal.len);
     if (ret != PICOKEYS_OK) {
+        mbedtls_platform_zeroize(plain_key, plain_key_len);
+        free(plain_key);
         return SW_EXEC_ERROR();
     }
+    mbedtls_platform_zeroize(plain_key, plain_key_len);
+    free(plain_key);
     uint32_t res_int = get_uint32_be(res_APDU + 2);
     if (res_APDU[1] == 6) {
         res_int %= (uint32_t) 1e6;
