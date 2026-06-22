@@ -45,7 +45,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0, hmacSecretPinUvAuthProtocol = 1;
     int64_t kty = 2, hmac_alg = 0, crv = 0;
     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
-    bool hmac_secret_mc = false;
+    bool hmac_secret_mc = false, has_credprot = false;
     const bool *pin_complexity_policy = NULL;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
@@ -160,7 +160,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                     continue;
                 }
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
-                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", extensions.credProtect);
+                if (strcmp(_fd2, "credProtect") == 0) {
+                    CBOR_FIELD_GET_UINT(extensions.credProtect, 2);
+                    has_credprot = true;
+                    continue;
+                }
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "minPinLength", extensions.minPinLength);
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", extensions.credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
@@ -316,6 +320,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     if (pinUvAuthParam.present == false && options.uv == pfalse && file_has_data(ef_pin)) { //8.1
         CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+    }
+    if (has_credprot == true && (extensions.credProtect < CRED_PROT_UV_OPTIONAL || extensions.credProtect > CRED_PROT_UV_REQUIRED)) {
+        CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
     }
     if (enterpriseAttestation > 0) {
         if (!(get_opts() & FIDO2_OPT_EA)) {
