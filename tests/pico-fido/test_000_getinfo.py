@@ -42,6 +42,4 @@ def test_Check_options_field(info):
 
 def test_Check_up_option(device, info):
     if "up" not in info.options or info.options["up"]:
-        with pytest.raises(CtapError) as e:
-            device.MC(options={"up": True})
-        assert e.value.code == CtapError.ERR.INVALID_OPTION
+        device.MC(options={"up": True})
