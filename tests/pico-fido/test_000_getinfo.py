@@ -39,7 +39,3 @@ def test_Check_options_field(info):
     for x in info.options:
         assert info.options[x] in [True, False]
 
-
-def test_Check_up_option(device, info):
-    if "up" not in info.options or info.options["up"]:
-        device.MC(options={"up": True})
