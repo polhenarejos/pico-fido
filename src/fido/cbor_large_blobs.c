@@ -34,6 +34,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
     CborError error = CborNoError;
     uint64_t get = 0, offset = UINT64_MAX, length = 0, pinUvAuthProtocol = 0;
     CborByteString set = { 0 }, pinUvAuthParam = { 0 };
+    bool get_present = false;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -50,6 +51,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         val_c = val_u + 1;
         if (val_u == 0x01) {
             CBOR_FIELD_GET_UINT(get, 1);
+            get_present = true;
         }
         else if (val_u == 0x02) {
             CBOR_FIELD_GET_BYTES(set, 1);
@@ -72,19 +74,19 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
     if (offset == UINT64_MAX) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
-    if (get == 0 && set.present == false) {
+    if (get_present == false && set.present == false) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
-    if (get != 0 && set.present == true) {
+    if (get_present == true && set.present == true) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
 
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    if (get > 0) {
+    if (get_present == true) {
         if (length != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
-        if (length > MAX_FRAGMENT_LENGTH) {
+        if (get > MAX_FRAGMENT_LENGTH) {
             CBOR_ERROR(CTAP1_ERR_INVALID_LEN);
         }
         if (offset > file_get_size(ef_largeblob)) {
@@ -92,8 +94,8 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         }
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_largeblob) + offset,
-                                           MIN(get, file_get_size(ef_largeblob) - offset)));
+        size_t fragment_len = MIN(get, file_get_size(ef_largeblob) - offset);
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, fragment_len > 0 ? file_get_data(ef_largeblob) + offset : NULL, fragment_len));
     }
     else {
         if (set.len > MAX_FRAGMENT_LENGTH) {
