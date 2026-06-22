@@ -282,14 +282,11 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
 
         cred_counter++;
 
-        uint8_t l = 4;
+        uint8_t l = 5;
         if (subcommand == 0x04) {
             l++;
         }
         if (cred.extensions.present == true) {
-            if (cred.extensions.credProtect > 0) {
-                l++;
-            }
             if (cred.extensions.largeBlobKey == ptrue) {
                 l++;
             }
@@ -348,11 +345,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             asserted = true;
             rpIdHashx = rpIdHash;
         }
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, cred.extensions.credProtect > 0 ? cred.extensions.credProtect : CRED_PROT_UV_OPTIONAL));
         if (cred.extensions.present == true) {
-            if (cred.extensions.credProtect > 0) {
-                CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
-                CBOR_CHECK(cbor_encode_uint(&mapEncoder, cred.extensions.credProtect));
-            }
             if (cred.extensions.largeBlobKey == ptrue) {
                 uint8_t largeBlobKey[32];
                 int ret = credential_derive_large_blob_key(cred.id.data, cred.id.len, largeBlobKey);
