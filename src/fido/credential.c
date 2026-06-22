@@ -187,6 +187,9 @@ static int credential_silent_tag(const uint8_t *cred_id, size_t cred_id_len, con
     else {
         mbedtls_sha256_update(&ctx, pico_serial.id, sizeof(pico_serial.id));
     }
+    if (memcmp(cred_id, CRED_PROTO_25_S, CRED_PROTO_LEN) == 0) {
+        mbedtls_sha256_update(&ctx, certdev_sha256, sizeof(certdev_sha256));
+    }
     mbedtls_sha256_update(&ctx, rp_id_hash, 32);
     mbedtls_sha256_finish(&ctx, outk);
     mbedtls_sha256_free(&ctx);
@@ -201,14 +204,14 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
     uint8_t key[32] = {0}, *iv = cred_id + CRED_PROTO_LEN, *cipher = cred_id + CRED_PROTO_LEN + CRED_IV_LEN,
             *tag = cred_id + cred_id_len - CRED_TAG_LEN;
     cred_proto_t proto = CRED_PROTO_21;
-    if (memcmp(cred_id, CRED_PROTO_22_S, CRED_PROTO_LEN) == 0) { // New format
+    if (memcmp(cred_id, CRED_PROTO_22_S, CRED_PROTO_LEN) == 0 || memcmp(cred_id, CRED_PROTO_25_S, CRED_PROTO_LEN) == 0) { // New format
         tag = cred_id + cred_id_len - CRED_SILENT_TAG_LEN - CRED_TAG_LEN;
-        proto = CRED_PROTO_22;
+        proto = CRED_PROTO_25;
     }
     int ret = 0;
     if (!silent) {
         int hdr_len = CRED_PROTO_LEN + CRED_IV_LEN + CRED_TAG_LEN;
-        if (proto == CRED_PROTO_22) {
+        if (proto == CRED_PROTO_22 || proto == CRED_PROTO_25) {
             hdr_len += CRED_SILENT_TAG_LEN;
         }
         credential_derive_chacha_key(key, cred_id);

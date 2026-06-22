@@ -170,7 +170,7 @@ def test_bad_type_pubKeyCredParams_alg(device):
 
 def test_unsupported_pubKeyCredParams_type(device):
     with pytest.raises(CtapError) as e:
-        device.doMC(key_params=[{"alg": ES256.ALGORITHM, "type": "rot13"}])
+        device.MC(key_params=[{"alg": ES256.ALGORITHM, "type": "rot13"}])
 
     assert e.value.code == CtapError.ERR.UNSUPPORTED_ALGORITHM
 

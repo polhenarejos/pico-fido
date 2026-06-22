@@ -26,6 +26,7 @@
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/hkdf.h"
 #include "mbedtls/constant_time.h"
+#include "mbedtls/sha256.h"
 #if defined(USB_ITF_CCID)
 #include "ccid/ccid.h"
 #endif
@@ -65,6 +66,8 @@ const uint8_t atr_fido[] = {
     0x3b, 0xfd, 0x13, 0x00, 0x00, 0x81, 0x31, 0xfe, 0x15, 0x80, 0x73, 0xc0, 0x21, 0xc0, 0x57, 0x59,
     0x75, 0x62, 0x69, 0x4b, 0x65, 0x79, 0x40
 };
+
+uint8_t certdev_sha256[32] = { 0 };
 
 static uint8_t fido_get_version_major(void) {
     return PICO_FIDO_VERSION_MAJOR;
@@ -435,6 +438,9 @@ int scan_files_fido(void) {
             }
             file_put_data(ef_certdev, cert + sizeof(cert) - ret, (uint16_t)ret);
         }
+        uint8_t *cert_data = file_get_data(ef_certdev);
+        size_t cert_size = file_get_size(ef_certdev);
+        mbedtls_sha256(cert_data, cert_size, certdev_sha256, 0);
     }
     else {
         printf("FATAL ERROR: CERT DEV not found in memory!\r\n");

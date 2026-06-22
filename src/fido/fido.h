@@ -35,11 +35,7 @@
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
 extern int scan_files_fido(void);
-extern int derive_key(const uint8_t *app_id,
-                      bool new_key,
-                      uint8_t *key_handle,
-                      int,
-                      mbedtls_ecp_keypair *key);
+extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecp_keypair *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *);
 extern int wait_button_pressed(void);
 extern void init_fido(void);
@@ -126,11 +122,7 @@ int fido_process_apdu(void);
 int cmd_register(void);
 int cmd_authenticate(void);
 int cmd_version(void);
-int calculate_oath(uint8_t truncate,
-                   const uint8_t *key,
-                   size_t key_len,
-                   const uint8_t *chal,
-                   size_t chal_len);
+int calculate_oath(uint8_t truncate, const uint8_t *key, size_t key_len, const uint8_t *chal, size_t chal_len);
 int encrypt_keydev_f1(const uint8_t keydev[32]);
 int resetPinUvAuthToken(void);
 int resetPersistentPinUvAuthToken(void);
@@ -160,5 +152,6 @@ extern persistentPinUvAuthToken_t ppaut;
 extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *sign);
 
 extern uint8_t session_pin[32];
+extern uint8_t certdev_sha256[32];
 
 #endif //_FIDO_H
