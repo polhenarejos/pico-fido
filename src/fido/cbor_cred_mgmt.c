@@ -325,9 +325,14 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x07));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 2));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
-        uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
-        credential_derive_resident(cred.id.data, cred.id.len, cred_idr);
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
+        if (cred.residentId.present == true) {
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred.residentId.data, cred.residentId.len));
+        }
+        else {
+            uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
+            credential_derive_resident(cred.id.data, cred.id.len, cred_idr);
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
+        }
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "type"));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "public-key"));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
@@ -444,10 +449,29 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                     credential_free(&cred);
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
+                uint8_t rp_id_hash_copy[32] = {0};
+                uint8_t resident_id_copy[CRED_RESIDENT_LEN] = {0};
+                memcpy(rp_id_hash_copy, rp_id_hash, sizeof(rp_id_hash_copy));
+                if (cred.residentId.present == true && cred.residentId.len == CRED_RESIDENT_LEN) {
+                    memcpy(resident_id_copy, cred.residentId.data, CRED_RESIDENT_LEN);
+                }
+                else {
+                    credential_derive_resident(cred.id.data, cred.id.len, resident_id_copy);
+                }
                 credential_free(&cred);
-                if (credential_store(newcred, newcred_len, rp_id_hash) != 0) {
+
+                uint8_t *updated = (uint8_t *) calloc(1, 32 + CRED_RESIDENT_LEN + newcred_len);
+                if (updated == NULL) {
+                    CBOR_ERROR(CTAP2_ERR_PROCESSING);
+                }
+                memcpy(updated, rp_id_hash_copy, sizeof(rp_id_hash_copy));
+                memcpy(updated + 32, resident_id_copy, CRED_RESIDENT_LEN);
+                memcpy(updated + 32 + CRED_RESIDENT_LEN, newcred, newcred_len);
+                if (file_put_data(ef, updated, (uint16_t)(32 + CRED_RESIDENT_LEN + newcred_len)) != PICOKEYS_OK) {
+                    free(updated);
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
+                free(updated);
                 flash_commit();
                 goto err; //no error
             }

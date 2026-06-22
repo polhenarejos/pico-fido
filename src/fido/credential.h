@@ -49,6 +49,7 @@ typedef struct Credential {
     int64_t alg;
     int64_t curve;
     CborByteString id;
+    CborByteString residentId;
     CredOptions opts;
     bool present;
     uint64_t rtc_creation;

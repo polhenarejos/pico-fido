@@ -425,6 +425,7 @@ void credential_free(Credential *cred) {
         CBOR_FREE_BYTE_STRING(cred->userName);
         CBOR_FREE_BYTE_STRING(cred->userDisplayName);
         CBOR_FREE_BYTE_STRING(cred->id);
+        CBOR_FREE_BYTE_STRING(cred->residentId);
         if (cred->extensions.present) {
             CBOR_FREE_BYTE_STRING(cred->extensions.credBlob);
         }
@@ -608,7 +609,18 @@ bool credential_is_resident(const uint8_t *cred_id, size_t cred_id_len) {
 
 int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Credential *cred) {
     if (credential_is_resident(file_get_data(ef) + 32, file_get_size(ef) - 32)) {
-        return credential_load(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, cred);
+        int ret = credential_load(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, cred);
+        if (ret == 0) {
+            cred->residentId.present = true;
+            cred->residentId.len = CRED_RESIDENT_LEN;
+            cred->residentId.data = (uint8_t *) calloc(1, CRED_RESIDENT_LEN);
+            if (cred->residentId.data == NULL) {
+                credential_free(cred);
+                return CTAP2_ERR_PROCESSING;
+            }
+            memcpy(cred->residentId.data, file_get_data(ef) + 32, CRED_RESIDENT_LEN);
+        }
+        return ret;
     }
     return credential_load(file_get_data(ef) + 32, file_get_size(ef) - 32, rp_id_hash, cred);
 }

@@ -684,9 +684,14 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
     if (selcred) {
         if (resident) {
-            uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
-            credential_derive_resident(selcred->id.data, selcred->id.len, cred_idr);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
+            if (selcred->residentId.present == true) {
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->residentId.data, selcred->residentId.len));
+            }
+            else {
+                uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
+                credential_derive_resident(selcred->id.data, selcred->id.len, cred_idr);
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
+            }
         }
         else {
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->id.data, selcred->id.len));
