@@ -228,6 +228,9 @@ int cbor_config(const uint8_t *data, size_t len) {
         if (forceChangePin == ptrue && !file_has_data(ef_pin)) {
             CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
         }
+        if (minPinLengthRPIDs_len > MAX_RPIDS_MINPIN_LENGTH) {
+            CBOR_ERROR(CTAP2_ERR_KEY_STORE_FULL);
+        }
         if (file_has_data(ef_pin) && file_get_data(ef_pin)[1] < newMinPinLength) {
             forceChangePin = ptrue;
         }

@@ -27,6 +27,7 @@ from fido2.ctap2 import Config
 
 PIN='12345678'
 MINPINLENGTH=6
+MAX_RPIDS_MINPIN_LENGTH=120
 
 @pytest.fixture(scope="function")
 def MCMinPin(device):
@@ -84,6 +85,15 @@ def test_no_setminpin(device, SetMinPin, MCMinPin):
     with pytest.raises(CtapError) as e:
         cfg.set_min_pin_length(MINPINLENGTH-2,rp_ids=['example.com'])
     assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
+
+def test_setminpin_too_many_rpids(device):
+    device.reset()
+    ClientPin(device.client()._backend.ctap2).set_pin(PIN)
+    cfg = FidoConfig(device)
+    rp_ids = [f"example{i}.com" for i in range(MAX_RPIDS_MINPIN_LENGTH + 1)]
+    with pytest.raises(CtapError) as e:
+        cfg.set_min_pin_length(MINPINLENGTH,rp_ids=rp_ids)
+    assert e.value.code == CtapError.ERR.KEY_STORE_FULL
 
 def test_setminpin_check_force(device, SetMinPin, MCMinPin):
     cfg = FidoConfig(device)

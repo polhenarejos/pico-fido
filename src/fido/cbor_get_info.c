@@ -167,7 +167,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDBLOB_LENGTH)); // maxCredBlobLength
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x10));
-    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 120)); // maxRPIDsForSetMinPINLength
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_RPIDS_MINPIN_LENGTH)); // maxRPIDsForSetMinPINLength
 #ifndef ENABLE_EMULATION
     if (phy_data.vid != 0x1050) {
 #endif
