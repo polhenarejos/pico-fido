@@ -28,7 +28,7 @@ int cbor_get_info(void) {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    uint8_t lfields = 14;
+    uint8_t lfields = 15;
 #ifndef ENABLE_EMULATION
     if (phy_data.vid != 0x1050) {
         lfields++;
@@ -165,6 +165,9 @@ int cbor_get_info(void) {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0F));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CREDBLOB_LENGTH)); // maxCredBlobLength
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x10));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 120)); // maxRPIDsForSetMinPINLength
 #ifndef ENABLE_EMULATION
     if (phy_data.vid != 0x1050) {
 #endif
