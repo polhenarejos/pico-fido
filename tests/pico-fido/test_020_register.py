@@ -168,6 +168,12 @@ def test_bad_type_pubKeyCredParams_alg(device):
 
     assert e.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
 
+def test_unsupported_pubKeyCredParams_type(device):
+    with pytest.raises(CtapError) as e:
+        device.doMC(key_params=[{"alg": ES256.ALGORITHM, "type": "rot13"}])
+
+    assert e.value.code == CtapError.ERR.UNSUPPORTED_ALGORITHM
+
 def test_unsupported_algorithm(device):
     with pytest.raises(CtapError) as e:
         device.doMC(key_params=[{"alg": 1337, "type": "public-key"}])

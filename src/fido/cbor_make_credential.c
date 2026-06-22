@@ -241,7 +241,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
         }
         if (strcmp(pubKeyCredParams[i].type.data, "public-key") != 0) {
-            CBOR_ERROR(CTAP2_ERR_CBOR_UNEXPECTED_TYPE);
+            continue;
         }
         if (pubKeyCredParams[i].alg == FIDO2_ALG_ES256 || pubKeyCredParams[i].alg == FIDO2_ALG_ESP256) {
             if (curve <= 0) {
