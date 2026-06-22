@@ -171,6 +171,26 @@ def test_rknext_without_rkbegin(device, MC_RK_Res):
         credMgmt.enumerate_creds_next()
     assert e.value.code == CtapError.ERR.NOT_ALLOWED
 
+def test_rpnext_after_enumeration_exhausted(device, MC_RK_Res):
+    credMgmt = CredMgmt(device)
+    first = credMgmt.enumerate_rps_begin()
+    for _ in range(1, first[CredentialManagement.RESULT.TOTAL_RPS]):
+        credMgmt.enumerate_rps_next()
+
+    with pytest.raises(CtapError) as e:
+        credMgmt.enumerate_rps_next()
+    assert e.value.code == CtapError.ERR.NOT_ALLOWED
+
+def test_rknext_after_enumeration_exhausted(device, MC_RK_Res):
+    credMgmt = CredMgmt(device)
+    first = credMgmt.enumerate_creds_begin(sha256(b"ssh:"))
+    for _ in range(1, first[CredentialManagement.RESULT.TOTAL_CREDENTIALS]):
+        credMgmt.enumerate_creds_next()
+
+    with pytest.raises(CtapError) as e:
+        credMgmt.enumerate_creds_next()
+    assert e.value.code == CtapError.ERR.NOT_ALLOWED
+
 def test_delete(device):
 
     # create a new RK
@@ -195,6 +215,45 @@ def test_delete(device):
     with pytest.raises(CtapError) as e:
         auth = device.doGA(rp_id=rp['id'])
     assert e.value.code == CtapError.ERR.NO_CREDENTIALS
+
+def test_update_user_information(device, client_pin_set):
+    rp = {"id": "example_update.com", "name": "Update Example"}
+    user = {"id": b"user_update", "name": "before", "displayName": "Before"}
+    reg = device.doMC(rp=rp, rk=True, user=user)['res'].attestation_object
+
+    credMgmt = CredMgmt(device)
+    creds = credMgmt.enumerate_creds(reg.auth_data.rp_id_hash)
+    cred = next(
+        c for c in creds
+        if c[CredentialManagement.RESULT.CREDENTIAL_ID]["id"]
+        == reg.auth_data.credential_data.credential_id
+    )
+
+    cred_id = {
+        "id": cred[CredentialManagement.RESULT.CREDENTIAL_ID]["id"],
+        "type": "public-key",
+    }
+    updated_user = {
+        "id": user["id"],
+        "name": "after",
+        "displayName": "After",
+    }
+    credMgmt._call(
+        CredentialManagement.CMD.UPDATE_USER_INFO,
+        {
+            CredentialManagement.PARAM.CREDENTIAL_ID: cred_id,
+            CredentialManagement.PARAM.USER: updated_user,
+        },
+    )
+
+    updated_creds = credMgmt.enumerate_creds(reg.auth_data.rp_id_hash)
+    updated = next(
+        c for c in updated_creds
+        if c[CredentialManagement.RESULT.CREDENTIAL_ID]["id"] == cred_id["id"]
+    )
+    assert updated[CredentialManagement.RESULT.USER]["id"] == user["id"]
+    assert updated[CredentialManagement.RESULT.USER]["name"] == "after"
+    assert updated[CredentialManagement.RESULT.USER]["displayName"] == "After"
 
 def test_add_delete(device):
     """ Delete a credential in the 'middle' and ensure other credentials are not affected. """
