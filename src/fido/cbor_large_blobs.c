@@ -164,7 +164,10 @@ err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(set);
     if (error != CborNoError) {
-        return -CTAP2_ERR_INVALID_CBOR;
+        if (error == CborErrorImproperValue) {
+            return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        }
+        return error;
     }
     res_APDU_size = (uint16_t)cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     return 0;
