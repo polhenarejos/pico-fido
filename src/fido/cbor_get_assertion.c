@@ -221,7 +221,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         if (pinUvAuthParam.present == true) {
             if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
                 if (check_user_presence() == false) {
-                    CBOR_ERROR(user_presence_error());
+                    CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                 }
                 if (!file_has_data(ef_pin)) {
                     CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
@@ -445,14 +445,14 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             if (pinUvAuthParam.present == true) {
                 if (getUserPresentFlagValue() == false) {
                     if (check_user_presence() == false) {
-                        CBOR_ERROR(user_presence_error());
+                        CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
                 }
             }
             else {
                 if (!(flags & FIDO2_AUT_FLAG_UP)) {
                     if (check_user_presence() == false) {
-                        CBOR_ERROR(user_presence_error());
+                        CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
                 }
             }

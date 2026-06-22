@@ -37,7 +37,6 @@ const uint8_t aaguid[16] = { 0x89, 0xFB, 0x94, 0xB7, 0x06, 0xC9, 0x36, 0x73, 0x9
 static const uint8_t *volatile cbor_data = NULL;
 static volatile size_t cbor_len = 0;
 static volatile uint8_t cbor_cmd = 0;
-extern bool cancel_button;
 
 int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len == 0 && cmd == CTAPHID_CBOR) {
@@ -113,12 +112,6 @@ void *cbor_thread(void *arg) {
         size_t len = cbor_len;
         uint8_t cmd = cbor_cmd;
         apdu.sw = (uint16_t)cbor_parse(cmd, data, len);
-        if (cancel_button && apdu.sw == CTAP2_ERR_KEEPALIVE_CANCEL) {
-            apdu.sw = 0;
-            res_APDU_size = 0;
-            finished_data_size = 0;
-            continue;
-        }
         if (apdu.sw == 0) {
             DEBUG_DATA(res_APDU, res_APDU_size);
         }
@@ -146,7 +139,7 @@ int cbor_process(uint8_t last_cmd, const uint8_t *data, size_t len) {
     cbor_cmd = last_cmd;
     ctap_resp->init.data[0] = 0;
     res_APDU = ctap_resp->init.data + 1;
-    finished_data_size = res_APDU_size = 0;
+    res_APDU_size = 0;
     return 2; // CBOR processing
 }
 

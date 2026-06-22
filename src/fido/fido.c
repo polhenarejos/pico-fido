@@ -525,26 +525,15 @@ int wait_button_pressed(void) {
 }
 
 uint32_t user_present_time_limit = 0;
-static int last_user_presence_error = CTAP2_ERR_OPERATION_DENIED;
 
 bool check_user_presence(void) {
-    last_user_presence_error = CTAP2_ERR_OPERATION_DENIED;
     if (user_present_time_limit == 0 || user_present_time_limit + TRANSPORT_TIME_LIMIT < board_millis()) {
-        int ret = wait_button_pressed();
-        if (ret == 2) {
-            last_user_presence_error = CTAP2_ERR_KEEPALIVE_CANCEL;
-            return false;
-        }
-        if (ret > 0) { //timeout
+        if (wait_button_pressed() > 0) { //timeout
             return false;
         }
         //user_present_time_limit = board_millis();
     }
     return true;
-}
-
-int user_presence_error(void) {
-    return last_user_presence_error;
 }
 
 uint32_t get_sign_counter(void) {

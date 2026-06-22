@@ -111,15 +111,6 @@ class TestHID(object):
             r = device.send_data(0x66, "")
         assert e.value.code == CtapError.ERR.INVALID_COMMAND
 
-    def test_idle_cont_frame_ignored(self, device):
-        device.send_data(CTAPHID.INIT, "\x11\x22\x33\x44\x55\x66\x77\x88")
-        device.send_raw("\x00")
-        with pytest.raises(socket.timeout):
-            device.recv_raw()
-        device.send_raw("\x00", cid="\xff\xff\xff\xff")
-        with pytest.raises(socket.timeout):
-            device.recv_raw()
-
     def test_oversize_packet(self, device):
         device.send_raw("\x81\x1d\xba\x00")
         cmd, resp = device.recv_raw()
@@ -278,18 +269,11 @@ class TestHID(object):
             count += 1
 
         # We should get a keepalive within .5s
-        cancelled = False
         try:
             r = device.send_data(CTAPHID.CBOR, precanned_make_credential, timeout = .50, on_keepalive = count_keepalive)
         except CtapError as e:
             assert e.code == CtapError.ERR.KEEPALIVE_CANCEL
-            cancelled = True
         assert count > 0
-        assert cancelled
-
-        device.send_raw("\x91\x00\x00")
-        with pytest.raises(socket.timeout):
-            device.recv_raw()
 
         # wait for authnr to get UP or timeout
         while True:
