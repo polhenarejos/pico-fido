@@ -88,14 +88,14 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                     CBOR_PARSE_MAP_END(_f2, 3);
                 }
                 else if (subpara == 0x03) {
-                    CBOR_PARSE_MAP_START(_f1, 3)
+                    CBOR_PARSE_MAP_START(_f2, 3)
                     {
                         CBOR_FIELD_GET_KEY_TEXT(3);
                         CBOR_FIELD_KEY_TEXT_VAL_BYTES(3, "id", user.id);
                         CBOR_FIELD_KEY_TEXT_VAL_TEXT(3, "name", user.parent.name);
                         CBOR_FIELD_KEY_TEXT_VAL_TEXT(3, "displayName", user.displayName);
                     }
-                    CBOR_PARSE_MAP_END(_f1, 3);
+                    CBOR_PARSE_MAP_END(_f2, 3);
                 }
             }
             CBOR_PARSE_MAP_END(_f1, 2);
