@@ -209,7 +209,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (pinUvAuthParam.present == true) {
         if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
             if (check_user_presence() == false) {
-                CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                CBOR_ERROR(user_presence_error());
             }
             if (!file_has_data(ef_pin)) {
                 CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
@@ -399,7 +399,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (pinUvAuthParam.present == true) {
             if (getUserPresentFlagValue() == false) {
                 if (check_user_presence() == false) {
-                    CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                    CBOR_ERROR(user_presence_error());
                 }
             }
         }
