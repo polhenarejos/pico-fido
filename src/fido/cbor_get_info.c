@@ -29,6 +29,8 @@ int cbor_get_info(void) {
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     uint8_t lfields = 15;
+    file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
+    bool enterprise_profile = ((get_opts() & FIDO2_OPT_EA) && file_has_data(ef_ee_ea));
 #ifndef ENABLE_EMULATION
     if (phy_data.vid != 0x1050) {
         lfields++;
@@ -66,9 +68,11 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aaguid, sizeof(aaguid)));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
-    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, 9));
-    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "ep"));
-    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, get_opts() & FIDO2_OPT_EA));
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, enterprise_profile ? 9 : 8));
+    if (enterprise_profile) {
+        CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "ep"));
+        CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
+    }
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "alwaysUv"));

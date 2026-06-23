@@ -116,7 +116,12 @@ void *cbor_thread(void *arg) {
             DEBUG_DATA(res_APDU, res_APDU_size);
         }
         else {
-            if (apdu.sw >= CTAP1_ERR_INVALID_CHANNEL) {
+            if (cmd == CTAPHID_CBOR && len > 0) {
+                res_APDU[-1] = (uint8_t)apdu.sw;
+                res_APDU_size = 0;
+                apdu.sw = 0;
+            }
+            else if (apdu.sw > CTAP1_ERR_INVALID_CHANNEL) {
                 res_APDU[-1] = (uint8_t)apdu.sw;
                 apdu.sw = 0;
             }

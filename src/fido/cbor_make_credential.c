@@ -325,7 +325,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
     }
     if (enterpriseAttestation > 0) {
-        if (!(get_opts() & FIDO2_OPT_EA)) {
+        file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
+        if (!(get_opts() & FIDO2_OPT_EA) || !file_has_data(ef_ee_ea)) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
         if (enterpriseAttestation != 1 && enterpriseAttestation != 2) { //9.2.1
