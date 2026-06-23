@@ -395,6 +395,16 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (hmac_secret_mc && extensions.hmac_secret != ptrue) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
     }
+    if (hmac_secret_mc) {
+        if (kax.present == false || kay.present == false || crv == 0 || hmac_alg == 0 ||
+            salt_enc.present == false || salt_auth.present == false) {
+            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+        }
+        if (salt_enc.len != 32 + (hmacSecretPinUvAuthProtocol - 1) * IV_SIZE &&
+            salt_enc.len != 64 + (hmacSecretPinUvAuthProtocol - 1) * IV_SIZE) {
+            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
+    }
 
     if (options.up == ptrue || options.up == NULL) { //14.1
         if (pinUvAuthParam.present == true) {
