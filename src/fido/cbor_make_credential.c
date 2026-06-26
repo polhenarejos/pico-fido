@@ -312,8 +312,13 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (options.uv == ptrue) { //5.3
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
-        if (options.rk == ptrue && (get_opts() & FIDO2_OPT_NORK)) { //5.4
-            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+        if (options.rk != NULL) {
+            if (get_opts() & FIDO2_OPT_NORK) { //5.4
+                CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+            }
+        }
+        else {
+            options.rk = pfalse;
         }
         if (options.up == pfalse) { //5.6
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
@@ -321,8 +326,20 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         //else if (options.up == NULL) //5.7
         //rup = ptrue;
     }
-    if (pinUvAuthParam.present == false && options.uv == pfalse && file_has_data(ef_pin)) { //8.1
-        CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+    if (get_opts() & FIDO2_OPT_AUV) {
+        if (!file_has_data(ef_pin) || (pinUvAuthParam.present == false && options.uv != ptrue)) { //6.2, 6.4
+            CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+        }
+    }
+    else if (get_opts() & FIDO2_OPT_MCUV_NOTRQD) {
+        if (file_has_data(ef_pin) && options.uv == pfalse && pinUvAuthParam.present == false && options.rk == ptrue) { //7.1
+            CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+        }
+    }
+    else {
+        if (file_has_data(ef_pin) && pinUvAuthParam.present == false && options.uv == pfalse) { //8.1
+            CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+        }
     }
     if (has_credprot == true && (extensions.credProtect < CRED_PROT_UV_OPTIONAL || extensions.credProtect > CRED_PROT_UV_REQUIRED)) {
         CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
@@ -337,24 +354,26 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
         //Unfinished. See 6.1.2.9
     }
-    if (pinUvAuthParam.present == true) { //11.1
-        int ret = verify((uint8_t)pinUvAuthProtocol, paut.data, clientDataHash.data, (uint16_t)clientDataHash.len, pinUvAuthParam.data);
-        if (ret != CborNoError) {
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        }
-        if (!(paut.permissions & CTAP_PERMISSION_MC)) {
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        }
-        if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, 32) != 0) {
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        }
-        if (getUserVerifiedFlagValue() == false) {
-            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
-        }
-        flags |= FIDO2_AUT_FLAG_UV;
-        if (paut.has_rp_id == false) {
-            memcpy(paut.rp_id_hash, rp_id_hash, 32);
-            paut.has_rp_id = true;
+    if (!((get_opts() & FIDO2_OPT_MCUV_NOTRQD) && options.rk != ptrue && options.uv != ptrue && pinUvAuthParam.present == false)) { //10.1
+        if (pinUvAuthParam.present == true) { //11.1
+            int ret = verify((uint8_t)pinUvAuthProtocol, paut.data, clientDataHash.data, (uint16_t)clientDataHash.len, pinUvAuthParam.data);
+            if (ret != CborNoError) {
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
+            if (!(paut.permissions & CTAP_PERMISSION_MC)) {
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
+            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, 32) != 0) {
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
+            if (getUserVerifiedFlagValue() == false) {
+                CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
+            flags |= FIDO2_AUT_FLAG_UV;
+            if (paut.has_rp_id == false) {
+                memcpy(paut.rp_id_hash, rp_id_hash, 32);
+                paut.has_rp_id = true;
+            }
         }
     }
 
@@ -390,8 +409,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         credential_free(&ecred);
     }
 
-    if (extensions.largeBlobKey == pfalse ||
-        (extensions.largeBlobKey == ptrue && options.rk != ptrue)) {
+    if (extensions.largeBlobKey == pfalse || (extensions.largeBlobKey == ptrue && options.rk != ptrue)) {
         CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
     }
 

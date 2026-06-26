@@ -214,10 +214,30 @@ int cbor_config(const uint8_t *data, size_t len) {
         else if (vendorCommandId == CTAP_CONFIG_AUV) {
             set_opts(get_opts() ^ FIDO2_OPT_AUV);
         }
+        else if (vendorCommandId == CTAP_CONFIG_MCUV_NOTRQD) {
+            set_opts(get_opts() ^ FIDO2_OPT_MCUV_NOTRQD);
+        }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
         goto err;
+    }
+    else if (subcommand == 0x02) {
+        if (!(get_opts() & FIDO2_OPT_AUV)) {
+            if (get_opts() & FIDO2_OPT_MCUV_NOTRQD) {
+                set_opts(get_opts() & ~FIDO2_OPT_MCUV_NOTRQD);
+            }
+            set_opts(get_opts() | FIDO2_OPT_AUV);
+            goto err;
+        }
+        else {
+#ifndef FORBID_DISABLE_AUV
+            set_opts(get_opts() & ~FIDO2_OPT_AUV);
+            goto err;
+#else
+            CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+#endif
+        }
     }
     else if (subcommand == 0x03) {
         uint8_t currentMinPinLen = 4;

@@ -68,7 +68,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aaguid, sizeof(aaguid)));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
-    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, enterprise_profile ? 9 : 8));
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, enterprise_profile ? 10 : 9));
     if (enterprise_profile) {
         CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "ep"));
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
@@ -76,29 +76,22 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, !(get_opts() & FIDO2_OPT_NORK)));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "alwaysUv"));
-    if (file_has_data(ef_pin) && (get_opts() & FIDO2_OPT_AUV || !getUserVerifiedFlagValue())) {
-        CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
-    }
-    else {
-        CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, false));
-    }
+    bool alwaysUv = file_has_data(ef_pin) && (get_opts() & FIDO2_OPT_AUV || !getUserVerifiedFlagValue());
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, alwaysUv));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credMgmt"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "authnrCfg"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "clientPin"));
-    if (file_has_data(ef_pin)) {
-        CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
-    }
-    else {
-        CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, false));
-    }
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, file_has_data(ef_pin)));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobs"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "pinUvAuthToken"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "setMinPINLength"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "makeCredUvNotRqd"));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, alwaysUv ? false : get_opts() & FIDO2_OPT_MCUV_NOTRQD));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
@@ -203,8 +196,9 @@ int cbor_get_info(void) {
     }
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1F));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 3));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 0x01));
+    CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 0x02));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 0x03));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 0xFF));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
