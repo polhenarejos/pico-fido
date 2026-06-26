@@ -74,7 +74,7 @@ int cbor_get_info(void) {
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     }
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
-    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, !(get_opts() & FIDO2_OPT_NORK)));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "alwaysUv"));
     if (file_has_data(ef_pin) && (get_opts() & FIDO2_OPT_AUV || !getUserVerifiedFlagValue())) {
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));

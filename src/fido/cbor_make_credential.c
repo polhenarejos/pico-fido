@@ -312,6 +312,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (options.uv == ptrue) { //5.3
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
+        if (options.rk == ptrue && (get_opts() & FIDO2_OPT_NORK)) { //5.4
+            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+        }
         if (options.up == pfalse) { //5.6
             CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
         }
