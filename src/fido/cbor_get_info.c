@@ -194,6 +194,7 @@ int cbor_get_info(void) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1C));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_pin_policy) + 2, file_get_size(ef_pin_policy) - 2));
     }
+#endif
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1F));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
@@ -202,9 +203,8 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 0x03));
     CBOR_CHECK(cbor_encode_uint(&arrayEncoder, 0xFF));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
-
-#endif
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
+
 err:
     if (error != CborNoError) {
         return -CTAP2_ERR_INVALID_CBOR;
