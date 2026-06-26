@@ -19,12 +19,15 @@
 #include "fido.h"
 #include "ctap2_cbor.h"
 #include "ctap.h"
+#include "button.h"
 
 extern char *rp_id, *user_name, *display_name;
 
 int cbor_selection(void) {
     rp_id = user_name = display_name = NULL;
+    force_button_wait = true;
     int ret = wait_button_pressed() ;
+    force_button_wait = false;
     if (ret == 1) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
     }
