@@ -37,7 +37,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborError error = CborNoError;
     uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0, vendorParamInt = 0;
     CborByteString pinUvAuthParam = { 0 }, vendorParamByteString = { 0 };
-    CborCharString minPinLengthRPIDs[32] = { 0 }, vendorParamTextString = { 0 };
+    CborCharString minPinLengthRPIDs[MAX_RPIDS_MINPIN_LENGTH] = { 0 }, vendorParamTextString = { 0 };
     size_t resp_size = 0, raw_subpara_len = 0, minPinLengthRPIDs_len = 0;
     CborEncoder encoder;
     //CborEncoder mapEncoder;
@@ -88,11 +88,11 @@ int cbor_config(const uint8_t *data, size_t len) {
                     else if (subpara == 0x02) {
                         CBOR_PARSE_ARRAY_START(_f2, 3)
                         {
-                            CBOR_FIELD_GET_TEXT(minPinLengthRPIDs[minPinLengthRPIDs_len], 3);
-                            minPinLengthRPIDs_len++;
-                            if (minPinLengthRPIDs_len >= 32) {
+                            if (minPinLengthRPIDs_len >= MAX_RPIDS_MINPIN_LENGTH) {
                                 CBOR_ERROR(CTAP2_ERR_KEY_STORE_FULL);
                             }
+                            CBOR_FIELD_GET_TEXT(minPinLengthRPIDs[minPinLengthRPIDs_len], 3);
+                            minPinLengthRPIDs_len++;
                         }
                         CBOR_PARSE_ARRAY_END(_f2, 3);
                     }
@@ -253,9 +253,6 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         if (forceChangePin == ptrue && !file_has_data(ef_pin)) {
             CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
-        }
-        if (minPinLengthRPIDs_len > MAX_RPIDS_MINPIN_LENGTH) {
-            CBOR_ERROR(CTAP2_ERR_KEY_STORE_FULL);
         }
         if (file_has_data(ef_pin) && file_get_data(ef_pin)[1] < newMinPinLength) {
             forceChangePin = ptrue;
