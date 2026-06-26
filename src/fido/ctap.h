@@ -114,6 +114,7 @@ typedef struct {
 
 #define CTAP_CONFIG_AUT_ENABLE      0x03e43f56b34285e2
 #define CTAP_CONFIG_AUT_DISABLE     0x1831a40f04a25ed9
+#define CTAP_CONFIG_AUV             0x2757591b9e081ab8
 #define CTAP_CONFIG_EA_UPLOAD       0x66f2a674c29a8dcf
 #define CTAP_CONFIG_PIN_POLICY      0x6c07d70fe96c3897
 #define CTAP_CONFIG_NORK            0x7bc52b41f53590d3

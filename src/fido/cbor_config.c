@@ -211,6 +211,9 @@ int cbor_config(const uint8_t *data, size_t len) {
         else if (vendorCommandId == CTAP_CONFIG_NORK) {
             set_opts(get_opts() ^ FIDO2_OPT_NORK);
         }
+        else if (vendorCommandId == CTAP_CONFIG_AUV) {
+            set_opts(get_opts() ^ FIDO2_OPT_AUV);
+        }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
