@@ -68,7 +68,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, aaguid, sizeof(aaguid)));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
-    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, enterprise_profile ? 10 : 9));
+    CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &arrayEncoder, enterprise_profile ? 11 : 10));
     if (enterprise_profile) {
         CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "ep"));
         CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
@@ -85,6 +85,8 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "clientPin"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, file_has_data(ef_pin)));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "largeBlobs"));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "perCredMgmtRO"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "pinUvAuthToken"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
