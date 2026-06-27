@@ -219,7 +219,7 @@ int cbor_get_info(void) {
     if (phy_data.vid != 0x1050) {
 #endif
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
-        uint8_t enabled_cmds = 7;
+        uint8_t enabled_cmds = 6;
 #ifndef ENABLE_EMULATION
         enabled_cmds += 4;
 #endif
@@ -229,7 +229,6 @@ int cbor_get_info(void) {
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_MCUV_NOTRQD));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_NORK));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUV));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PIN_POLICY));
 #ifndef ENABLE_EMULATION
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_LED_BTNESS));
