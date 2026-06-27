@@ -155,4 +155,11 @@ extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uin
 extern uint8_t session_pin[32];
 extern uint8_t certdev_sha256[32];
 
+typedef enum {
+    DEV_STATE_DEV_ID = 0x1,
+    DEV_STATE_CRED_STATE = 0x2,
+    DEV_STATE_ALL = DEV_STATE_DEV_ID | DEV_STATE_CRED_STATE
+} dev_state_t;
+extern int dev_state_update(dev_state_t state);
+
 #endif //_FIDO_H

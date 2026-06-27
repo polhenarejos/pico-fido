@@ -376,9 +376,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         if (verify((uint8_t)pinUvAuthProtocol, paut.data, raw_subpara - 1, (uint16_t)(raw_subpara_len + 1), pinUvAuthParam.data) != CborNoError) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
-        if (is_preview == false &&
-            (!(paut.permissions & CTAP_PERMISSION_CM) ||
-             (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))) {
+        if (is_preview == false && (!(paut.permissions & CTAP_PERMISSION_CM) || (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
@@ -404,6 +402,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                         break;
                     }
                 }
+                dev_state_update(DEV_STATE_CRED_STATE);
                 flash_commit();
                 goto err; //no error
             }
@@ -418,9 +417,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         if (verify((uint8_t)pinUvAuthProtocol, paut.data, raw_subpara - 1, (uint16_t)(raw_subpara_len + 1), pinUvAuthParam.data) != CborNoError) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
-        if (is_preview == false &&
-            (!(paut.permissions & CTAP_PERMISSION_CM) ||
-             (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))) {
+        if (is_preview == false && (!(paut.permissions & CTAP_PERMISSION_CM) || (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rpIdHash.data, 32) != 0))) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
         }
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
@@ -467,6 +464,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
                 free(updated);
+                dev_state_update(DEV_STATE_CRED_STATE);
                 flash_commit();
                 goto err; //no error
             }

@@ -487,6 +487,10 @@ int scan_files_fido(void) {
     if (!file_has_data(ef_largeblob)) {
         file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
     }
+    file_t *ef_dev_state = file_search_by_fid(EF_DEV_STATE, NULL, SPECIFY_EF);
+    if (!file_has_data(ef_dev_state)) {
+        file_put_data(ef_dev_state, random_bytes_get(32), 32);
+    }
 
     flash_commit();
     return PICOKEYS_OK;
@@ -553,6 +557,29 @@ void set_opts(uint8_t opts) {
     file_t *ef = file_search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
     file_put_data(ef, &opts, sizeof(uint8_t));
     flash_commit();
+}
+
+int dev_state_update(dev_state_t state) {
+    file_t *ef_dev_state = file_search_by_fid(EF_DEV_STATE, NULL, SPECIFY_EF);
+    if (!ef_dev_state) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    if (file_get_size(ef_dev_state) == 32) {
+        uint8_t dev_state[32] = {0};
+        memcpy(dev_state, file_get_data(ef_dev_state), 32);
+        if (state & DEV_STATE_DEV_ID) {
+            random_fill_buffer(dev_state, 16);
+        }
+        else if (state & DEV_STATE_CRED_STATE) {
+            random_fill_buffer(dev_state + 16, 16);
+        }
+        file_put_data(ef_dev_state, dev_state, 32);
+    }
+    else {
+        file_put_data(ef_dev_state, random_bytes_get(32), 32);
+    }
+    flash_commit();
+    return PICOKEYS_OK;
 }
 
 #define CTAP_CBOR 0x10

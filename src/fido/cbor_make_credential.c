@@ -719,6 +719,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (credential_store(cred_id, cred_id_len, rp_id_hash) != 0) {
             CBOR_ERROR(CTAP2_ERR_KEY_STORE_FULL);
         }
+        dev_state_update(DEV_STATE_CRED_STATE);
     }
     ctr++;
     file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
