@@ -194,7 +194,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             flash_commit();
         }
         else if (vendorCommandId == CTAP_CONFIG_PIN_POLICY) {
-            file_t *ef_pin_policy = file_new(EF_PIN_COMPLEXITY_POLICY);
+            file_t *ef_pin_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
             if (ef_pin_policy) {
                 uint8_t *val = calloc(1, 2 + vendorParamByteString.len);
                 if (val) {
