@@ -230,12 +230,6 @@ int cbor_get_info(void) {
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_NORK));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PIN_POLICY));
-#ifndef ENABLE_EMULATION
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_LED_BTNESS));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_LED_GPIO));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_VIDPID));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_OPTS));
-#endif
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 #ifndef ENABLE_EMULATION
     }
