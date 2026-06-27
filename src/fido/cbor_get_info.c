@@ -175,17 +175,17 @@ int cbor_get_info(void) {
         enabled_cmds += 4;
 #endif
         CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, enabled_cmds));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_DISABLE));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUV));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_MCUV_NOTRQD));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_EA_UPLOAD));
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PIN_POLICY));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_MCUV_NOTRQD));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_NORK));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUV));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PIN_POLICY));
 #ifndef ENABLE_EMULATION
-        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_VIDPID));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_LED_BTNESS));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_LED_GPIO));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_VIDPID));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PHY_OPTS));
 #endif
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
