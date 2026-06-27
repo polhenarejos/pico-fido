@@ -28,7 +28,7 @@ int cbor_get_info(void) {
     CborEncoder encoder, mapEncoder, arrayEncoder, mapEncoder2;
     CborError error = CborNoError;
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    uint8_t lfields = 16;
+    uint8_t lfields = 17;
     file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
     bool enterprise_profile = ((get_opts() & FIDO2_OPT_EA) && file_has_data(ef_ee_ea));
 #ifndef ENABLE_EMULATION
@@ -200,6 +200,9 @@ int cbor_get_info(void) {
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_pin_policy) + 2, file_get_size(ef_pin_policy) - 2));
     }
 #endif
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1D));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 63)); // maxPINLength
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1F));
     CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 4));
