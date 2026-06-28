@@ -1,0 +1,149 @@
+{
+  "legalHeader": "Submission of this statement and retrieval and use of this statement indicates acceptance of the appropriate agreement located at https://fidoalliance.org/metadata/metadata-legal-terms/.",
+  "description": "Pico FIDO Authenticator",
+  "aaguid": "89fb94b7-06c9-3673-9b7e-30526d968145",
+  "protocolFamily": "fido2",
+  "schema": 3,
+  "authenticatorVersion": 1798,
+  "upv": [
+    {
+      "major": 1,
+      "minor": 0
+    },
+    {
+      "major": 1,
+      "minor": 1
+    },
+    {
+      "major": 1,
+      "minor": 2
+    },
+    {
+      "major": 1,
+      "minor": 3
+    }
+  ],
+  "authenticationAlgorithms": [
+    "secp256r1_ecdsa_sha256_raw",
+    "ed25519_eddsa_sha512_raw",
+    "secp384r1_ecdsa_sha384_raw",
+    "secp521r1_ecdsa_sha512_raw"
+  ],
+  "publicKeyAlgAndEncodings": [
+    "cose"
+  ],
+  "attestationTypes": [
+    "basic_surrogate"
+  ],
+  "userVerificationDetails": [
+    [
+      {
+        "userVerificationMethod": "presence_internal"
+      }
+    ],
+    [
+      {
+        "userVerificationMethod": "passcode_external"
+      }
+    ]
+  ],
+  "keyProtection": [
+    "hardware"
+  ],
+  "matcherProtection": [
+    "on_chip"
+  ],
+  "cryptoStrength": 128,
+  "attachmentHint": [
+    "external",
+    "wired"
+  ],
+  "tcDisplay": [],
+  "attestationRootCertificates": [],
+  "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAAABlBMVEUAAABvs5mg1+NJAAAAAXRSTlMAQObYZgAAAAFvck5UAc+id5oAAAFoSURBVGje7VfLDsMgDMP//9PTpJWSkAc09DLZh6lilU0S4obWCIIgCIIgCOIZ0PEe++/x+3Oeflo5y7+4WKb3no/wA7rMRxRG+rHgpxQ6E8ywygoO/71UVZhYpgLUFC6SYc+6lYsCdq8JiYqCy9NjqQo0IyeTOz1XuPZpU+B+oyjgeCeGGEsCzRPAWAwFc9H2GjcJlfTcRhCVEeXs3CcxyWClA5YEkEL6vXTpXABYU5gEsCyw5Qm9gkhaaavTEO4OWR+0zRCuNLXtRlsriJywvD36VjGOCd3NYHwXB24gcSs74RDFcl6M0lwWGEPATAGnQOp8+wJjio2Zzs2eZEQkAGVMqjG9+mM1gvn4CmdpwQFTFpAJYGu43hAIRke0VYEoRfrLoOi90zvPbdlZVwVAnCZnuvSCliMdkM901jcl8kR7UgyrLK+j+e1UKCxUWf+/dPlV7fvCZfnFW/ip2wBBEARBEATxn/gAw1MDBthPl68AAAAASUVORK5CYII=",
+  "authenticatorGetInfo": {
+    "versions": [
+      "U2F_V2",
+      "FIDO_2_0",
+      "FIDO_2_1",
+      "FIDO_2_2",
+      "FIDO_2_3"
+    ],
+    "extensions": [
+      "uvm",
+      "credBlob",
+      "credProtect",
+      "hmac-secret",
+      "largeBlobKey",
+      "minPinLength",
+      "hmac-secret-mc",
+      "thirdPartyPayment",
+      "pinComplexityPolicy"
+    ],
+    "aaguid": "89fb94b706c936739b7e30526d968145",
+    "options": {
+      "rk": true,
+      "alwaysUv": false,
+      "credMgmt": true,
+      "authnrCfg": true,
+      "clientPin": false,
+      "largeBlobs": true,
+      "perCredMgmtRO": true,
+      "pinUvAuthToken": true,
+      "setMinPINLength": true,
+      "makeCredUvNotRqd": true
+    },
+    "maxMsgSize": 1024,
+    "pinUvAuthProtocols": [
+      1,
+      2
+    ],
+    "maxCredentialCountInList": 16,
+    "maxCredentialIdLength": 1024,
+    "algorithms": [
+      {
+        "alg": -7,
+        "type": "public-key"
+      },
+      {
+        "alg": -8,
+        "type": "public-key"
+      },
+      {
+        "alg": -35,
+        "type": "public-key"
+      },
+      {
+        "alg": -36,
+        "type": "public-key"
+      }
+    ],
+    "maxSerializedLargeBlobArray": 2048,
+    "forcePINChange": false,
+    "minPINLength": 4,
+    "firmwareVersion": 1798,
+    "maxCredBlobLength": 128,
+    "transports": [
+      "usb"
+    ],
+    "maxRPIDsForSetMinPINLength": 120,
+    "vendorPrototypeConfigCommands": [
+        461859385925337,
+        745970364747215,
+        975890625828127,
+        1195541514061282,
+        1454937170350291,
+        2206788177639575
+    ],
+    "maxPINLength": 63,
+    "encCredStoreState": "",
+    "encIdentifier": "",
+    "pinComplexityPolicy": true,
+    "authenticatorConfigCommands": [
+      1,
+      2,
+      3,
+      255
+    ]
+  }
+}
