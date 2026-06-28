@@ -95,7 +95,7 @@
       "perCredMgmtRO": true,
       "pinUvAuthToken": true,
       "setMinPINLength": true,
-      "makeCredUvNotRqd": false
+      "makeCredUvNotRqd": true
     },
     "maxMsgSize": 1024,
     "pinUvAuthProtocols": [
@@ -142,7 +142,7 @@
     "maxPINLength": 63,
     "encCredStoreState": "",
     "encIdentifier": "",
-    "pinComplexityPolicy": false,
+    "pinComplexityPolicy": true,
     "authenticatorConfigCommands": [
       1,
       2,
