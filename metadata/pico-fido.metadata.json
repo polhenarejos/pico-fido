@@ -1,6 +1,9 @@
 {
   "legalHeader": "Submission of this statement and retrieval and use of this statement indicates acceptance of the appropriate agreement located at https://fidoalliance.org/metadata/metadata-legal-terms/.",
   "description": "Pico FIDO Authenticator",
+  "friendlyNames": {
+    "en-US": "Pico Keys"
+  },
   "aaguid": "89fb94b7-06c9-3673-9b7e-30526d968145",
   "protocolFamily": "fido2",
   "schema": 3,
@@ -61,6 +64,8 @@
   "tcDisplay": [],
   "attestationRootCertificates": [],
   "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAAABlBMVEUAAABvs5mg1+NJAAAAAXRSTlMAQObYZgAAAAFvck5UAc+id5oAAAFoSURBVGje7VfLDsMgDMP//9PTpJWSkAc09DLZh6lilU0S4obWCIIgCIIgCOIZ0PEe++/x+3Oeflo5y7+4WKb3no/wA7rMRxRG+rHgpxQ6E8ywygoO/71UVZhYpgLUFC6SYc+6lYsCdq8JiYqCy9NjqQo0IyeTOz1XuPZpU+B+oyjgeCeGGEsCzRPAWAwFc9H2GjcJlfTcRhCVEeXs3CcxyWClA5YEkEL6vXTpXABYU5gEsCyw5Qm9gkhaaavTEO4OWR+0zRCuNLXtRlsriJywvD36VjGOCd3NYHwXB24gcSs74RDFcl6M0lwWGEPATAGnQOp8+wJjio2Zzs2eZEQkAGVMqjG9+mM1gvn4CmdpwQFTFpAJYGu43hAIRke0VYEoRfrLoOi90zvPbdlZVwVAnCZnuvSCliMdkM901jcl8kR7UgyrLK+j+e1UKCxUWf+/dPlV7fvCZfnFW/ip2wBBEARBEATxn/gAw1MDBthPl68AAAAASUVORK5CYII=",
+  "multiDeviceCredentialSupport": "unsupported",
+  "cxpConfigURL": "https://www.picokeys.com/",
   "authenticatorGetInfo": {
     "versions": [
       "U2F_V2",
