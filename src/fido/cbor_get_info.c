@@ -140,7 +140,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "setMinPINLength"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "makeCredUvNotRqd"));
-    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, alwaysUv ? false : get_opts() & FIDO2_OPT_MCUV_NOTRQD));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, get_opts() & FIDO2_OPT_AUV ? false : get_opts() & FIDO2_OPT_MCUV_NOTRQD));
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
