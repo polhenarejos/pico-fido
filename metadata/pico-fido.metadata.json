@@ -7,7 +7,7 @@
   "aaguid": "89fb94b7-06c9-3673-9b7e-30526d968145",
   "protocolFamily": "fido2",
   "schema": 3,
-  "authenticatorVersion": 1798,
+  "authenticatorVersion": 2048,
   "upv": [
     {
       "major": 1,
@@ -125,7 +125,7 @@
     "maxSerializedLargeBlobArray": 2048,
     "forcePINChange": false,
     "minPINLength": 4,
-    "firmwareVersion": 1798,
+    "firmwareVersion": 2048,
     "maxCredBlobLength": 128,
     "transports": [
       "usb"
