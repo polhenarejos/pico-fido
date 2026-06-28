@@ -30,6 +30,19 @@
 
 char *rp_id = NULL, *user_name = NULL, *display_name = NULL;
 
+static bool minpin_contains_rp(const uint8_t *rp_id_hash) {
+    file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
+    if (file_has_data(ef_minpin)) {
+        uint8_t *minpin_data = file_get_data(ef_minpin);
+        for (int o = 2; o < file_get_size(ef_minpin); o += 32) {
+            if (memcmp(minpin_data + o, rp_id_hash, 32) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 int cbor_make_credential(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
@@ -468,17 +481,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
         if (extensions.minPinLength == ptrue) {
             file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
-            if (file_has_data(ef_minpin)) {
-                uint8_t *minpin_data = file_get_data(ef_minpin);
-                for (int o = 2; o < file_get_size(ef_minpin); o += 32) {
-                    if (memcmp(minpin_data + o, rp_id_hash, 32) == 0) {
-                        minPinLen = minpin_data[0];
-                        if (minPinLen > 0) {
-                            l++;
-                        }
-                        break;
-                    }
-                }
+            if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[0] > 0 && minpin_contains_rp(rp_id_hash)) {
+                minPinLen = file_get_data(ef_minpin)[0];
+                l++;
             }
         }
         if (extensions.credBlob.present == true) {
@@ -487,7 +492,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (hmac_secret_mc) {
             l++;
         }
-        if (pin_complexity_policy == ptrue) {
+        if (pin_complexity_policy == ptrue && minpin_contains_rp(rp_id_hash)) {
             l++;
         }
         if (l > 0) {
@@ -559,7 +564,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 encrypt((uint8_t)hmacSecretPinUvAuthProtocol, sharedSecret, out1, (uint16_t)(salt_enc.len - poff), hmac_res);
                 CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, hmac_res, salt_enc.len));
             }
-            if (pin_complexity_policy == ptrue) {
+            if (pin_complexity_policy == ptrue && minpin_contains_rp(rp_id_hash)) {
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "pinComplexityPolicy"));
                 file_t *ef_pin_complexity_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
                 CBOR_CHECK(cbor_encode_boolean(&mapEncoder, file_has_data(ef_pin_complexity_policy)));

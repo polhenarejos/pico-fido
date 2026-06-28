@@ -83,6 +83,12 @@ configure_bool_option(
 if(FORBID_DISABLE_AUV)
     add_compile_definitions(FORBID_DISABLE_AUV=1)
 endif()
+if(DEFAULT_MCUV_NOT_REQUIRED)
+    add_compile_definitions(DEFAULT_MCUV_NOT_REQUIRED=1)
+endif()
+if(DEFAULT_PIN_POLICY)
+    add_compile_definitions(DEFAULT_PIN_POLICY=1)
+endif()
 
 if(ENABLE_OTP_APP OR ENABLE_OATH_APP)
     set(USB_ITF_CCID 1)

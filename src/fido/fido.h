@@ -162,4 +162,15 @@ typedef enum {
 } dev_state_t;
 extern int dev_state_update(dev_state_t state);
 
+typedef enum {
+    PIN_POLICY_NONE = 0x0,
+    PIN_POLICY_UPPER = 0x1,
+    PIN_POLICY_LOWER = 0x2,
+    PIN_POLICY_DIGIT = 0x4,
+    PIN_POLICY_SYMBOL = 0x8,
+    PIN_POLICY_ALL = PIN_POLICY_UPPER | PIN_POLICY_LOWER | PIN_POLICY_DIGIT | PIN_POLICY_SYMBOL,
+    PIN_POLICY_ALPHANUMERIC = PIN_POLICY_UPPER | PIN_POLICY_LOWER | PIN_POLICY_DIGIT,
+    PIN_POLICY_COMPLEX = PIN_POLICY_ALPHANUMERIC | PIN_POLICY_SYMBOL
+} pin_policy_t;
+
 #endif //_FIDO_H

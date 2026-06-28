@@ -42,7 +42,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborEncoder encoder;
     //CborEncoder mapEncoder;
     uint8_t *raw_subpara = NULL;
-    const bool *forceChangePin = NULL;
+    const bool *forceChangePin = NULL, *pinPolicy = NULL;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -98,6 +98,9 @@ int cbor_config(const uint8_t *data, size_t len) {
                     }
                     else if (subpara == 0x03) {
                         CBOR_FIELD_GET_BOOL(forceChangePin, 2);
+                    }
+                    else if (subpara == 0x04) {
+                        CBOR_FIELD_GET_BOOL(pinPolicy, 2);
                     }
                 }
             }
@@ -198,10 +201,11 @@ int cbor_config(const uint8_t *data, size_t len) {
             if (ef_pin_policy) {
                 uint8_t *val = calloc(1, 2 + vendorParamByteString.len);
                 if (val) {
-                    // Not ready yet for integer param
-                    // val[0] = (uint8_t)(vendorParamInt >> 8);
-                    // val[1] = (uint8_t)(vendorParamInt & 0xFF);
-                    memcpy(val + 2, vendorParamByteString.data, vendorParamByteString.len);
+                    val[0] = (uint8_t)(vendorParamInt >> 8);
+                    val[1] = (uint8_t)(vendorParamInt & 0xFF);
+                    if (vendorParamByteString.len > 0) {
+                        memcpy(val + 2, vendorParamByteString.data, vendorParamByteString.len);
+                    }
                     file_put_data(ef_pin_policy, val, 2 + (uint16_t)vendorParamByteString.len);
                     free(val);
                 }
@@ -265,6 +269,13 @@ int cbor_config(const uint8_t *data, size_t len) {
             mbedtls_sha256((uint8_t *) minPinLengthRPIDs[m].data, minPinLengthRPIDs[m].len, dataf + 2 + m * 32, 0);
         }
         file_put_data(ef_minpin, dataf, (uint16_t)(2 + minPinLengthRPIDs_len * 32));
+        if (pinPolicy == ptrue) {
+            file_t *ef_pin_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
+            if (ef_pin_policy) {
+                uint8_t val[2] = { 0 };
+                file_put_data(ef_pin_policy, val, sizeof(val));
+            }
+        }
         flash_commit();
         free(dataf);
         goto err; //No return

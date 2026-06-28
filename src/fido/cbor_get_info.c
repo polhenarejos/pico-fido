@@ -75,7 +75,7 @@ int cbor_get_info(void) {
     CborError error = CborNoError;
     uint8_t enc_identifier[DEV_STATE_SIZE] = { 0 }, enc_cred_store_state[DEV_STATE_SIZE] = { 0 };
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    uint8_t lfields = 19;
+    uint8_t lfields = 20;
     file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
     bool enterprise_profile = ((get_opts() & FIDO2_OPT_EA) && file_has_data(ef_ee_ea));
 #ifndef ENABLE_EMULATION
@@ -86,8 +86,8 @@ int cbor_get_info(void) {
     lfields++;
 #endif
     file_t *ef_pin_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
-    if (file_has_data(ef_pin_policy)) {
-        lfields += 2;
+    if (file_get_size(ef_pin_policy) > 2) {
+        lfields += 1;
     }
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lfields));
 
@@ -101,7 +101,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 7));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 7 + (file_has_data(ef_pin_policy) ? 1 : 0)));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credBlob"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));
@@ -109,6 +109,9 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "minPinLength"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret-mc"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "thirdPartyPayment"));
+    if (file_has_data(ef_pin_policy)) {
+        CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "pinComplexityPolicy"));
+    }
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
@@ -123,8 +126,9 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, !(get_opts() & FIDO2_OPT_NORK)));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "alwaysUv"));
-    bool alwaysUv = file_has_data(ef_pin) && (get_opts() & FIDO2_OPT_AUV || !getUserVerifiedFlagValue());
-    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, alwaysUv));
+    //bool alwaysUv = file_has_data(ef_pin) && (get_opts() & FIDO2_OPT_AUV || !getUserVerifiedFlagValue());
+    //CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, alwaysUv));
+    CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, get_opts() & FIDO2_OPT_AUV));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credMgmt"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "authnrCfg"));
@@ -245,9 +249,9 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x19));
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, enc_identifier, sizeof(enc_identifier)));
 
-    if (file_has_data(ef_pin_policy)) {
-        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1B));
-        CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1B));
+    CBOR_CHECK(cbor_encode_boolean(&mapEncoder, file_has_data(ef_pin_policy)));
+    if (file_get_size(ef_pin_policy) > 2) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1C));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_pin_policy) + 2, file_get_size(ef_pin_policy) - 2));
     }

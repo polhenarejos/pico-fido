@@ -284,6 +284,45 @@ static int check_keydev_encrypted(const uint8_t pin_token[32]) {
     return PICOKEYS_OK;
 }
 
+static bool pin_policy_pass(const uint8_t *pin, size_t pin_len) {
+    file_t *ef_pin_complexity_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
+    if (!file_has_data(ef_pin_complexity_policy)) {
+        return true;
+    }
+    uint16_t policy = get_uint16_be(file_get_data(ef_pin_complexity_policy));
+    if (policy == 0) {
+        return true;
+    }
+    bool has_upper = false, has_lower = false, has_digit = false, has_symbol = false;
+    for (size_t i = 0; i < pin_len; i++) {
+        if (pin[i] >= 'A' && pin[i] <= 'Z') {
+            has_upper = true;
+        }
+        else if (pin[i] >= 'a' && pin[i] <= 'z') {
+            has_lower = true;
+        }
+        else if (pin[i] >= '0' && pin[i] <= '9') {
+            has_digit = true;
+        }
+        else {
+            has_symbol = true;
+        }
+    }
+    if (policy & PIN_POLICY_UPPER && !has_upper) {
+        return false;
+    }
+    if (policy & PIN_POLICY_LOWER && !has_lower) {
+        return false;
+    }
+    if (policy & PIN_POLICY_DIGIT && !has_digit) {
+        return false;
+    }
+    if (policy & PIN_POLICY_SYMBOL && !has_symbol) {
+        return false;
+    }
+    return true;
+}
+
 uint8_t new_pin_mismatches = 0;
 
 int cbor_client_pin(const uint8_t *data, size_t len) {
@@ -423,6 +462,9 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             minPin = *file_get_data(ef_minpin);
         }
         if (pin_len < minPin) {
+            CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
+        }
+        if (!pin_policy_pass(paddedNewPin, pin_len)) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
         uint8_t hsh[35], dhash[32];
@@ -577,6 +619,9 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (pin_len < minPin) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
+        if (!pin_policy_pass(paddedNewPin, pin_len)) {
+            CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
+        }
 
         // New PIN is valid and verified
         ret = load_keydev(keydev);
@@ -728,9 +773,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         flash_commit();
         file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
-            if (subcommand == 0x09 &&
-                                permissions == CTAP_PERMISSION_ACFG &&
-                                rpId.present == false) {
+            if (subcommand == 0x09 && permissions == CTAP_PERMISSION_ACFG && rpId.present == false) {
                 CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
             }
             else {
