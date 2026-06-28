@@ -101,7 +101,8 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
-    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 7 + (file_has_data(ef_pin_policy) ? 1 : 0)));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 8 + (file_has_data(ef_pin_policy) ? 1 : 0)));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "uvm"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credBlob"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credProtect"));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "hmac-secret"));

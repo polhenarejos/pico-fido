@@ -89,7 +89,9 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #define FIDO2_OPT_NORK          0x04 // No Resident Key
 #define FIDO2_OPT_MCUV_NOTRQD   0x08 // User Verification Not Required
 
+#ifndef MAX_PIN_RETRIES
 #define MAX_PIN_RETRIES 8
+#endif
 extern bool getUserPresentFlagValue(void);
 extern bool getUserVerifiedFlagValue(void);
 extern void clearUserPresentFlag(void);

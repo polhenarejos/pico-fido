@@ -59,7 +59,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     int64_t kty = 2, hmac_alg = 0, crv = 0;
     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
     bool hmac_secret_mc = false, has_credprot = false;
-    const bool *pin_complexity_policy = NULL;
+    const bool *pin_complexity_policy = NULL, *uvm = NULL;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
     CredExtensions extensions = { 0 };
@@ -183,6 +183,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", extensions.thirdPartyPayment);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "pinComplexityPolicy", pin_complexity_policy);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "uvm", uvm);
 
                 CBOR_ADVANCE(2);
             }
@@ -495,8 +496,25 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (pin_complexity_policy == ptrue && minpin_contains_rp(rp_id_hash)) {
             l++;
         }
+        if (uvm == ptrue) {
+            l++;
+        }
         if (l > 0) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
+            if (uvm == ptrue) {
+                CborEncoder uvm_outer, uvm_entry;
+
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "uvm"));
+                CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &uvm_outer, 1));
+                CBOR_CHECK(cbor_encoder_create_array(&uvm_outer, &uvm_entry, 3));
+
+                CBOR_CHECK(cbor_encode_uint(&uvm_entry, 0x00000800)); // passcode_external
+                CBOR_CHECK(cbor_encode_uint(&uvm_entry, 0x0002));     // hardware
+                CBOR_CHECK(cbor_encode_uint(&uvm_entry, 0x0004));     // on_chip
+
+                CBOR_CHECK(cbor_encoder_close_container(&uvm_outer, &uvm_entry));
+                CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &uvm_outer));
+            }
             if (extensions.credBlob.present == true) {
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "credBlob"));
                 CBOR_CHECK(cbor_encode_boolean(&mapEncoder, extensions.credBlob.len < MAX_CREDBLOB_LENGTH));
