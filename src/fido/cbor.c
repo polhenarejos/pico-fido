@@ -27,6 +27,7 @@
 #include "management.h"
 #include "ctap2_cbor.h"
 #include "version.h"
+#include "audit.h"
 
 const bool _btrue = true, _bfalse = false;
 
@@ -45,44 +46,56 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     if (len > 0) {
         DEBUG_DATA(data + 1, len - 1);
     }
+    int r = CTAP1_ERR_INVALID_CMD, cmd_flags = CMD_FLAG_NONE;
+    audit_entry_set_current_event(AUDIT_EVT_APP_EVT | 0x0200 | 0x40 | data[0]);
     if (cap_supported(CAP_FIDO2)) {
         if (cmd == CTAPHID_CBOR) {
             if (data[0] != CTAP_GET_NEXT_ASSERTION) {
                 reset_gna_state();
             }
             if (data[0] == CTAP_MAKE_CREDENTIAL) {
-                return cbor_make_credential(data + 1, len - 1);
+                cmd_flags = CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL;
+                r = cbor_make_credential(data + 1, len - 1);
             }
             if (data[0] == CTAP_GET_INFO) {
-                return cbor_get_info();
+                r = cbor_get_info();
             }
             else if (data[0] == CTAP_RESET) {
-                return cbor_reset();
+                cmd_flags = CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL;
+                r = cbor_reset();
             }
             else if (data[0] == CTAP_CLIENT_PIN) {
-                return cbor_client_pin(data + 1, len - 1);
+                cmd_flags = CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL;
+                r = cbor_client_pin(data + 1, len - 1);
             }
             else if (data[0] == CTAP_GET_ASSERTION) {
-                return cbor_get_assertion(data + 1, len - 1, false);
+                cmd_flags = CMD_FLAG_AUDIT_LOG;
+                r = cbor_get_assertion(data + 1, len - 1, false);
             }
             else if (data[0] == CTAP_GET_NEXT_ASSERTION) {
-                return cbor_get_next_assertion(data + 1, len - 1);
+                cmd_flags = CMD_FLAG_AUDIT_LOG;
+                r = cbor_get_next_assertion(data + 1, len - 1);
             }
             else if (data[0] == CTAP_SELECTION) {
-                return cbor_selection();
+                r = cbor_selection();
             }
             else if (data[0] == CTAP_CREDENTIAL_MGMT || data[0] == 0x41) {
-                return cbor_cred_mgmt(data + 1, len - 1);
+                cmd_flags = CMD_FLAG_AUDIT_LOG;
+                r = cbor_cred_mgmt(data + 1, len - 1);
             }
             else if (data[0] == CTAP_CONFIG) {
-                return cbor_config(data + 1, len - 1);
+                cmd_flags = CMD_FLAG_AUDIT_LOG;
+                r = cbor_config(data + 1, len - 1);
             }
             else if (data[0] == CTAP_LARGE_BLOBS) {
-                return cbor_large_blobs(data + 1, len - 1);
+                cmd_flags = CMD_FLAG_AUDIT_LOG;
+                r = cbor_large_blobs(data + 1, len - 1);
             }
         }
         else if (cmd == CTAP_VENDOR_CBOR) {
-            return cbor_vendor(data, len);
+            cmd_flags = CMD_FLAG_AUDIT_LOG;
+            audit_entry_set_current_event(AUDIT_EVT_APP_EVT | 0x0200 | 0x80 | data[0]);
+            r = cbor_vendor(data, len);
         }
         else if (cmd == 0xC2) {
             if (man_get_config() == 0) {
@@ -91,8 +104,17 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
                 return 0;
             }
         }
+        else {
+            r = CTAP1_ERR_INVALID_CMD;
+        }
     }
-    return CTAP1_ERR_INVALID_CMD;
+    if (cmd_flags & CMD_FLAG_AUDIT_LOG) {
+        if (cmd_flags & CMD_FLAG_CRITICAL) {
+            audit_entry_set_current_flags(AUDIT_EF_CRITICAL);
+        }
+        audit_log_current_entry_with_result(r);
+    }
+    return r;
 }
 
 void *cbor_thread(void *arg) __attribute__((unused));

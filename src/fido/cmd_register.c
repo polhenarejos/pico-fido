@@ -116,10 +116,10 @@ int cmd_register(void) {
 }
 
 static const cmd_t cmds[] = {
-    { CTAP_REGISTER, cmd_register },
-    { CTAP_AUTHENTICATE, cmd_authenticate },
-    { CTAP_VERSION, cmd_version },
-    { 0x00, 0x0 }
+    { CTAP_REGISTER, cmd_register, CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL },
+    { CTAP_AUTHENTICATE, cmd_authenticate, CMD_FLAG_AUDIT_LOG },
+    { CTAP_VERSION, cmd_version, CMD_FLAG_NONE },
+    { 0x00, 0x0, CMD_FLAG_NONE }
 };
 
 int u2f_process_apdu(void) {

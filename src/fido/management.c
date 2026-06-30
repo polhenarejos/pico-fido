@@ -190,10 +190,10 @@ static int cmd_factory_reset(void) {
 #define INS_RESET                   0x1E    // Reset device
 
 static const cmd_t cmds[] = {
-    { INS_READ_CONFIG, cmd_read_config },
-    { INS_WRITE_CONFIG, cmd_write_config },
-    { INS_RESET, cmd_factory_reset },
-    { 0x00, 0x0 }
+    { INS_READ_CONFIG, cmd_read_config, CMD_FLAG_NONE },
+    { INS_WRITE_CONFIG, cmd_write_config, CMD_FLAG_AUDIT_LOG },
+    { INS_RESET, cmd_factory_reset, CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL },
+    { 0x00, 0x0, CMD_FLAG_NONE }
 };
 
 static int man_process_apdu(void) {

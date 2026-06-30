@@ -30,6 +30,7 @@
 #include "mbedtls/hkdf.h"
 #include "mbedtls/md.h"
 #include <stdlib.h>
+#include "audit.h"
 
 #define MAX_OATH_CRED   255
 #define CHALLENGE_LEN   8
@@ -1106,22 +1107,22 @@ static int cmd_get_credential(void) {
 #define INS_GET_CREDENTIAL  0xb5
 
 static const cmd_t cmds[] = {
-    { INS_PUT, cmd_put },
-    { INS_DELETE, cmd_delete },
-    { INS_SET_CODE, cmd_set_code },
-    { INS_RESET, cmd_reset },
-    { INS_RENAME, cmd_rename },
-    { INS_LIST, cmd_list },
-    { INS_VALIDATE, cmd_validate },
-    { INS_CALCULATE, cmd_calculate },
-    { INS_CALC_ALL, cmd_calculate_all },
-    { INS_SEND_REMAINING, cmd_send_remaining },
-    { INS_SET_PIN, cmd_set_otp_pin },
-    { INS_CHANGE_PIN, cmd_change_otp_pin },
-    { INS_VERIFY_PIN, cmd_verify_otp_pin },
-    { INS_VERIFY_CODE, cmd_verify_hotp },
-    { INS_GET_CREDENTIAL, cmd_get_credential },
-    { 0x00, 0x0 }
+    { INS_PUT, cmd_put, CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL },
+    { INS_DELETE, cmd_delete, CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL },
+    { INS_SET_CODE, cmd_set_code, CMD_FLAG_AUDIT_LOG },
+    { INS_RESET, cmd_reset, CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL },
+    { INS_RENAME, cmd_rename, CMD_FLAG_AUDIT_LOG },
+    { INS_LIST, cmd_list, CMD_FLAG_NONE },
+    { INS_VALIDATE, cmd_validate, CMD_FLAG_NONE },
+    { INS_CALCULATE, cmd_calculate, CMD_FLAG_AUDIT_LOG },
+    { INS_CALC_ALL, cmd_calculate_all, CMD_FLAG_AUDIT_LOG },
+    { INS_SEND_REMAINING, cmd_send_remaining, CMD_FLAG_NONE },
+    { INS_SET_PIN, cmd_set_otp_pin, CMD_FLAG_AUDIT_LOG },
+    { INS_CHANGE_PIN, cmd_change_otp_pin, CMD_FLAG_AUDIT_LOG },
+    { INS_VERIFY_PIN, cmd_verify_otp_pin, CMD_FLAG_NONE },
+    { INS_VERIFY_CODE, cmd_verify_hotp, CMD_FLAG_NONE },
+    { INS_GET_CREDENTIAL, cmd_get_credential, CMD_FLAG_AUDIT_LOG },
+    { 0x00, 0x0, CMD_FLAG_NONE }
 };
 
 static int oath_process_apdu(void) {
@@ -1131,7 +1132,14 @@ static int oath_process_apdu(void) {
     if (cap_supported(CAP_OATH)) {
         for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
             if (cmd->ins == INS(apdu)) {
+                audit_entry_set_current_event(AUDIT_EVT_APP_EVT | 0x0300 | INS(apdu));
                 int r = cmd->cmd_handler();
+                if (cmd->flags & CMD_FLAG_AUDIT_LOG) {
+                    if (cmd->flags & CMD_FLAG_CRITICAL) {
+                        audit_entry_set_current_flags(AUDIT_EF_CRITICAL);
+                    }
+                    audit_log_current_entry_with_result(r);
+                }
                 return r;
             }
         }

@@ -41,6 +41,7 @@
 #include "version.h"
 #include "crypto_utils.h"
 #include "otp.h"
+#include "audit.h"
 
 static int fido_unload(void);
 
@@ -611,12 +612,12 @@ static int cmd_cbor(void) {
 }
 
 static const cmd_t cmds[] = {
-    { CTAP_REGISTER, cmd_register },
-    { CTAP_AUTHENTICATE, cmd_authenticate },
-    { CTAP_VERSION, cmd_version },
-    { CTAP_CBOR, cmd_cbor },
-    { 0x41, cmd_vendor },
-    { 0x00, 0x0 }
+    { CTAP_REGISTER, cmd_register, CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL },
+    { CTAP_AUTHENTICATE, cmd_authenticate, CMD_FLAG_AUDIT_LOG | CMD_FLAG_CRITICAL },
+    { CTAP_VERSION, cmd_version, CMD_FLAG_NONE },
+    { CTAP_CBOR, cmd_cbor, CMD_FLAG_NONE},
+    { 0x41, cmd_vendor, CMD_FLAG_NONE },
+    { 0x00, 0x0, CMD_FLAG_NONE }
 };
 
 int fido_process_apdu(void) {
@@ -626,7 +627,14 @@ int fido_process_apdu(void) {
     if (cap_supported(CAP_U2F)) {
         for (const cmd_t *cmd = cmds; cmd->ins != 0x00; cmd++) {
             if (cmd->ins == INS(apdu)) {
+                audit_entry_set_current_event(AUDIT_EVT_APP_EVT | 0x0200 | INS(apdu));
                 int r = cmd->cmd_handler();
+                if (cmd->flags & CMD_FLAG_AUDIT_LOG) {
+                    if (cmd->flags & CMD_FLAG_CRITICAL) {
+                        audit_entry_set_current_flags(AUDIT_EF_CRITICAL);
+                    }
+                    audit_log_current_entry_with_result(r);
+                }
                 return r;
             }
         }
