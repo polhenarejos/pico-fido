@@ -244,6 +244,7 @@ if(NOT ESP_PLATFORM)
 
         add_executable(fido_resident_container_test
             ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_container.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_container_store.c
             ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_crypto_provider.c
             ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_policy.c
             ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_store_txn.c
