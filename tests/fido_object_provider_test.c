@@ -176,6 +176,60 @@ static void test_secret_record(void) {
     assert(protector->seal(protector->ctx, &identity, nonce, aad, plaintext, sizeof(plaintext), stored, tag) == PICOKEYS_WRONG_DATA);
 }
 
+static void test_oath_secret_record(void) {
+    static const uint8_t plaintext[] = { 0x61, 0x62, 0x63, 0x64, 0x65 };
+    const file_object_record_protector_t *protector = fido_oath_object_record_protector();
+    file_object_record_identity_t identity = test_identity(FILE_OBJECT_PROTECTION_AEAD_SECRET, 0);
+    identity.namespace_id = FIDO_OATH_OBJECT_NAMESPACE;
+    uint8_t aad[FILE_OBJECT_RECORD_AAD_SIZE];
+    uint8_t nonce[FILE_OBJECT_RECORD_NONCE_SIZE];
+    uint8_t stored[sizeof(plaintext)];
+    uint8_t output[sizeof(plaintext)];
+    uint8_t tag[FILE_OBJECT_AUTH_TAG_SIZE];
+
+    assert(fido_oath_object_manifest_authenticator() != NULL);
+    assert(protector != NULL);
+    test_aad_build(&identity, aad, nonce);
+    assert(protector->seal(protector->ctx, &identity, nonce, aad, plaintext, sizeof(plaintext), stored, tag) == PICOKEYS_OK);
+    assert(memcmp(stored, plaintext, sizeof(plaintext)) != 0);
+
+    test_device_key_available = false;
+    assert(protector->unseal(protector->ctx, &identity, nonce, aad, stored, sizeof(stored), tag, output) == PICOKEYS_OK);
+    assert(memcmp(output, plaintext, sizeof(plaintext)) == 0);
+    test_device_key_available = true;
+
+    identity.namespace_id = FIDO_OBJECT_NAMESPACE;
+    test_aad_build(&identity, aad, nonce);
+    assert(protector->seal(protector->ctx, &identity, nonce, aad, plaintext, sizeof(plaintext), stored, tag) == PICOKEYS_WRONG_DATA);
+}
+
+static void test_otp_secret_record(void) {
+    static const uint8_t plaintext[] = { 0x71, 0x72, 0x73, 0x74, 0x75 };
+    const file_object_record_protector_t *protector = fido_otp_object_record_protector();
+    file_object_record_identity_t identity = test_identity(FILE_OBJECT_PROTECTION_AEAD_SECRET, 0);
+    identity.namespace_id = FIDO_OTP_OBJECT_NAMESPACE;
+    uint8_t aad[FILE_OBJECT_RECORD_AAD_SIZE];
+    uint8_t nonce[FILE_OBJECT_RECORD_NONCE_SIZE];
+    uint8_t stored[sizeof(plaintext)];
+    uint8_t output[sizeof(plaintext)];
+    uint8_t tag[FILE_OBJECT_AUTH_TAG_SIZE];
+
+    assert(fido_otp_object_manifest_authenticator() != NULL);
+    assert(protector != NULL);
+    test_aad_build(&identity, aad, nonce);
+    assert(protector->seal(protector->ctx, &identity, nonce, aad, plaintext, sizeof(plaintext), stored, tag) == PICOKEYS_OK);
+    assert(memcmp(stored, plaintext, sizeof(plaintext)) != 0);
+
+    test_device_key_available = false;
+    assert(protector->unseal(protector->ctx, &identity, nonce, aad, stored, sizeof(stored), tag, output) == PICOKEYS_OK);
+    assert(memcmp(output, plaintext, sizeof(plaintext)) == 0);
+    test_device_key_available = true;
+
+    identity.namespace_id = FIDO_OATH_OBJECT_NAMESPACE;
+    test_aad_build(&identity, aad, nonce);
+    assert(protector->seal(protector->ctx, &identity, nonce, aad, plaintext, sizeof(plaintext), stored, tag) == PICOKEYS_WRONG_DATA);
+}
+
 int main(void) {
     test_root_reset();
     test_manifest_authentication();
@@ -183,6 +237,10 @@ int main(void) {
     test_authenticated_public_record();
     test_root_reset();
     test_secret_record();
+    test_root_reset();
+    test_oath_secret_record();
+    test_root_reset();
+    test_otp_secret_record();
     puts("fido_object_provider_test: OK");
     return 0;
 }

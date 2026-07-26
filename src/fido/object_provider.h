@@ -21,10 +21,16 @@
 #include "object_container.h"
 
 #define FIDO_OBJECT_NAMESPACE 0x0002u
+#define FIDO_OATH_OBJECT_NAMESPACE 0x0003u
+#define FIDO_OTP_OBJECT_NAMESPACE 0x0004u
 
 const file_object_authenticator_t *fido_object_manifest_authenticator(void);
 const file_object_record_protector_t *fido_object_record_protector(void);
 const file_object_authenticator_t *fido_object_legacy_manifest_authenticator(void);
 const file_object_record_protector_t *fido_object_legacy_record_protector(void);
+const file_object_authenticator_t *fido_oath_object_manifest_authenticator(void);
+const file_object_record_protector_t *fido_oath_object_record_protector(void);
+const file_object_authenticator_t *fido_otp_object_manifest_authenticator(void);
+const file_object_record_protector_t *fido_otp_object_record_protector(void);
 
 #endif // _OBJECT_PROVIDER_H_

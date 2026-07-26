@@ -76,9 +76,17 @@ run_phase() {
     PICO_FIDO_COMPAT_PHASE="${phase}" PICO_FIDO_COMPAT_DIR="${STATE_DIR}" "${PYTEST}" -q "${TEST_FILE}"
     stop_emulator
 
-    if [ "${phase}" = "upgrade" ] && grep -a -q "legacy-container-compat.example" "${FLASH_DIR}/memory.flash"; then
-        echo "Legacy RP ID remains plaintext in the upgraded flash image." >&2
-        return 1
+    if [ "${phase}" = "upgrade" ]; then
+        if grep -a -q "legacy-container-compat.example" "${FLASH_DIR}/memory.flash"; then
+            echo "Legacy RP ID remains plaintext in the upgraded flash image." >&2
+            return 1
+        fi
+        for secret in "legacy-oath-secret" "container-oath-secret"; do
+            if grep -a -q "${secret}" "${FLASH_DIR}/memory.flash"; then
+                echo "OATH secret remains plaintext in the upgraded flash image." >&2
+                return 1
+            fi
+        done
     fi
 }
 

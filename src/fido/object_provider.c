@@ -24,8 +24,12 @@
 
 static file_object_crypto_provider_t fido_object_crypto_provider;
 static file_object_crypto_provider_t fido_object_legacy_crypto_provider;
+static file_object_crypto_provider_t fido_oath_object_crypto_provider;
+static file_object_crypto_provider_t fido_otp_object_crypto_provider;
 static bool fido_object_crypto_provider_initialized;
 static bool fido_object_legacy_crypto_provider_initialized;
+static bool fido_oath_object_crypto_provider_initialized;
+static bool fido_otp_object_crypto_provider_initialized;
 
 static int fido_object_root_load(void *ctx, uint8_t root[FILE_OBJECT_CRYPTO_ROOT_KEY_SIZE]) {
     (void)ctx;
@@ -33,6 +37,18 @@ static int fido_object_root_load(void *ctx, uint8_t root[FILE_OBJECT_CRYPTO_ROOT
 }
 
 static int fido_object_public_root_load(void *ctx, uint8_t root[FILE_OBJECT_CRYPTO_ROOT_KEY_SIZE]) {
+    (void)ctx;
+    derive_kbase(root);
+    return PICOKEYS_OK;
+}
+
+static int fido_oath_object_root_load(void *ctx, uint8_t root[FILE_OBJECT_CRYPTO_ROOT_KEY_SIZE]) {
+    (void)ctx;
+    derive_kbase(root);
+    return PICOKEYS_OK;
+}
+
+static int fido_otp_object_root_load(void *ctx, uint8_t root[FILE_OBJECT_CRYPTO_ROOT_KEY_SIZE]) {
     (void)ctx;
     derive_kbase(root);
     return PICOKEYS_OK;
@@ -78,6 +94,42 @@ static int fido_object_legacy_crypto_provider_init(void) {
     return r;
 }
 
+static int fido_oath_object_crypto_provider_init(void) {
+    if (fido_oath_object_crypto_provider_initialized) {
+        return PICOKEYS_OK;
+    }
+
+    const file_object_crypto_provider_config_t config = {
+        .namespace_id = FIDO_OATH_OBJECT_NAMESPACE,
+        .load_root = fido_oath_object_root_load,
+        .load_public_root = fido_oath_object_root_load,
+        .identity_valid = fido_object_identity_valid
+    };
+    int r = file_object_crypto_provider_init(&fido_oath_object_crypto_provider, &config);
+    if (r == PICOKEYS_OK) {
+        fido_oath_object_crypto_provider_initialized = true;
+    }
+    return r;
+}
+
+static int fido_otp_object_crypto_provider_init(void) {
+    if (fido_otp_object_crypto_provider_initialized) {
+        return PICOKEYS_OK;
+    }
+
+    const file_object_crypto_provider_config_t config = {
+        .namespace_id = FIDO_OTP_OBJECT_NAMESPACE,
+        .load_root = fido_otp_object_root_load,
+        .load_public_root = fido_otp_object_root_load,
+        .identity_valid = fido_object_identity_valid
+    };
+    int r = file_object_crypto_provider_init(&fido_otp_object_crypto_provider, &config);
+    if (r == PICOKEYS_OK) {
+        fido_otp_object_crypto_provider_initialized = true;
+    }
+    return r;
+}
+
 const file_object_authenticator_t *fido_object_manifest_authenticator(void) {
     if (fido_object_crypto_provider_init() != PICOKEYS_OK) {
         return NULL;
@@ -104,4 +156,32 @@ const file_object_record_protector_t *fido_object_legacy_record_protector(void) 
         return NULL;
     }
     return file_object_crypto_record_protector(&fido_object_legacy_crypto_provider);
+}
+
+const file_object_authenticator_t *fido_oath_object_manifest_authenticator(void) {
+    if (fido_oath_object_crypto_provider_init() != PICOKEYS_OK) {
+        return NULL;
+    }
+    return file_object_crypto_manifest_authenticator(&fido_oath_object_crypto_provider);
+}
+
+const file_object_record_protector_t *fido_oath_object_record_protector(void) {
+    if (fido_oath_object_crypto_provider_init() != PICOKEYS_OK) {
+        return NULL;
+    }
+    return file_object_crypto_record_protector(&fido_oath_object_crypto_provider);
+}
+
+const file_object_authenticator_t *fido_otp_object_manifest_authenticator(void) {
+    if (fido_otp_object_crypto_provider_init() != PICOKEYS_OK) {
+        return NULL;
+    }
+    return file_object_crypto_manifest_authenticator(&fido_otp_object_crypto_provider);
+}
+
+const file_object_record_protector_t *fido_otp_object_record_protector(void) {
+    if (fido_otp_object_crypto_provider_init() != PICOKEYS_OK) {
+        return NULL;
+    }
+    return file_object_crypto_record_protector(&fido_otp_object_crypto_provider);
 }

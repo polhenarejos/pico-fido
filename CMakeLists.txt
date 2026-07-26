@@ -138,12 +138,14 @@ list(APPEND SOURCES
 
 if(ENABLE_OATH_APP)
     list(APPEND SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/oath_container.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/oath.c
     )
 endif()
 
 if(ENABLE_OTP_APP)
     list(APPEND SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/otp_container.c
         ${CMAKE_CURRENT_LIST_DIR}/src/fido/otp.c
     )
 endif()
@@ -260,6 +262,44 @@ if(NOT ESP_PLATFORM)
         endif()
         target_link_libraries(fido_resident_container_test PRIVATE mbedtls)
         add_test(NAME fido_resident_container_test COMMAND fido_resident_container_test)
+
+        add_executable(fido_oath_container_test
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_container.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_container_store.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_crypto_provider.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_policy.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_store_txn.c
+            ${CMAKE_CURRENT_LIST_DIR}/src/fido/object_provider.c
+            ${CMAKE_CURRENT_LIST_DIR}/src/fido/oath_container.c
+            ${CMAKE_CURRENT_LIST_DIR}/tests/fido_oath_container_test.c
+        )
+        target_include_directories(fido_oath_container_test PRIVATE ${INCLUDES})
+        if(MSVC)
+            target_compile_options(fido_oath_container_test PRIVATE /W4 /WX)
+        else()
+            target_compile_options(fido_oath_container_test PRIVATE -Wall -Wextra -Werror)
+        endif()
+        target_link_libraries(fido_oath_container_test PRIVATE mbedtls)
+        add_test(NAME fido_oath_container_test COMMAND fido_oath_container_test)
+
+        add_executable(fido_otp_container_test
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_container.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_container_store.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_crypto_provider.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_policy.c
+            ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_store_txn.c
+            ${CMAKE_CURRENT_LIST_DIR}/src/fido/object_provider.c
+            ${CMAKE_CURRENT_LIST_DIR}/src/fido/otp_container.c
+            ${CMAKE_CURRENT_LIST_DIR}/tests/fido_otp_container_test.c
+        )
+        target_include_directories(fido_otp_container_test PRIVATE ${INCLUDES})
+        if(MSVC)
+            target_compile_options(fido_otp_container_test PRIVATE /W4 /WX)
+        else()
+            target_compile_options(fido_otp_container_test PRIVATE -Wall -Wextra -Werror)
+        endif()
+        target_link_libraries(fido_otp_container_test PRIVATE mbedtls)
+        add_test(NAME fido_otp_container_test COMMAND fido_otp_container_test)
     else()
         target_link_libraries(
             pico_fido

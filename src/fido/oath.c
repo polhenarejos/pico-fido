@@ -25,6 +25,7 @@
 #include "tlv.h"
 #include "crypto_utils.h"
 #include "management.h"
+#include "oath_container.h"
 #include "mbedtls/constant_time.h"
 #include "mbedtls/gcm.h"
 #include "mbedtls/hkdf.h"
@@ -101,11 +102,16 @@ static bool oath_response_append(uint8_t tag, const uint8_t *data, size_t len) {
 }
 
 typedef struct {
-    file_t **files;
     uint16_t *fids;
     size_t len;
     size_t cap;
 } oath_cred_list_t;
+
+typedef struct {
+    const uint8_t *data;
+    uint8_t *allocated;
+    uint16_t size;
+} oath_credential_data_t;
 
 typedef struct {
     int ret;
@@ -327,7 +333,7 @@ static int oath_put_code_key(file_t *ef, const uint8_t *key, uint16_t key_len) {
 }
 
 static int oath_migrate_credential(file_t *ef, bool *changed) {
-    if (!file_has_data(ef)) {
+    if (!file_has_data(ef) || oath_container_is_marker(ef)) {
         return PICOKEYS_OK;
     }
     tlv_ctx_t ctxi, key = { 0 };
@@ -383,12 +389,6 @@ static int oath_migrate_secrets(void) {
     return PICOKEYS_OK;
 }
 
-static int cmp_file_fid(const void *a, const void *b) {
-    const file_t *fa = *(const file_t * const *)a;
-    const file_t *fb = *(const file_t * const *)b;
-    return (fa->fid > fb->fid) - (fa->fid < fb->fid);
-}
-
 static int cmp_u16(const void *a, const void *b) {
     const uint16_t fa = *(const uint16_t *)a;
     const uint16_t fb = *(const uint16_t *)b;
@@ -400,42 +400,188 @@ static bool collect_oath_cred(file_t *file, void *ctx) {
     if (file->fid < EF_OATH_CRED || file->fid >= EF_OATH_CRED + MAX_OATH_CRED || list->len >= list->cap) {
         return true;
     }
-    if (list->files) {
-        list->files[list->len] = file;
-    }
-    if (list->fids) {
-        list->fids[list->len] = file->fid;
-    }
+    list->fids[list->len] = file->fid;
     list->len++;
     return true;
 }
 
-static size_t present_oath_cred_files(file_t **files, size_t cap) {
-    oath_cred_list_t list = { .files = files, .fids = NULL, .len = 0, .cap = cap };
-    file_for_each_dynamic(collect_oath_cred, &list);
-    qsort(files, list.len, sizeof(files[0]), cmp_file_fid);
-    return list.len;
-}
-
 static size_t present_oath_cred_fids(uint16_t *fids, size_t cap) {
-    oath_cred_list_t list = { .files = NULL, .fids = fids, .len = 0, .cap = cap };
+    oath_cred_list_t list = {
+        .fids = fids,
+        .len = 0,
+        .cap = cap
+    };
     file_for_each_dynamic(collect_oath_cred, &list);
     qsort(fids, list.len, sizeof(fids[0]), cmp_u16);
     return list.len;
 }
 
-static file_t *find_oath_cred(const uint8_t *name, size_t name_len) {
-    file_t *creds[MAX_OATH_CRED];
-    size_t num_creds = present_oath_cred_files(creds, MAX_OATH_CRED);
+static uint8_t oath_credential_slot(uint16_t fid) {
+    return (uint8_t)(fid - EF_OATH_CRED);
+}
+
+static int oath_credential_open(uint16_t fid, uint16_t object_type, oath_credential_data_t *credential) {
+    if (!credential || fid < EF_OATH_CRED || fid >= EF_OATH_CRED + MAX_OATH_CRED) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    memset(credential, 0, sizeof(*credential));
+    file_t *file = file_search(fid);
+    if (!file_has_data(file)) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    if (!oath_container_is_marker(file)) {
+        credential->data = file_get_data(file);
+        credential->size = file_get_size(file);
+        return PICOKEYS_OK;
+    }
+
+    uint32_t object_size = 0;
+    uint8_t slot = oath_credential_slot(fid);
+    int ret = oath_container_object_size(slot, object_type, &object_size);
+    if (ret != PICOKEYS_OK) {
+        return ret;
+    }
+    if (object_size == 0 || object_size > UINT16_MAX) {
+        return PICOKEYS_WRONG_LENGTH;
+    }
+    credential->allocated = (uint8_t *)calloc(1, object_size);
+    if (!credential->allocated) {
+        return PICOKEYS_ERR_NO_MEMORY;
+    }
+    size_t written = 0;
+    ret = oath_container_read(slot, object_type, credential->allocated, object_size, &written);
+    if (ret != PICOKEYS_OK || written != object_size) {
+        mbedtls_platform_zeroize(credential->allocated, object_size);
+        free(credential->allocated);
+        memset(credential, 0, sizeof(*credential));
+        return ret == PICOKEYS_OK ? PICOKEYS_WRONG_LENGTH : ret;
+    }
+    credential->data = credential->allocated;
+    credential->size = (uint16_t)object_size;
+    return PICOKEYS_OK;
+}
+
+static void oath_credential_close(oath_credential_data_t *credential) {
+    if (!credential) {
+        return;
+    }
+    if (credential->allocated) {
+        mbedtls_platform_zeroize(credential->allocated, credential->size);
+        free(credential->allocated);
+    }
+    memset(credential, 0, sizeof(*credential));
+}
+
+static int oath_credential_metadata(const uint8_t *data, uint16_t data_size, uint8_t **metadata, uint16_t *metadata_size) {
+    if (!data || !metadata || !metadata_size) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    tlv_ctx_t input;
+    tlv_ctx_t name = { 0 };
+    tlv_ctx_t key = { 0 };
+    tlv_ctx_t property = { 0 };
+    tlv_ctx_t password = { 0 };
+    tlv_ctx_init((uint8_t *)data, data_size, &input);
+    if (!tlv_find_tag(&input, TAG_NAME, &name) || !tlv_find_tag(&input, TAG_KEY, &key) || key.len < 2) {
+        return PICOKEYS_WRONG_DATA;
+    }
+
+    size_t size = tlv_len_tag(TAG_NAME, name.len) + tlv_len_tag(TAG_KEY, 2);
+    bool has_property = tlv_find_tag(&input, TAG_PROPERTY, &property);
+    if (has_property) {
+        size += tlv_len_tag(TAG_PROPERTY, property.len);
+    }
+    bool has_password_safe = tlv_find_tag(&input, TAG_PWS_LOGIN, &password) || tlv_find_tag(&input, TAG_PWS_PASSWORD, &password) || tlv_find_tag(&input, TAG_PWS_METADATA, &password);
+    if (has_password_safe) {
+        size += tlv_len_tag(TAG_PWS_METADATA, 0);
+    }
+    if (size > UINT16_MAX) {
+        return PICOKEYS_WRONG_LENGTH;
+    }
+
+    uint8_t *out = (uint8_t *)calloc(1, size);
+    if (!out) {
+        return PICOKEYS_ERR_NO_MEMORY;
+    }
+    uint8_t *position = out;
+    position = tlv_append(position, TAG_NAME, name.data, name.len);
+    position = tlv_append(position, TAG_KEY, key.data, 2);
+    if (has_property) {
+        position = tlv_append(position, TAG_PROPERTY, property.data, property.len);
+    }
+    if (has_password_safe) {
+        position = tlv_append(position, TAG_PWS_METADATA, NULL, 0);
+    }
+    *metadata = out;
+    *metadata_size = (uint16_t)(position - out);
+    return PICOKEYS_OK;
+}
+
+static int oath_credential_write(uint16_t fid, const uint8_t *data, uint16_t data_size) {
+    if (!data || fid < EF_OATH_CRED || fid >= EF_OATH_CRED + MAX_OATH_CRED) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    file_t *file = file_search(fid);
+    if (file_has_data(file) && !oath_container_is_marker(file)) {
+        int ret = oath_put_credential_data(file, data, data_size);
+        if (ret == PICOKEYS_OK) {
+            flash_commit();
+        }
+        return ret;
+    }
+
+    uint8_t *metadata = NULL;
+    uint16_t metadata_size = 0;
+    int ret = oath_credential_metadata(data, data_size, &metadata, &metadata_size);
+    if (ret != PICOKEYS_OK) {
+        return ret;
+    }
+    if (oath_container_is_marker(file)) {
+        ret = oath_container_update(oath_credential_slot(fid), data, data_size, metadata, metadata_size);
+    }
+    else if (oath_container_can_create(oath_credential_slot(fid))) {
+        ret = oath_container_create(oath_credential_slot(fid), data, data_size, metadata, metadata_size);
+    }
+    else {
+        ret = PICOKEYS_WRONG_DATA;
+    }
+    mbedtls_platform_zeroize(metadata, metadata_size);
+    free(metadata);
+    return ret;
+}
+
+static int oath_credential_delete(uint16_t fid) {
+    file_t *file = file_search(fid);
+    if (!file_has_data(file)) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    if (oath_container_is_marker(file)) {
+        return oath_container_delete(oath_credential_slot(fid));
+    }
+    return file_delete(file);
+}
+
+static bool find_oath_cred(const uint8_t *name, size_t name_len, uint16_t *fid) {
+    if ((!name && name_len > 0) || !fid) {
+        return false;
+    }
+    uint16_t fids[MAX_OATH_CRED];
+    size_t num_creds = present_oath_cred_fids(fids, MAX_OATH_CRED);
     for (size_t i = 0; i < num_creds; i++) {
-        file_t *ef = creds[i];
+        oath_credential_data_t credential;
+        if (oath_credential_open(fids[i], FIDO_OATH_OBJECT_METADATA, &credential) != PICOKEYS_OK) {
+            continue;
+        }
         tlv_ctx_t ctxi, ef_tag = { 0 };
-        tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
-        if (file_has_data(ef) && tlv_find_tag(&ctxi, TAG_NAME, &ef_tag) == true && ef_tag.len == name_len && memcmp(ef_tag.data, name, name_len) == 0) {
-            return ef;
+        tlv_ctx_init((uint8_t *)credential.data, credential.size, &ctxi);
+        bool matches = tlv_find_tag(&ctxi, TAG_NAME, &ef_tag) && ef_tag.len == name_len && memcmp(ef_tag.data, name, name_len) == 0;
+        oath_credential_close(&credential);
+        if (matches) {
+            *fid = fids[i];
+            return true;
         }
     }
-    return NULL;
+    return false;
 }
 
 static int cmd_put(void) {
@@ -482,9 +628,9 @@ static int cmd_put(void) {
             }
         }
     }
-    file_t *ef = find_oath_cred(name.data, name.len);
-    if (file_has_data(ef)) {
-        int ret = oath_put_credential_data(ef, put_data, (uint16_t)put_len);
+    uint16_t fid = 0;
+    if (find_oath_cred(name.data, name.len, &fid)) {
+        int ret = oath_credential_write(fid, put_data, (uint16_t)put_len);
         if (put_copy != NULL) {
             mbedtls_platform_zeroize(put_copy, put_len);
         }
@@ -492,7 +638,6 @@ static int cmd_put(void) {
         if (ret != PICOKEYS_OK) {
             return SW_EXEC_ERROR();
         }
-        flash_commit();
     }
     else {
         uint16_t fids[MAX_OATH_CRED];
@@ -504,15 +649,7 @@ static int cmd_put(void) {
         }
         for (int i = 0; i < MAX_OATH_CRED; i++) {
             if ((used[i / 8] & (1u << (i % 8))) == 0) {
-                file_t *tef = file_new((uint16_t)(EF_OATH_CRED + i));
-                if (!tef) {
-                    if (put_copy != NULL) {
-                        mbedtls_platform_zeroize(put_copy, put_len);
-                    }
-                    free(put_copy);
-                    return SW_FILE_FULL();
-                }
-                int ret = oath_put_credential_data(tef, put_data, (uint16_t)put_len);
+                int ret = oath_credential_write((uint16_t)(EF_OATH_CRED + i), put_data, (uint16_t)put_len);
                 if (put_copy != NULL) {
                     mbedtls_platform_zeroize(put_copy, put_len);
                 }
@@ -520,7 +657,6 @@ static int cmd_put(void) {
                 if (ret != PICOKEYS_OK) {
                     return SW_EXEC_ERROR();
                 }
-                flash_commit();
                 return SW_OK();
             }
         }
@@ -541,10 +677,9 @@ static int cmd_delete(void) {
     tlv_ctx_t ctxi, ctxo = { 0 };
     tlv_ctx_init(apdu.data, (uint16_t)apdu.nc, &ctxi);
     if (tlv_find_tag(&ctxi, TAG_NAME, &ctxo) == true) {
-        file_t *ef = find_oath_cred(ctxo.data, ctxo.len);
-        if (ef) {
-            file_delete(ef);
-            return SW_OK();
+        uint16_t fid = 0;
+        if (find_oath_cred(ctxo.data, ctxo.len, &fid)) {
+            return oath_credential_delete(fid) == PICOKEYS_OK ? SW_OK() : SW_EXEC_ERROR();
         }
         return SW_DATA_INVALID();
     }
@@ -626,7 +761,12 @@ static int cmd_reset(void) {
     size_t num_creds = present_oath_cred_fids(fids, MAX_OATH_CRED);
     for (size_t i = 0; i < num_creds; i++) {
         file_t *ef = file_search(fids[i]);
-        if (file_has_data(ef)) {
+        if (oath_container_is_marker(ef)) {
+            if (oath_container_purge(oath_credential_slot(fids[i])) != PICOKEYS_OK) {
+                return SW_EXEC_ERROR();
+            }
+        }
+        else if (file_has_data(ef)) {
             file_delete_no_commit(ef);
         }
     }
@@ -642,13 +782,13 @@ static int cmd_list(void) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     bool ext = (apdu.nc == 1 && apdu.data[0] == 0x01);
-    file_t *creds[MAX_OATH_CRED];
-    size_t num_creds = present_oath_cred_files(creds, MAX_OATH_CRED);
+    uint16_t fids[MAX_OATH_CRED];
+    size_t num_creds = present_oath_cred_fids(fids, MAX_OATH_CRED);
     for (size_t i = 0; i < num_creds; i++) {
-        file_t *ef = creds[i];
-        if (file_has_data(ef)) {
+        oath_credential_data_t credential;
+        if (oath_credential_open(fids[i], FIDO_OATH_OBJECT_METADATA, &credential) == PICOKEYS_OK) {
             tlv_ctx_t ctxi, key = { 0 }, name = { 0 }, pws = { 0 };
-            tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+            tlv_ctx_init((uint8_t *)credential.data, credential.size, &ctxi);
             if (tlv_find_tag(&ctxi, TAG_NAME, &name) == true && tlv_find_tag(&ctxi, TAG_KEY, &key) == true) {
                 uint8_t *plain_key = NULL;
                 uint16_t plain_key_len = 0;
@@ -657,12 +797,14 @@ static int cmd_list(void) {
                         mbedtls_platform_zeroize(plain_key, plain_key_len);
                         free(plain_key);
                     }
+                    oath_credential_close(&credential);
                     continue;
                 }
                 if (name.len > UINT8_MAX - 1 - (ext ? 1 : 0) ||
                     !oath_response_has_room(3 + name.len + (ext ? 1 : 0))) {
                     mbedtls_platform_zeroize(plain_key, plain_key_len);
                     free(plain_key);
+                    oath_credential_close(&credential);
                     return SW_WRONG_LENGTH();
                 }
                 res_APDU[res_APDU_size++] = TAG_NAME_LIST;
@@ -682,6 +824,7 @@ static int cmd_list(void) {
                 mbedtls_platform_zeroize(plain_key, plain_key_len);
                 free(plain_key);
             }
+            oath_credential_close(&credential);
         }
     }
     apdu.ne = res_APDU_size;
@@ -807,13 +950,18 @@ static int cmd_calculate(void) {
     if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    file_t *ef = find_oath_cred(name.data, name.len);
-    if (file_has_data(ef) == false) {
+    uint16_t fid = 0;
+    if (!find_oath_cred(name.data, name.len, &fid)) {
         return SW_DATA_INVALID();
     }
+    oath_credential_data_t credential;
+    if (oath_credential_open(fid, FIDO_OATH_OBJECT_CREDENTIAL, &credential) != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
     tlv_ctx_t ctxe;
-    tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
+    tlv_ctx_init((uint8_t *)credential.data, credential.size, &ctxe);
     if (tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
+        oath_credential_close(&credential);
         return SW_INCORRECT_PARAMS();
     }
     uint8_t *plain_key = NULL;
@@ -823,6 +971,7 @@ static int cmd_calculate(void) {
             mbedtls_platform_zeroize(plain_key, plain_key_len);
             free(plain_key);
         }
+        oath_credential_close(&credential);
         return SW_EXEC_ERROR();
     }
     key.data = plain_key;
@@ -832,6 +981,7 @@ static int cmd_calculate(void) {
         if (tlv_find_tag(&ctxe, TAG_IMF, &chal) == false) {
             mbedtls_platform_zeroize(plain_key, plain_key_len);
             free(plain_key);
+            oath_credential_close(&credential);
             return SW_INCORRECT_PARAMS();
         }
     }
@@ -839,6 +989,7 @@ static int cmd_calculate(void) {
     if (!oath_response_has_room(1)) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
+        oath_credential_close(&credential);
         return SW_WRONG_LENGTH();
     }
     res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
@@ -848,24 +999,38 @@ static int cmd_calculate(void) {
     if (ret != PICOKEYS_OK) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
+        oath_credential_close(&credential);
         return SW_EXEC_ERROR();
     }
     mbedtls_platform_zeroize(plain_key, plain_key_len);
     free(plain_key);
     if (is_hotp) {
         uint64_t v = get_uint64_be(chal.data);
-        size_t ef_size = file_get_size(ef);
         v++;
-        uint8_t *tmp = (uint8_t *) calloc(1, ef_size);
-        memcpy(tmp, file_get_data(ef), ef_size);
+        uint8_t *tmp = (uint8_t *)calloc(1, credential.size);
+        if (!tmp) {
+            oath_credential_close(&credential);
+            return SW_EXEC_ERROR();
+        }
+        memcpy(tmp, credential.data, credential.size);
         tlv_ctx_t ctxt;
-        tlv_ctx_init(tmp, (uint16_t)ef_size, &ctxt);
-        tlv_find_tag(&ctxt, TAG_IMF, &chal);
+        tlv_ctx_init(tmp, credential.size, &ctxt);
+        if (!tlv_find_tag(&ctxt, TAG_IMF, &chal)) {
+            mbedtls_platform_zeroize(tmp, credential.size);
+            free(tmp);
+            oath_credential_close(&credential);
+            return SW_EXEC_ERROR();
+        }
         put_uint64_be(v, chal.data);
-        file_put_data(ef, tmp, (uint16_t)ef_size);
-        flash_commit();
+        int update_ret = oath_credential_write(fid, tmp, credential.size);
+        mbedtls_platform_zeroize(tmp, credential.size);
         free(tmp);
+        if (update_ret != PICOKEYS_OK) {
+            oath_credential_close(&credential);
+            return SW_EXEC_ERROR();
+        }
     }
+    oath_credential_close(&credential);
     apdu.ne = res_APDU_size;
     return SW_OK();
 }
@@ -883,19 +1048,19 @@ static int cmd_calculate_all(void) {
         return SW_INCORRECT_PARAMS();
     }
     res_APDU_size = 0;
-    file_t *creds[MAX_OATH_CRED];
-    size_t num_creds = present_oath_cred_files(creds, MAX_OATH_CRED);
+    uint16_t fids[MAX_OATH_CRED];
+    size_t num_creds = present_oath_cred_fids(fids, MAX_OATH_CRED);
     for (size_t i = 0; i < num_creds; i++) {
-        file_t *ef = creds[i];
-        if (file_has_data(ef)) {
-            const uint8_t *ef_data = file_get_data(ef);
-            size_t ef_len = file_get_size(ef);
+        oath_credential_data_t credential;
+        if (oath_credential_open(fids[i], FIDO_OATH_OBJECT_CREDENTIAL, &credential) == PICOKEYS_OK) {
             tlv_ctx_t ctxe;
-            tlv_ctx_init((uint8_t *)ef_data, (uint16_t)ef_len, &ctxe);
+            tlv_ctx_init((uint8_t *)credential.data, credential.size, &ctxe);
             if (tlv_find_tag(&ctxe, TAG_NAME, &name) == false || tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
+                oath_credential_close(&credential);
                 continue;
             }
             if (name.len > UINT8_MAX) {
+                oath_credential_close(&credential);
                 return SW_WRONG_LENGTH();
             }
             uint8_t *plain_key = NULL;
@@ -905,6 +1070,7 @@ static int cmd_calculate_all(void) {
                     mbedtls_platform_zeroize(plain_key, plain_key_len);
                     free(plain_key);
                 }
+                oath_credential_close(&credential);
                 continue;
             }
             key.data = plain_key;
@@ -915,6 +1081,7 @@ static int cmd_calculate_all(void) {
             if (!oath_response_has_room(2 + name.len + response_len)) {
                 mbedtls_platform_zeroize(plain_key, plain_key_len);
                 free(plain_key);
+                oath_credential_close(&credential);
                 return SW_WRONG_LENGTH();
             }
             res_APDU[res_APDU_size++] = TAG_NAME;
@@ -940,6 +1107,7 @@ static int cmd_calculate_all(void) {
             }
             mbedtls_platform_zeroize(plain_key, plain_key_len);
             free(plain_key);
+            oath_credential_close(&credential);
         }
     }
     apdu.ne = res_APDU_size;
@@ -1101,13 +1269,18 @@ static int cmd_verify_hotp(void) {
     if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_INCORRECT_PARAMS();
     }
-    file_t *ef = find_oath_cred(name.data, name.len);
-    if (file_has_data(ef) == false) {
+    uint16_t fid = 0;
+    if (!find_oath_cred(name.data, name.len, &fid)) {
         return SW_DATA_INVALID();
     }
+    oath_credential_data_t credential;
+    if (oath_credential_open(fid, FIDO_OATH_OBJECT_CREDENTIAL, &credential) != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
     tlv_ctx_t ctxe;
-    tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxe);
+    tlv_ctx_init((uint8_t *)credential.data, credential.size, &ctxe);
     if (tlv_find_tag(&ctxe, TAG_KEY, &key) == false) {
+        oath_credential_close(&credential);
         return SW_INCORRECT_PARAMS();
     }
     uint8_t *plain_key = NULL;
@@ -1117,6 +1290,7 @@ static int cmd_verify_hotp(void) {
             mbedtls_platform_zeroize(plain_key, plain_key_len);
             free(plain_key);
         }
+        oath_credential_close(&credential);
         return SW_EXEC_ERROR();
     }
     key.data = plain_key;
@@ -1125,21 +1299,25 @@ static int cmd_verify_hotp(void) {
     if ((key.data[0] & OATH_TYPE_MASK) != OATH_TYPE_HOTP) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
+        oath_credential_close(&credential);
         return SW_DATA_INVALID();
     }
     if (tlv_find_tag(&ctxe, TAG_IMF, &chal) == false) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
+        oath_credential_close(&credential);
         return SW_INCORRECT_PARAMS();
     }
     if (tlv_find_tag(&ctxe, TAG_PROPERTY, &prop) == true && prop.len > 0 && (prop.data[0] & PROP_TOUCH)) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
+        oath_credential_close(&credential);
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     if (tlv_find_tag(&ctxi, TAG_RESPONSE, &code) == false || code.len != sizeof(uint32_t)) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
+        oath_credential_close(&credential);
         return SW_INCORRECT_PARAMS();
     }
     code_int = get_uint32_be(code.data);
@@ -1148,10 +1326,12 @@ static int cmd_verify_hotp(void) {
     if (ret != PICOKEYS_OK) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
+        oath_credential_close(&credential);
         return SW_EXEC_ERROR();
     }
     mbedtls_platform_zeroize(plain_key, plain_key_len);
     free(plain_key);
+    oath_credential_close(&credential);
     uint32_t res_int = get_uint32_be(res_APDU + 2);
     if (res_APDU[1] == 6) {
         res_int %= (uint32_t) 1e6;
@@ -1188,25 +1368,35 @@ static int cmd_rename(void) {
     if (name.len == new_name.len && memcmp(name.data, new_name.data, name.len) == 0) {
         return SW_WRONG_DATA();
     }
-    file_t *ef = find_oath_cred(name.data, name.len);
-    if (file_has_data(ef) == false) {
+    uint16_t fid = 0;
+    if (!find_oath_cred(name.data, name.len, &fid)) {
         return SW_DATA_INVALID();
     }
-    uint8_t *fdata = file_get_data(ef);
-    uint16_t fsize = file_get_size(ef);
-    tlv_ctx_init(fdata, fsize, &ctxi);
+    oath_credential_data_t credential;
+    if (oath_credential_open(fid, FIDO_OATH_OBJECT_CREDENTIAL, &credential) != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
+    const uint8_t *fdata = credential.data;
+    uint16_t fsize = credential.size;
+    tlv_ctx_init((uint8_t *)fdata, fsize, &ctxi);
     if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
+        oath_credential_close(&credential);
         return SW_WRONG_DATA();
     }
     uint8_t *new_data = (uint8_t *) calloc(fsize + new_name.len - name.len, sizeof(uint8_t));
+    if (!new_data) {
+        oath_credential_close(&credential);
+        return SW_EXEC_ERROR();
+    }
     memcpy(new_data, fdata, name.data - fdata);
     *(new_data + (name.data - fdata) - 1) = new_name.len;
     memcpy(new_data + (name.data - fdata), new_name.data, new_name.len);
     memcpy(new_data + (name.data - fdata) + new_name.len, name.data + name.len, fsize - (name.data + name.len - fdata));
-    file_put_data(ef, new_data, fsize + new_name.len - name.len);
-    flash_commit();
+    int ret = oath_credential_write(fid, new_data, (uint16_t)(fsize + new_name.len - name.len));
+    mbedtls_platform_zeroize(new_data, fsize + new_name.len - name.len);
     free(new_data);
-    return SW_OK();
+    oath_credential_close(&credential);
+    return ret == PICOKEYS_OK ? SW_OK() : SW_EXEC_ERROR();
 }
 
 static int cmd_get_credential(void) {
@@ -1224,19 +1414,25 @@ static int cmd_get_credential(void) {
     if (tlv_find_tag(&ctxi, TAG_NAME, &name) == false) {
         return SW_WRONG_DATA();
     }
-    file_t *ef = find_oath_cred(name.data, name.len);
-    if (file_has_data(ef) == false) {
+    uint16_t fid = 0;
+    if (!find_oath_cred(name.data, name.len, &fid)) {
         return SW_DATA_INVALID();
     }
+    oath_credential_data_t credential;
+    if (oath_credential_open(fid, FIDO_OATH_OBJECT_CREDENTIAL, &credential) != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
     tlv_ctx_t login = { 0 }, pw = { 0 }, meta = { 0 }, prop = { 0 };
-    tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
+    tlv_ctx_init((uint8_t *)credential.data, credential.size, &ctxi);
     if ((tlv_find_tag(&ctxi, TAG_NAME, &name) == true && !oath_response_append(TAG_NAME, name.data, name.len)) ||
         (tlv_find_tag(&ctxi, TAG_PWS_LOGIN, &login) == true && !oath_response_append(TAG_PWS_LOGIN, login.data, login.len)) ||
         (tlv_find_tag(&ctxi, TAG_PWS_PASSWORD, &pw) == true && !oath_response_append(TAG_PWS_PASSWORD, pw.data, pw.len)) ||
         (tlv_find_tag(&ctxi, TAG_PWS_METADATA, &meta) == true && !oath_response_append(TAG_PWS_METADATA, meta.data, meta.len)) ||
         (tlv_find_tag(&ctxi, TAG_PROPERTY, &prop) == true && !oath_response_append(TAG_PROPERTY, prop.data, prop.len))) {
+        oath_credential_close(&credential);
         return SW_WRONG_LENGTH();
     }
+    oath_credential_close(&credential);
     apdu.ne = res_APDU_size;
     return SW_OK();
 }

@@ -18,14 +18,19 @@
 #include "picokeys.h"
 #include "files.h"
 #include "object_container.h"
+#include "object_policy.h"
+#include "object_provider.h"
 #include "resident_container.h"
 
 #include <assert.h>
+#include <setjmp.h>
 #include <stdio.h>
 
 #define TEST_FILE_COUNT 32u
 #define TEST_FILE_CAPACITY 1024u
 #define TEST_SLOT 7u
+#define TEST_MANIFEST_CAPACITY (FILE_OBJECT_MANIFEST_HEADER_SIZE + FILE_OBJECT_MANIFEST_MAX_OBJECTS * FILE_OBJECT_DESCRIPTOR_SIZE + FILE_OBJECT_AUTH_TAG_SIZE)
+#define TEST_RESIDENT_POLICY_ID 0x0200u
 
 typedef struct test_file {
     file_t file;
@@ -48,6 +53,10 @@ static uint8_t public_root[32];
 static bool device_key_available;
 static size_t sync_commit_count;
 static size_t fail_sync_commit_at;
+static jmp_buf power_loss_env;
+static size_t power_loss_event;
+static size_t power_loss_at = SIZE_MAX;
+static bool power_loss_armed;
 
 static test_file_t *test_file_from_handle(const file_t *file) {
     for (size_t i = 0; i < TEST_FILE_COUNT; i++) {
@@ -72,6 +81,9 @@ static void test_reset(void) {
     memset(durable_files, 0, sizeof(durable_files));
     sync_commit_count = 0;
     fail_sync_commit_at = 0;
+    power_loss_event = 0;
+    power_loss_at = SIZE_MAX;
+    power_loss_armed = false;
     for (size_t i = 0; i < sizeof(device_key); i++) {
         device_key[i] = (uint8_t)(i + 1u);
         public_root[i] = (uint8_t)(0x80u + i);
@@ -88,6 +100,7 @@ static void test_reboot(void) {
         test_files[i].allocated = durable_files[i].allocated;
         test_files[i].file.data = test_files[i].size > 0 ? test_files[i].storage : NULL;
     }
+    power_loss_armed = false;
 }
 
 static size_t test_allocated_files(void) {
@@ -201,11 +214,21 @@ int file_delete_no_commit(file_t *file) {
 }
 
 void flash_commit(void) {
+    power_loss_event++;
+    if (power_loss_armed && power_loss_event == power_loss_at) {
+        power_loss_armed = false;
+        longjmp(power_loss_env, 1);
+    }
     test_persist();
 }
 
 bool flash_commit_sync(uint32_t timeout_ms) {
     (void)timeout_ms;
+    power_loss_event++;
+    if (power_loss_armed && power_loss_event == power_loss_at) {
+        power_loss_armed = false;
+        longjmp(power_loss_env, 1);
+    }
     sync_commit_count++;
     if (fail_sync_commit_at > 0 && sync_commit_count == fail_sync_commit_at) {
         return false;
@@ -328,6 +351,229 @@ static void test_interrupted_update_keeps_previous_generation(void) {
     }
 }
 
+static void test_existing_container_fixture(void) {
+    static const uint8_t resident_policy[] = {
+        FILE_OBJECT_POLICY_FORMAT_VERSION, 1,
+        0x1f, 0xff, 0x00, 0x00, 0x04, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
+    };
+    uint8_t rp_id_hash[RP_ID_HASH_LEN];
+    uint8_t client_id[42];
+    static const uint8_t credential[] = { 0x81, 0x82, 0x83, 0x84 };
+    static const uint8_t updated_credential[] = { 0x91, 0x92, 0x93 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02, 0x03 };
+    const struct {
+        uint16_t object_type;
+        const uint8_t *data;
+        uint32_t data_size;
+        uint8_t protection;
+        uint16_t flags;
+    } objects[] = {
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH,
+            .data = rp_id_hash,
+            .data_size = sizeof(rp_id_hash),
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_CLIENT_ID,
+            .data = client_id,
+            .data_size = sizeof(client_id),
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_CREDENTIAL,
+            .data = credential,
+            .data_size = sizeof(credential),
+            .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
+            .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_PUBLIC_KEY,
+            .data = public_key,
+            .data_size = sizeof(public_key),
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
+        }
+    };
+    uint8_t record_data[4][128] = { 0 };
+    size_t record_sizes[4] = { 0 };
+    uint8_t manifest_data[TEST_MANIFEST_CAPACITY];
+    size_t manifest_size = 0;
+    uint8_t marker[] = { 'P', 'K', 'F', '1', 1, TEST_SLOT, 0, 0 };
+    uint8_t policy_hash[FILE_OBJECT_POLICY_HASH_SIZE];
+    file_object_manifest_t manifest = {
+        .namespace_id = FIDO_OBJECT_NAMESPACE,
+        .container_kind = FIDO_RESIDENT_CONTAINER_KIND,
+        .container_id = TEST_SLOT,
+        .generation = 1,
+        .object_count = sizeof(objects) / sizeof(objects[0]),
+        .has_object = true
+    };
+
+    test_reset();
+    for (size_t i = 0; i < sizeof(rp_id_hash); i++) {
+        rp_id_hash[i] = (uint8_t)(0x20u + i);
+    }
+    for (size_t i = 0; i < sizeof(client_id); i++) {
+        client_id[i] = (uint8_t)(0x50u + i);
+    }
+    memcpy(public_root, device_key, sizeof(public_root));
+    const file_object_authenticator_t *auth = fido_object_manifest_authenticator();
+    const file_object_record_protector_t *protector = fido_object_record_protector();
+    assert(auth && protector);
+    assert(file_object_policy_hash(resident_policy, sizeof(resident_policy), policy_hash) == PICOKEYS_OK);
+
+    for (size_t i = 0; i < sizeof(objects) / sizeof(objects[0]); i++) {
+        uint16_t record_fid = (uint16_t)(((0xd3u + objects[i].object_type - 1u) << 8) | TEST_SLOT);
+        manifest.objects[i] = (file_object_descriptor_t) {
+            .object_type = objects[i].object_type,
+            .generation = 1,
+            .logical_size = objects[i].data_size,
+            .record_id = record_fid,
+            .stored_size = objects[i].data_size,
+            .policy_id = TEST_RESIDENT_POLICY_ID,
+            .protection = objects[i].protection,
+            .flags = objects[i].flags
+        };
+        file_object_manifest_t record_manifest = manifest;
+        record_manifest.object_count = 1;
+        record_manifest.object = manifest.objects[i];
+        assert(file_object_record_seal(&record_manifest, policy_hash, protector, objects[i].data, objects[i].data_size, record_data[i], sizeof(record_data[i]), &record_sizes[i]) == PICOKEYS_OK);
+        assert(file_put_data(file_new(record_fid), record_data[i], (uint32_t)record_sizes[i]) == PICOKEYS_OK);
+    }
+    assert(file_object_manifest_build(&manifest, NULL, 0, auth, manifest_data, sizeof(manifest_data), &manifest_size) == PICOKEYS_OK);
+    assert(file_put_data(file_new((uint16_t)(0xd100u | TEST_SLOT)), manifest_data, (uint32_t)manifest_size) == PICOKEYS_OK);
+    assert(file_put_data(file_new((uint16_t)(EF_CRED + TEST_SLOT)), marker, sizeof(marker)) == PICOKEYS_OK);
+    test_persist();
+
+    for (size_t i = 0; i < sizeof(public_root); i++) {
+        public_root[i] = (uint8_t)(0x80u + i);
+    }
+    test_reboot();
+    test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
+    test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
+    test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
+    assert(file_get_size(file_search((uint16_t)(0xd100u | TEST_SLOT))) == manifest_size);
+    assert(memcmp(file_get_data(file_search((uint16_t)(0xd100u | TEST_SLOT))), manifest_data, manifest_size) == 0);
+    for (size_t i = 0; i < sizeof(objects) / sizeof(objects[0]); i++) {
+        uint16_t record_fid = (uint16_t)(((0xd3u + objects[i].object_type - 1u) << 8) | TEST_SLOT);
+        assert(file_get_size(file_search(record_fid)) == record_sizes[i]);
+        assert(memcmp(file_get_data(file_search(record_fid)), record_data[i], record_sizes[i]) == 0);
+    }
+
+    assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);
+    test_reboot();
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
+}
+
+static bool test_credential_matches(const uint8_t *first, size_t first_size, const uint8_t *second, size_t second_size) {
+    uint8_t output[32] = { 0 };
+    size_t written = 0;
+    int r = resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, output, sizeof(output), &written);
+    if (r != PICOKEYS_OK) {
+        return false;
+    }
+    return (written == first_size && memcmp(output, first, first_size) == 0) || (written == second_size && memcmp(output, second, second_size) == 0);
+}
+
+static void test_power_loss_create_event(size_t failed_event) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0xa1 };
+    uint8_t client_id[42] = { 0xa2 };
+    static const uint8_t credential[] = { 0xa3, 0xa4 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+
+    test_reset();
+    if (setjmp(power_loss_env) == 0) {
+        power_loss_event = 0;
+        power_loss_at = failed_event;
+        power_loss_armed = true;
+        (void)resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key));
+        assert(false);
+    }
+    test_reboot();
+
+    assert(resident_container_can_create(TEST_SLOT));
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
+}
+
+static void test_power_loss_update_event(size_t failed_event) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0xb1 };
+    uint8_t client_id[42] = { 0xb2 };
+    static const uint8_t credential[] = { 0xb3, 0xb4 };
+    static const uint8_t replacement[] = { 0xc3, 0xc4, 0xc5 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+
+    test_reset();
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    if (setjmp(power_loss_env) == 0) {
+        power_loss_event = 0;
+        power_loss_at = failed_event;
+        power_loss_armed = true;
+        (void)resident_container_update_credential(TEST_SLOT, replacement, sizeof(replacement));
+        assert(false);
+    }
+    test_reboot();
+
+    assert(test_credential_matches(credential, sizeof(credential), replacement, sizeof(replacement)));
+    assert(resident_container_update_credential(TEST_SLOT, replacement, sizeof(replacement)) == PICOKEYS_OK);
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, replacement, sizeof(replacement));
+}
+
+static void test_power_loss_delete_event(size_t failed_event) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0xd1 };
+    uint8_t client_id[42] = { 0xd2 };
+    static const uint8_t credential[] = { 0xd3, 0xd4 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+
+    test_reset();
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    if (setjmp(power_loss_env) == 0) {
+        power_loss_event = 0;
+        power_loss_at = failed_event;
+        power_loss_armed = true;
+        (void)resident_container_delete(TEST_SLOT);
+        assert(false);
+    }
+    test_reboot();
+
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
+    assert(resident_container_delete(TEST_SLOT) == PICOKEYS_OK);
+}
+
+static void test_power_loss_boundaries(void) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0xe1 };
+    uint8_t client_id[42] = { 0xe2 };
+    static const uint8_t credential[] = { 0xe3 };
+    static const uint8_t replacement[] = { 0xe4 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+
+    test_reset();
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    size_t create_events = power_loss_event;
+    assert(create_events > 0);
+
+    power_loss_event = 0;
+    assert(resident_container_update_credential(TEST_SLOT, replacement, sizeof(replacement)) == PICOKEYS_OK);
+    size_t update_events = power_loss_event;
+    assert(update_events > 0);
+
+    power_loss_event = 0;
+    assert(resident_container_delete(TEST_SLOT) == PICOKEYS_OK);
+    size_t delete_events = power_loss_event;
+    assert(delete_events > 0);
+
+    for (size_t failed_event = 1; failed_event <= create_events; failed_event++) {
+        test_power_loss_create_event(failed_event);
+    }
+    for (size_t failed_event = 1; failed_event <= update_events; failed_event++) {
+        test_power_loss_update_event(failed_event);
+    }
+    for (size_t failed_event = 1; failed_event <= delete_events; failed_event++) {
+        test_power_loss_delete_event(failed_event);
+    }
+}
+
 static void test_legacy_root_container_remains_accessible(void) {
     uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0x61 };
     uint8_t client_id[42] = { 0x62 };
@@ -364,6 +610,8 @@ int main(void) {
     test_collision_rejected();
     test_interrupted_create_recovers();
     test_interrupted_update_keeps_previous_generation();
+    test_existing_container_fixture();
+    test_power_loss_boundaries();
     test_legacy_root_container_remains_accessible();
     puts("fido_resident_container_test: OK");
     return 0;
