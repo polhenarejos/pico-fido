@@ -24,5 +24,7 @@
 
 const file_object_authenticator_t *fido_object_manifest_authenticator(void);
 const file_object_record_protector_t *fido_object_record_protector(void);
+const file_object_authenticator_t *fido_object_legacy_manifest_authenticator(void);
+const file_object_record_protector_t *fido_object_legacy_record_protector(void);
 
 #endif // _OBJECT_PROVIDER_H_

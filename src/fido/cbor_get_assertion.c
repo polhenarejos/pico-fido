@@ -217,7 +217,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     display_name = NULL;
 
     uint8_t flags = 0;
-    uint8_t rp_id_hash[32] = {0};
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
     mbedtls_sha256((uint8_t *) rpId.data, rpId.len, rp_id_hash, 0);
 
     bool resident = false;
@@ -288,11 +288,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             if (!(paut.permissions & CTAP_PERMISSION_GA)) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             }
-            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, 32) != 0) {
+            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, RP_ID_HASH_LEN) != 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             }
             if (paut.has_rp_id == false) {
-                memcpy(paut.rp_id_hash, rp_id_hash, 32);
+                memcpy(paut.rp_id_hash, rp_id_hash, RP_ID_HASH_LEN);
                 paut.has_rp_id = true;
             }
             flags |= FIDO2_AUT_FLAG_UV;
@@ -643,10 +643,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
 
     uint32_t ctr = get_sign_counter();
 
-    size_t aut_data_len = 32 + 1 + 4 + ext_len;
+    size_t aut_data_len = RP_ID_HASH_LEN + 1 + 4 + ext_len;
     aut_data = (uint8_t *) calloc(1, aut_data_len + clientDataHash.len);
     uint8_t *pa = aut_data;
-    memcpy(pa, rp_id_hash, 32); pa += 32;
+    memcpy(pa, rp_id_hash, RP_ID_HASH_LEN); pa += RP_ID_HASH_LEN;
     *pa++ = flags;
     pa += put_uint32_be(ctr, pa);
     memcpy(pa, ext, ext_len); pa += ext_len;

@@ -37,13 +37,13 @@ static bool minpin_contains_rp(const uint8_t *rp_id_hash) {
     }
 
     uint32_t minpin_size = file_get_size(ef_minpin);
-    if (minpin_size < 2 + SHA256_DIGEST_LENGTH) {
+    if (minpin_size < 2 + RP_ID_HASH_LEN) {
         return false;
     }
 
     uint8_t *minpin_data = file_get_data(ef_minpin);
-    for (uint32_t offset = 2; offset <= minpin_size - SHA256_DIGEST_LENGTH; offset += SHA256_DIGEST_LENGTH) {
-        if (memcmp(minpin_data + offset, rp_id_hash, SHA256_DIGEST_LENGTH) == 0) {
+    for (uint32_t offset = 2; offset <= minpin_size - RP_ID_HASH_LEN; offset += RP_ID_HASH_LEN) {
+        if (memcmp(minpin_data + offset, rp_id_hash, RP_ID_HASH_LEN) == 0) {
             return true;
         }
     }
@@ -251,7 +251,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
 #ifndef ENABLE_EMULATION
     bool button_pressed = false;
 #endif
-    uint8_t rp_id_hash[32] = {0};
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
     mbedtls_sha256((uint8_t *) rp.id.data, rp.id.len, rp_id_hash, 0);
 
     if (pinUvAuthParam.present == true) {
@@ -414,7 +414,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             if (!(paut.permissions & CTAP_PERMISSION_MC)) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             }
-            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, 32) != 0) {
+            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, RP_ID_HASH_LEN) != 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             }
             if (getUserVerifiedFlagValue() == false) {
@@ -422,7 +422,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
             flags |= FIDO2_AUT_FLAG_UV;
             if (paut.has_rp_id == false) {
-                memcpy(paut.rp_id_hash, rp_id_hash, 32);
+                memcpy(paut.rp_id_hash, rp_id_hash, RP_ID_HASH_LEN);
                 paut.has_rp_id = true;
             }
         }
@@ -652,10 +652,10 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     CBOR_CHECK(COSE_key(&ekey, &encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
 
-    size_t aut_data_len = 32 + 1 + 4 + (16 + 2 + (options.rk == ptrue ? CRED_RESIDENT_LEN : cred_id_len) + rs) + ext_len;
+    size_t aut_data_len = RP_ID_HASH_LEN + 1 + 4 + (16 + 2 + (options.rk == ptrue ? CRED_RESIDENT_LEN : cred_id_len) + rs) + ext_len;
     aut_data = (uint8_t *) calloc(1, aut_data_len + clientDataHash.len);
     uint8_t *pa = aut_data;
-    memcpy(pa, rp_id_hash, 32); pa += 32;
+    memcpy(pa, rp_id_hash, RP_ID_HASH_LEN); pa += RP_ID_HASH_LEN;
     *pa++ = flags;
     pa += put_uint32_be(ctr, pa);
     memcpy(pa, aaguid, 16); pa += 16;

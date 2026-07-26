@@ -37,7 +37,20 @@ jobs:
       with:
         submodules: recursive
         persist-credentials: false
+    - name: Checkout legacy firmware and submodules
+      uses: actions/checkout@v6
+      with:
+        ref: 43cf570ac3ba4ad8a40685d4bf2c7ccb8d43b2fa
+        path: legacy
+        submodules: recursive
+        persist-credentials: false
     - name: Build in container
       run: ./tests/build-in-docker.sh
+    - name: Build legacy emulator in container
+      run: ./tests/build-legacy-in-docker.sh
     - name: Start emulation and test
       run: ./tests/run-test-in-docker.sh
+    - name: Test legacy flash compatibility
+      run: ./tests/run-test-041-in-docker.sh
+    - name: Test silent authentication after restart
+      run: ./tests/run-test-042-in-docker.sh

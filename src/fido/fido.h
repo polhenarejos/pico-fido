@@ -32,6 +32,7 @@
 #define KEY_PATH_LEN (32)
 #define KEY_PATH_ENTRIES (KEY_PATH_LEN / sizeof(uint32_t))
 #define SHA256_DIGEST_LENGTH (32)
+#define RP_ID_HASH_LEN SHA256_DIGEST_LENGTH
 #define KEY_HANDLE_LEN (KEY_PATH_LEN + SHA256_DIGEST_LENGTH)
 
 extern int scan_files_fido(void);
@@ -137,7 +138,7 @@ typedef struct pinUvAuthToken {
     size_t len;
     bool in_use;
     uint8_t permissions;
-    uint8_t rp_id_hash[32];
+    uint8_t rp_id_hash[RP_ID_HASH_LEN];
     bool has_rp_id;
     bool user_present;
     bool user_verified;

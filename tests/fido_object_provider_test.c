@@ -36,7 +36,12 @@
 #define TEST_AAD_RECORD_ID_OFFSET 47u
 
 static uint8_t test_device_key[32];
+static uint8_t test_public_root[32];
 static bool test_device_key_available = true;
+
+void derive_kbase(uint8_t kbase[32]) {
+    memcpy(kbase, test_public_root, sizeof(test_public_root));
+}
 
 int load_keydev(uint8_t key[32]) {
     if (!test_device_key_available) {
@@ -49,11 +54,12 @@ int load_keydev(uint8_t key[32]) {
 static void test_root_reset(void) {
     for (size_t i = 0; i < sizeof(test_device_key); i++) {
         test_device_key[i] = (uint8_t)(i + 1);
+        test_public_root[i] = (uint8_t)(0x80u + i);
     }
     test_device_key_available = true;
 }
 
-static file_object_record_identity_t test_identity(uint8_t key_domain) {
+static file_object_record_identity_t test_identity(uint8_t protection, uint8_t key_domain) {
     file_object_record_identity_t identity = {
         .namespace_id = FIDO_OBJECT_NAMESPACE,
         .container_kind = 1,
@@ -64,7 +70,7 @@ static file_object_record_identity_t test_identity(uint8_t key_domain) {
         .logical_size = 5,
         .policy_id = 0x0201,
         .key_domain = key_domain,
-        .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
+        .protection = protection,
         .flags = FILE_OBJECT_FLAG_NON_EXPORTABLE,
         .record_id = UINT64_C(0x0102030405060708)
     };
@@ -112,14 +118,39 @@ static void test_manifest_authentication(void) {
     assert(memcmp(first, second, sizeof(first)) == 0);
 
     test_device_key_available = false;
-    assert(auth->start(auth->ctx) == PICOKEYS_NO_LOGIN);
+    assert(auth->start(auth->ctx) == PICOKEYS_OK);
+    auth->abort(auth->ctx);
     test_device_key_available = true;
+}
+
+static void test_authenticated_public_record(void) {
+    static const uint8_t plaintext[] = { 0x10, 0x20, 0x30, 0x40, 0x50 };
+    const file_object_record_protector_t *protector = fido_object_record_protector();
+    file_object_record_identity_t identity = test_identity(FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC, 0);
+    uint8_t aad[FILE_OBJECT_RECORD_AAD_SIZE];
+    uint8_t nonce[FILE_OBJECT_RECORD_NONCE_SIZE];
+    uint8_t stored[sizeof(plaintext)];
+    uint8_t output[sizeof(plaintext)];
+    uint8_t tag[FILE_OBJECT_AUTH_TAG_SIZE];
+
+    assert(protector != NULL);
+    test_aad_build(&identity, aad, nonce);
+    assert(protector->seal(protector->ctx, &identity, nonce, aad, plaintext, sizeof(plaintext), stored, tag) == PICOKEYS_OK);
+    assert(memcmp(stored, plaintext, sizeof(plaintext)) == 0);
+
+    test_device_key_available = false;
+    assert(protector->unseal(protector->ctx, &identity, nonce, aad, stored, sizeof(stored), tag, output) == PICOKEYS_OK);
+    assert(memcmp(output, plaintext, sizeof(plaintext)) == 0);
+    test_device_key_available = true;
+
+    stored[0] ^= 0x01;
+    assert(protector->unseal(protector->ctx, &identity, nonce, aad, stored, sizeof(stored), tag, output) == PICOKEYS_WRONG_SIGNATURE);
 }
 
 static void test_secret_record(void) {
     static const uint8_t plaintext[] = { 0x10, 0x20, 0x30, 0x40, 0x50 };
     const file_object_record_protector_t *protector = fido_object_record_protector();
-    file_object_record_identity_t identity = test_identity(0);
+    file_object_record_identity_t identity = test_identity(FILE_OBJECT_PROTECTION_AEAD_SECRET, 0);
     uint8_t aad[FILE_OBJECT_RECORD_AAD_SIZE];
     uint8_t nonce[FILE_OBJECT_RECORD_NONCE_SIZE];
     uint8_t stored[sizeof(plaintext)];
@@ -133,10 +164,14 @@ static void test_secret_record(void) {
     assert(protector->unseal(protector->ctx, &identity, nonce, aad, stored, sizeof(stored), tag, output) == PICOKEYS_OK);
     assert(memcmp(output, plaintext, sizeof(plaintext)) == 0);
 
+    test_device_key_available = false;
+    assert(protector->unseal(protector->ctx, &identity, nonce, aad, stored, sizeof(stored), tag, output) == PICOKEYS_NO_LOGIN);
+    test_device_key_available = true;
+
     tag[0] ^= 0x01;
     assert(protector->unseal(protector->ctx, &identity, nonce, aad, stored, sizeof(stored), tag, output) == PICOKEYS_WRONG_SIGNATURE);
 
-    identity = test_identity(1);
+    identity = test_identity(FILE_OBJECT_PROTECTION_AEAD_SECRET, 1);
     test_aad_build(&identity, aad, nonce);
     assert(protector->seal(protector->ctx, &identity, nonce, aad, plaintext, sizeof(plaintext), stored, tag) == PICOKEYS_WRONG_DATA);
 }
@@ -144,6 +179,8 @@ static void test_secret_record(void) {
 int main(void) {
     test_root_reset();
     test_manifest_authentication();
+    test_root_reset();
+    test_authenticated_public_record();
     test_root_reset();
     test_secret_record();
     puts("fido_object_provider_test: OK");

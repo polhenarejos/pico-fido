@@ -44,6 +44,10 @@ typedef struct test_file_image {
 static test_file_t test_files[TEST_FILE_COUNT];
 static test_file_image_t durable_files[TEST_FILE_COUNT];
 static uint8_t device_key[32];
+static uint8_t public_root[32];
+static bool device_key_available;
+static size_t sync_commit_count;
+static size_t fail_sync_commit_at;
 
 static test_file_t *test_file_from_handle(const file_t *file) {
     for (size_t i = 0; i < TEST_FILE_COUNT; i++) {
@@ -66,9 +70,13 @@ static void test_persist(void) {
 static void test_reset(void) {
     memset(test_files, 0, sizeof(test_files));
     memset(durable_files, 0, sizeof(durable_files));
+    sync_commit_count = 0;
+    fail_sync_commit_at = 0;
     for (size_t i = 0; i < sizeof(device_key); i++) {
         device_key[i] = (uint8_t)(i + 1u);
+        public_root[i] = (uint8_t)(0x80u + i);
     }
+    device_key_available = true;
 }
 
 static void test_reboot(void) {
@@ -104,7 +112,14 @@ static bool test_contains(const uint8_t *data, size_t data_size, const uint8_t *
     return false;
 }
 
+void derive_kbase(uint8_t kbase[32]) {
+    memcpy(kbase, public_root, sizeof(public_root));
+}
+
 int load_keydev(uint8_t key[32]) {
+    if (!device_key_available) {
+        return PICOKEYS_NO_LOGIN;
+    }
     memcpy(key, device_key, sizeof(device_key));
     return PICOKEYS_OK;
 }
@@ -191,6 +206,10 @@ void flash_commit(void) {
 
 bool flash_commit_sync(uint32_t timeout_ms) {
     (void)timeout_ms;
+    sync_commit_count++;
+    if (fail_sync_commit_at > 0 && sync_commit_count == fail_sync_commit_at) {
+        return false;
+    }
     test_persist();
     return true;
 }
@@ -205,7 +224,7 @@ static void test_read_object(uint16_t object_type, const uint8_t *expected, size
 }
 
 static void test_create_update_reboot_delete(void) {
-    uint8_t rp_id_hash[32];
+    uint8_t rp_id_hash[RP_ID_HASH_LEN];
     uint8_t client_id[42];
     static const uint8_t credential[] = { 0x10, 0x20, 0x30, 0x40, 0x50, 0x60 };
     static const uint8_t updated_credential[] = { 0xa0, 0xb0, 0xc0, 0xd0 };
@@ -225,6 +244,13 @@ static void test_create_update_reboot_delete(void) {
     test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
     test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
     test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
+
+    device_key_available = false;
+    test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
+    test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
+    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, client_id, sizeof(client_id), &(size_t){ 0 }) == PICOKEYS_NO_LOGIN);
+    test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
+    device_key_available = true;
 
     file_t *secret_record = file_search((uint16_t)(0xd500u | TEST_SLOT));
     assert(file_has_data(secret_record));
@@ -255,11 +281,90 @@ static void test_collision_rejected(void) {
     assert(!resident_container_can_create(TEST_SLOT));
 }
 
+static void test_interrupted_create_recovers(void) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0x31 };
+    uint8_t client_id[42] = { 0x32 };
+    static const uint8_t credential[] = { 0x33, 0x34, 0x35 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+
+    for (size_t failed_commit = 1; failed_commit <= 3; failed_commit++) {
+        test_reset();
+        fail_sync_commit_at = failed_commit;
+        assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) != PICOKEYS_OK);
+
+        test_reboot();
+        assert(!resident_container_is_marker(file_search((uint16_t)(EF_CRED + TEST_SLOT))));
+        assert(resident_container_can_create(TEST_SLOT));
+
+        fail_sync_commit_at = 0;
+        sync_commit_count = 0;
+        assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+        test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
+    }
+}
+
+static void test_interrupted_update_keeps_previous_generation(void) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0x41 };
+    uint8_t client_id[42] = { 0x42 };
+    static const uint8_t credential[] = { 0x43, 0x44, 0x45 };
+    static const uint8_t updated_credential[] = { 0x53, 0x54, 0x55 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+
+    for (size_t failed_commit = 1; failed_commit <= 2; failed_commit++) {
+        test_reset();
+        assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+
+        sync_commit_count = 0;
+        fail_sync_commit_at = failed_commit;
+        assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) != PICOKEYS_OK);
+
+        test_reboot();
+        test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
+
+        fail_sync_commit_at = 0;
+        sync_commit_count = 0;
+        assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);
+        test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
+    }
+}
+
+static void test_legacy_root_container_remains_accessible(void) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0x61 };
+    uint8_t client_id[42] = { 0x62 };
+    static const uint8_t credential[] = { 0x63, 0x64, 0x65 };
+    static const uint8_t updated_credential[] = { 0x73, 0x74, 0x75 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+
+    test_reset();
+    memcpy(public_root, device_key, sizeof(public_root));
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+
+    for (size_t i = 0; i < sizeof(public_root); i++) {
+        public_root[i] = (uint8_t)(0x80u + i);
+    }
+    test_reboot();
+    test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
+    test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
+    test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
+
+    device_key_available = false;
+    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash), &(size_t){ 0 }) != PICOKEYS_OK);
+    device_key_available = true;
+
+    assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);
+    test_reboot();
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
+}
+
 int main(void) {
     test_reset();
     test_create_update_reboot_delete();
     test_reset();
     test_collision_rejected();
+    test_interrupted_create_recovers();
+    test_interrupted_update_keeps_previous_generation();
+    test_legacy_root_container_remains_accessible();
     puts("fido_resident_container_test: OK");
     return 0;
 }

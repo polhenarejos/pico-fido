@@ -271,13 +271,13 @@ int cbor_config(const uint8_t *data, size_t len) {
             resetPersistentPinUvAuthToken();
             resetPinUvAuthToken();
         }
-        uint8_t *dataf = (uint8_t *) calloc(1, 2 + minPinLengthRPIDs_len * 32);
+        uint8_t *dataf = (uint8_t *) calloc(1, 2 + minPinLengthRPIDs_len * RP_ID_HASH_LEN);
         dataf[0] = (uint8_t)newMinPinLength;
         dataf[1] = forceChangePin == ptrue ? 1 : 0;
         for (size_t m = 0; m < minPinLengthRPIDs_len; m++) {
-            mbedtls_sha256((uint8_t *) minPinLengthRPIDs[m].data, minPinLengthRPIDs[m].len, dataf + 2 + m * 32, 0);
+            mbedtls_sha256((uint8_t *) minPinLengthRPIDs[m].data, minPinLengthRPIDs[m].len, dataf + 2 + m * RP_ID_HASH_LEN, 0);
         }
-        file_put_data(ef_minpin, dataf, (uint16_t)(2 + minPinLengthRPIDs_len * 32));
+        file_put_data(ef_minpin, dataf, (uint16_t)(2 + minPinLengthRPIDs_len * RP_ID_HASH_LEN));
         if (pinPolicy == ptrue) {
             file_t *ef_pin_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
             if (ef_pin_policy) {

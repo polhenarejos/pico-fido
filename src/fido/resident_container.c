@@ -28,6 +28,12 @@
 #define FIDO_RESIDENT_RECORD_SLOT_0_PREFIX 0xd3u
 #define FIDO_RESIDENT_RECORD_SLOT_1_PREFIX 0xd7u
 #define FIDO_RESIDENT_CONTAINER_MARKER_SIZE 8u
+#define FIDO_RESIDENT_CONTAINER_MARKER_VERSION_OFFSET 4u
+#define FIDO_RESIDENT_CONTAINER_MARKER_SLOT_OFFSET 5u
+#define FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_0_OFFSET 6u
+#define FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_1_OFFSET 7u
+#define FIDO_RESIDENT_CONTAINER_MARKER_VERSION 1u
+#define FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_VALUE 0u
 #define FIDO_RESIDENT_CONTAINER_COMMIT_TIMEOUT_MS 5000u
 #define FIDO_RESIDENT_CONTAINER_MAX_MANIFEST_SIZE (FILE_OBJECT_MANIFEST_HEADER_SIZE + FILE_OBJECT_MANIFEST_MAX_OBJECTS * FILE_OBJECT_DESCRIPTOR_SIZE + FILE_OBJECT_AUTH_TAG_SIZE)
 #define FIDO_RESIDENT_POLICY_ID 0x0200u
@@ -45,6 +51,11 @@ typedef struct resident_container_write {
     uint8_t protection;
     uint16_t flags;
 } resident_container_write_t;
+
+typedef struct resident_crypto_context {
+    const file_object_authenticator_t *auth;
+    const file_object_record_protector_t *protector;
+} resident_crypto_context_t;
 
 static const uint8_t resident_container_marker_magic[4] = { 'P', 'K', 'F', '1' };
 static const uint8_t resident_internal_policy[] = {
@@ -93,7 +104,11 @@ bool resident_container_is_marker(const file_t *file) {
         return false;
     }
     const uint8_t *data = file_get_data(file);
-    return memcmp(data, resident_container_marker_magic, sizeof(resident_container_marker_magic)) == 0 && data[4] == 1 && data[5] == (uint8_t)file->fid && data[6] == 0 && data[7] == 0;
+    return memcmp(data, resident_container_marker_magic, sizeof(resident_container_marker_magic)) == 0 &&
+           data[FIDO_RESIDENT_CONTAINER_MARKER_VERSION_OFFSET] == FIDO_RESIDENT_CONTAINER_MARKER_VERSION &&
+           data[FIDO_RESIDENT_CONTAINER_MARKER_SLOT_OFFSET] == (uint8_t) file->fid &&
+           data[FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_0_OFFSET] == FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_VALUE &&
+           data[FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_1_OFFSET] == FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_VALUE;
 }
 
 static file_object_descriptor_t *resident_manifest_find(file_object_manifest_t *manifest, uint16_t object_type) {
@@ -178,17 +193,48 @@ static int resident_manifest_load(uint8_t slot, const file_object_authenticator_
     return PICOKEYS_OK;
 }
 
+static int resident_manifest_load_compatible(uint8_t slot, resident_manifest_candidate_t candidates[2], resident_manifest_candidate_t **current, resident_crypto_context_t *crypto) {
+    if (!crypto) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    crypto->auth = fido_object_manifest_authenticator();
+    crypto->protector = fido_object_record_protector();
+    if (!crypto->auth || !crypto->protector) {
+        return PICOKEYS_EXEC_ERROR;
+    }
+    int r = resident_manifest_load(slot, crypto->auth, candidates, current);
+    if (r == PICOKEYS_OK || r == PICOKEYS_ERR_FILE_NOT_FOUND) {
+        return r;
+    }
+
+    const file_object_authenticator_t *legacy_auth = fido_object_legacy_manifest_authenticator();
+    const file_object_record_protector_t *legacy_protector = fido_object_legacy_record_protector();
+    if (!legacy_auth || !legacy_protector) {
+        return r;
+    }
+    resident_manifest_candidate_t legacy_candidates[2];
+    resident_manifest_candidate_t *legacy_current = NULL;
+    int legacy_result = resident_manifest_load(slot, legacy_auth, legacy_candidates, &legacy_current);
+    if (legacy_result != PICOKEYS_OK) {
+        return r;
+    }
+    memcpy(candidates, legacy_candidates, sizeof(legacy_candidates));
+    *current = &candidates[legacy_current->slot];
+    crypto->auth = legacy_auth;
+    crypto->protector = legacy_protector;
+    return PICOKEYS_OK;
+}
+
 bool resident_container_can_create(uint8_t slot) {
     bool manifest_present = false;
     for (uint8_t manifest_slot = 0; manifest_slot < 2; manifest_slot++) {
         manifest_present |= file_search(resident_manifest_fid(slot, manifest_slot)) != NULL;
     }
     if (manifest_present) {
-        const file_object_authenticator_t *auth = fido_object_manifest_authenticator();
-        const file_object_record_protector_t *protector = fido_object_record_protector();
         resident_manifest_candidate_t candidates[2];
         resident_manifest_candidate_t *current = NULL;
-        return auth && protector && resident_manifest_load(slot, auth, candidates, &current) == PICOKEYS_OK && resident_manifest_validate(current, protector) == PICOKEYS_OK;
+        resident_crypto_context_t crypto;
+        return resident_manifest_load_compatible(slot, candidates, &current, &crypto) == PICOKEYS_OK && resident_manifest_validate(current, crypto.protector) == PICOKEYS_OK;
     }
     static const uint8_t record_magic[4] = { 'P', 'K', 'O', 'R' };
     for (uint8_t manifest_slot = 0; manifest_slot < 2; manifest_slot++) {
@@ -292,7 +338,10 @@ static int resident_record_write(uint8_t slot, uint8_t manifest_slot, const resi
 }
 
 static int resident_marker_write(uint8_t slot) {
-    uint8_t marker[FIDO_RESIDENT_CONTAINER_MARKER_SIZE] = { 'P', 'K', 'F', '1', 1, slot, 0, 0 };
+    uint8_t marker[FIDO_RESIDENT_CONTAINER_MARKER_SIZE] = { 0 };
+    memcpy(marker, resident_container_marker_magic, sizeof(resident_container_marker_magic));
+    marker[FIDO_RESIDENT_CONTAINER_MARKER_VERSION_OFFSET] = FIDO_RESIDENT_CONTAINER_MARKER_VERSION;
+    marker[FIDO_RESIDENT_CONTAINER_MARKER_SLOT_OFFSET] = slot;
     int r = resident_replace_file((uint16_t)(EF_CRED + slot), marker, sizeof(marker));
     if (r != PICOKEYS_OK) {
         return r;
@@ -304,14 +353,10 @@ static int resident_container_update(uint8_t slot, const resident_container_writ
     if (!writes || write_count == 0 || write_count > FILE_OBJECT_MANIFEST_MAX_OBJECTS) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
-    const file_object_authenticator_t *auth = fido_object_manifest_authenticator();
-    const file_object_record_protector_t *protector = fido_object_record_protector();
-    if (!auth || !protector) {
-        return PICOKEYS_EXEC_ERROR;
-    }
     resident_manifest_candidate_t candidates[2];
     resident_manifest_candidate_t *current = NULL;
-    int r = resident_manifest_load(slot, auth, candidates, &current);
+    resident_crypto_context_t crypto;
+    int r = resident_manifest_load_compatible(slot, candidates, &current, &crypto);
     if (r != PICOKEYS_OK && r != PICOKEYS_ERR_FILE_NOT_FOUND) {
         return r;
     }
@@ -320,9 +365,9 @@ static int resident_container_update(uint8_t slot, const resident_container_writ
         return PICOKEYS_WRONG_DATA;
     }
     if (current) {
-        int current_status = resident_manifest_validate(current, protector);
+        int current_status = resident_manifest_validate(current, crypto.protector);
         resident_manifest_candidate_t *previous = &candidates[current->slot ^ 1u];
-        if (current_status != PICOKEYS_OK && previous->valid && resident_manifest_validate(previous, protector) == PICOKEYS_OK) {
+        if (current_status != PICOKEYS_OK && previous->valid && resident_manifest_validate(previous, crypto.protector) == PICOKEYS_OK) {
             current = previous;
         }
         else if (current_status != PICOKEYS_OK) {
@@ -362,7 +407,7 @@ static int resident_container_update(uint8_t slot, const resident_container_writ
             return PICOKEYS_WRONG_DATA;
         }
         file_object_descriptor_t replacement;
-        r = resident_record_write(slot, target_slot, write, object_generation, next.generation, protector, &replacement);
+        r = resident_record_write(slot, target_slot, write, object_generation, next.generation, crypto.protector, &replacement);
         if (r != PICOKEYS_OK) {
             return r;
         }
@@ -383,7 +428,7 @@ static int resident_container_update(uint8_t slot, const resident_container_writ
 
     uint8_t manifest_data[FIDO_RESIDENT_CONTAINER_MAX_MANIFEST_SIZE];
     size_t manifest_size = 0;
-    r = file_object_manifest_build(&next, NULL, 0, auth, manifest_data, sizeof(manifest_data), &manifest_size);
+    r = file_object_manifest_build(&next, NULL, 0, crypto.auth, manifest_data, sizeof(manifest_data), &manifest_size);
     if (r == PICOKEYS_OK) {
         r = resident_replace_file(resident_manifest_fid(slot, target_slot), manifest_data, (uint32_t)manifest_size);
     }
@@ -422,12 +467,12 @@ static int resident_container_update(uint8_t slot, const resident_container_writ
     return PICOKEYS_OK;
 }
 
-int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[32], const uint8_t *client_id, size_t client_id_size, const uint8_t *credential, size_t credential_size, const uint8_t *public_key, size_t public_key_size) {
+int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_LEN], const uint8_t *client_id, size_t client_id_size, const uint8_t *credential, size_t credential_size, const uint8_t *public_key, size_t public_key_size) {
     if (!rp_id_hash || !client_id || !credential || !public_key || client_id_size > UINT32_MAX || credential_size > UINT32_MAX || public_key_size > UINT32_MAX) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
     resident_container_write_t writes[] = {
-        { FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, 32, FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC, 0 },
+        { FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, RP_ID_HASH_LEN, FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC, 0 },
         { FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, (uint32_t)client_id_size, FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC, 0 },
         { FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, (uint32_t)credential_size, FILE_OBJECT_PROTECTION_AEAD_SECRET, FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE },
         { FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, (uint32_t)public_key_size, FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC, 0 }
@@ -440,13 +485,10 @@ int resident_container_object_size(uint8_t slot, uint16_t object_type, uint32_t 
         return PICOKEYS_ERR_NULL_PARAM;
     }
     *object_size = 0;
-    const file_object_authenticator_t *auth = fido_object_manifest_authenticator();
-    if (!auth) {
-        return PICOKEYS_EXEC_ERROR;
-    }
     resident_manifest_candidate_t candidates[2];
     resident_manifest_candidate_t *current = NULL;
-    int r = resident_manifest_load(slot, auth, candidates, &current);
+    resident_crypto_context_t crypto;
+    int r = resident_manifest_load_compatible(slot, candidates, &current, &crypto);
     if (r != PICOKEYS_OK) {
         return r;
     }
@@ -463,14 +505,10 @@ int resident_container_read(uint8_t slot, uint16_t object_type, uint8_t *data, s
         return PICOKEYS_ERR_NULL_PARAM;
     }
     *written = 0;
-    const file_object_authenticator_t *auth = fido_object_manifest_authenticator();
-    const file_object_record_protector_t *protector = fido_object_record_protector();
-    if (!auth || !protector) {
-        return PICOKEYS_EXEC_ERROR;
-    }
     resident_manifest_candidate_t candidates[2];
     resident_manifest_candidate_t *current = NULL;
-    int r = resident_manifest_load(slot, auth, candidates, &current);
+    resident_crypto_context_t crypto;
+    int r = resident_manifest_load_compatible(slot, candidates, &current, &crypto);
     if (r != PICOKEYS_OK) {
         return r;
     }
@@ -483,7 +521,7 @@ int resident_container_read(uint8_t slot, uint16_t object_type, uint8_t *data, s
         if (!object) {
             continue;
         }
-        r = resident_unseal(&candidate->manifest, object, protector, data, capacity, written);
+        r = resident_unseal(&candidate->manifest, object, crypto.protector, data, capacity, written);
         if (r == PICOKEYS_OK) {
             return PICOKEYS_OK;
         }
@@ -513,10 +551,10 @@ int resident_container_delete(uint8_t slot) {
     if (!resident_container_is_marker(marker)) {
         return PICOKEYS_ERR_FILE_NOT_FOUND;
     }
-    const file_object_authenticator_t *auth = fido_object_manifest_authenticator();
     resident_manifest_candidate_t candidates[2];
     resident_manifest_candidate_t *current = NULL;
-    int r = resident_manifest_load(slot, auth, candidates, &current);
+    resident_crypto_context_t crypto;
+    int r = resident_manifest_load_compatible(slot, candidates, &current, &crypto);
     if (r != PICOKEYS_OK) {
         return r;
     }
