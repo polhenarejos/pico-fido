@@ -99,7 +99,7 @@ int cmd_authenticate(void) {
     res_APDU_size = 1 + 4 + (uint16_t)olen;
 
     ctr++;
-    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
+    file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
     flash_commit();
     return SW_OK();
 }

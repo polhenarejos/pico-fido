@@ -167,7 +167,7 @@ int credential_migrate_rp_secure(void) {
         }
         memcpy(data, record, RP_RECORD_HEADER_LEN);
         memcpy(data + RP_RECORD_HEADER_LEN, out, out_len);
-        file_put_data(ef, data, (uint16_t)(RP_RECORD_HEADER_LEN + out_len));
+        file_put_data(ef, CONST_BYTE_ARRAY(data, RP_RECORD_HEADER_LEN + out_len));
         free(data);
         free(out);
         changed = true;
@@ -302,7 +302,7 @@ int credential_rp_legacy_decrement(const uint8_t rp_id_hash[RP_ID_HASH_LEN]) {
         }
         memcpy(data, file_get_data(ef), size);
         data[0]--;
-        int ret = data[0] == 0 ? file_delete(ef) : file_put_data(ef, data, size);
+        int ret = data[0] == 0 ? file_delete(ef) : file_put_data(ef, CONST_BYTE_ARRAY(data, size));
         free(data);
         return ret;
     }
@@ -430,7 +430,7 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
     uint8_t key[32] = {0};
     credential_derive_chacha_key(key, (const uint8_t *)CRED_PROTO);
     uint8_t iv[CRED_IV_LEN] = {0};
-    random_fill_buffer(iv, sizeof(iv));
+    random_fill_buffer(BYTE_ARRAY(iv, sizeof(iv)));
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, key);
@@ -645,7 +645,7 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
         memcpy(data + RP_ID_HASH_LEN, cred_idr, CRED_RESIDENT_LEN);
         memcpy(data + RP_ID_HASH_LEN + CRED_RESIDENT_LEN, cred_id, cred_id_len);
         ef = file_new((uint16_t)(EF_CRED + sloti));
-        ret = ef ? file_put_data(ef, data, (uint32_t)cred_id_len + RP_ID_HASH_LEN + CRED_RESIDENT_LEN) : PICOKEYS_ERR_NO_MEMORY;
+        ret = ef ? file_put_data(ef, CONST_BYTE_ARRAY(data, cred_id_len + RP_ID_HASH_LEN + CRED_RESIDENT_LEN)) : PICOKEYS_ERR_NO_MEMORY;
         free(data);
     }
     if (ret != PICOKEYS_OK) {
@@ -748,9 +748,9 @@ static int credential_resident_container_read_alloc(const file_t *ef, uint16_t o
             return PICOKEYS_ERR_MEMORY_FATAL;
         }
     }
-    size_t written = 0;
-    ret = resident_container_read((uint8_t)ef->fid, object_type, *data, object_size, &written);
-    if (ret != PICOKEYS_OK || written != object_size) {
+    byte_buffer_t output = BYTE_BUFFER(*data, object_size);
+    ret = resident_container_read((uint8_t)ef->fid, object_type, &output);
+    if (ret != PICOKEYS_OK || output.len != object_size) {
         if (*data) {
             mbedtls_platform_zeroize(*data, object_size);
             free(*data);
@@ -758,7 +758,7 @@ static int credential_resident_container_read_alloc(const file_t *ef, uint16_t o
         }
         return ret == PICOKEYS_OK ? PICOKEYS_WRONG_LENGTH : ret;
     }
-    *data_len = written;
+    *data_len = output.len;
     return PICOKEYS_OK;
 }
 
@@ -773,9 +773,9 @@ int credential_resident_rp_id_hash(const file_t *ef, uint8_t rp_id_hash[RP_ID_HA
         memcpy(rp_id_hash, file_get_data(ef), RP_ID_HASH_LEN);
         return PICOKEYS_OK;
     }
-    size_t written = 0;
-    int ret = resident_container_read((uint8_t)ef->fid, FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, RP_ID_HASH_LEN, &written);
-    return ret == PICOKEYS_OK && written == RP_ID_HASH_LEN ? PICOKEYS_OK : (ret == PICOKEYS_OK ? PICOKEYS_WRONG_LENGTH : ret);
+    byte_buffer_t output = BYTE_BUFFER(rp_id_hash, RP_ID_HASH_LEN);
+    int ret = resident_container_read((uint8_t)ef->fid, FIDO_RESIDENT_OBJECT_RP_ID_HASH, &output);
+    return ret == PICOKEYS_OK && output.len == RP_ID_HASH_LEN ? PICOKEYS_OK : (ret == PICOKEYS_OK ? PICOKEYS_WRONG_LENGTH : ret);
 }
 
 bool credential_resident_matches_rp(const file_t *ef, const uint8_t rp_id_hash[RP_ID_HASH_LEN]) {
@@ -911,7 +911,7 @@ int credential_resident_update(const file_t *ef, const uint8_t *credential, size
     memcpy(updated, rp_id_hash, sizeof(rp_id_hash));
     memcpy(updated + RP_ID_HASH_LEN, resident_id, sizeof(resident_id));
     memcpy(updated + RP_ID_HASH_LEN + sizeof(resident_id), credential, credential_len);
-    int ret = file_put_data((file_t *)ef, updated, (uint32_t)updated_len);
+    int ret = file_put_data((file_t *)ef, CONST_BYTE_ARRAY(updated, updated_len));
     mbedtls_platform_zeroize(updated, updated_len);
     free(updated);
     return ret;

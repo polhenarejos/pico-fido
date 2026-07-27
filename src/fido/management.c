@@ -61,16 +61,15 @@ static int man_unload(void) {
 bool cap_supported(uint16_t cap) {
     file_t *ef = file_search(EF_DEV_CONF);
     if (file_has_data(ef)) {
-        uint16_t tag = 0x0;
-        uint8_t *tag_data = NULL, *p = NULL;
-        uint16_t tag_len = 0;
+        uint8_t *p = NULL;
+        tlv_item_t item;
         tlv_ctx_t ctxi;
-        tlv_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
-        while (tlv_walk(&ctxi, &p, &tag, &tag_len, &tag_data)) {
-            if (tag == TAG_USB_ENABLED) {
-                uint16_t ecaps = tag_data[0];
-                if (tag_len == 2) {
-                    ecaps = get_uint16_be(tag_data);
+        tlv_ctx_init(BYTE_ARRAY(file_get_data(ef), file_get_size(ef)), &ctxi);
+        while (tlv_walk(&ctxi, &p, &item)) {
+            if (item.tag == TAG_USB_ENABLED) {
+                uint16_t ecaps = item.value.data[0];
+                if (item.value.len == 2) {
+                    ecaps = get_uint16_be(item.value.data);
                 }
                 return ecaps & cap;
             }
@@ -95,10 +94,10 @@ int man_get_config(void) {
     res_APDU[res_APDU_size++] = TAG_USB_SUPPORTED;
     res_APDU[res_APDU_size++] = 2;
     uint16_t caps = CAP_FIDO2 | CAP_OTP | CAP_U2F | CAP_OATH;
-    if (app_exists(_openpgp_aid + 1, _openpgp_aid[0])) {
+    if (app_exists(CONST_BYTE_ARRAY(_openpgp_aid + 1, _openpgp_aid[0]))) {
         caps |= CAP_OPENPGP;
     }
-    if (app_exists(_piv_aid + 1, _piv_aid[0])) {
+    if (app_exists(CONST_BYTE_ARRAY(_piv_aid + 1, _piv_aid[0]))) {
         caps |= CAP_PIV;
     }
     res_APDU[res_APDU_size++] = caps >> 8;
@@ -171,7 +170,7 @@ static int cmd_write_config(void) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
     file_t *ef = file_new(EF_DEV_CONF);
-    file_put_data(ef, apdu.data + 1, (uint16_t)(apdu.nc - 1));
+    file_put_data(ef, CONST_BYTE_ARRAY(apdu.data + 1, apdu.nc - 1));
     flash_commit();
 #ifndef ENABLE_EMULATION
     if (cap_supported(CAP_OTP)) {

@@ -30,14 +30,12 @@
 #include "bsp/board.h"
 #endif
 #ifdef ENABLE_EMULATION
-void add_keyboard_buffer(const uint8_t *buf, size_t len, bool press_enter) {
-    (void)buf;
-    (void)len;
+void add_keyboard_buffer(const_byte_array_t data, bool press_enter) {
+    (void)data;
     (void)press_enter;
 }
-void append_keyboard_buffer(const uint8_t *buf, size_t len) {
-    (void)buf;
-    (void)len;
+void append_keyboard_buffer(const_byte_array_t data) {
+    (void)data;
 }
 #else
 #include "tusb.h"
@@ -185,21 +183,21 @@ static int otp_slot_load(uint16_t fid, uint8_t plain[OTP_SLOT_PLAIN_MAX], uint16
     }
     file_t *ef = file_search(fid);
     if (file_has_data(ef) && otp_container_is_marker(ef)) {
-        size_t written = 0;
-        int ret = otp_container_read_slot((uint8_t)(fid - EF_OTP_SLOT1), plain, OTP_SLOT_PLAIN_MAX, &written);
-        if (ret != PICOKEYS_OK || written > UINT16_MAX) {
+        byte_buffer_t output = BYTE_BUFFER(plain, OTP_SLOT_PLAIN_MAX);
+        int ret = otp_container_read_slot((uint8_t)(fid - EF_OTP_SLOT1), &output);
+        if (ret != PICOKEYS_OK || output.len > UINT16_MAX) {
             return ret;
         }
-        *plain_len = (uint16_t)written;
+        *plain_len = (uint16_t)output.len;
         return PICOKEYS_OK;
     }
     if (!file_has_data(ef) && otp_container_has_slot((uint8_t)(fid - EF_OTP_SLOT1))) {
-        size_t written = 0;
-        int ret = otp_container_read_slot((uint8_t)(fid - EF_OTP_SLOT1), plain, OTP_SLOT_PLAIN_MAX, &written);
-        if (ret != PICOKEYS_OK || written > UINT16_MAX) {
+        byte_buffer_t output = BYTE_BUFFER(plain, OTP_SLOT_PLAIN_MAX);
+        int ret = otp_container_read_slot((uint8_t)(fid - EF_OTP_SLOT1), &output);
+        if (ret != PICOKEYS_OK || output.len > UINT16_MAX) {
             return ret;
         }
-        *plain_len = (uint16_t)written;
+        *plain_len = (uint16_t)output.len;
         return PICOKEYS_OK;
     }
     if (!file_has_data(ef)) {
@@ -224,7 +222,7 @@ static int otp_slot_load(uint16_t fid, uint8_t plain[OTP_SLOT_PLAIN_MAX], uint16
     uint8_t key[32];
     int ret = otp_slot_derive_key(fid, key);
     if (ret == PICOKEYS_OK) {
-        ret = decrypt_with_aad(key, stored + sizeof(otp_slot_magic) + 1, stored_len - sizeof(otp_slot_magic) - 1, PIN_KDF_V2, plain);
+        ret = decrypt_with_aad(key, CONST_BYTE_ARRAY(stored + sizeof(otp_slot_magic) + 1, stored_len - sizeof(otp_slot_magic) - 1), PIN_KDF_V2, plain);
     }
     mbedtls_platform_zeroize(key, sizeof(key));
     if (ret != PICOKEYS_OK) {
@@ -250,11 +248,11 @@ static int otp_slot_store_legacy(uint16_t fid, const uint8_t *plain, uint16_t pl
     uint8_t key[32];
     int ret = otp_slot_derive_key(fid, key);
     if (ret == PICOKEYS_OK) {
-        ret = encrypt_with_aad(key, plain, plain_len, PIN_KDF_V2, stored + sizeof(otp_slot_magic) + 1);
+        ret = encrypt_with_aad(key, CONST_BYTE_ARRAY(plain, plain_len), PIN_KDF_V2, stored + sizeof(otp_slot_magic) + 1);
     }
     mbedtls_platform_zeroize(key, sizeof(key));
     if (ret == PICOKEYS_OK) {
-        ret = file_put_data(ef, stored, (uint16_t)(OTP_SLOT_SECURE_OVERHEAD + plain_len));
+        ret = file_put_data(ef, CONST_BYTE_ARRAY(stored, OTP_SLOT_SECURE_OVERHEAD + plain_len));
     }
     mbedtls_platform_zeroize(stored, sizeof(stored));
     return ret;
@@ -450,11 +448,11 @@ static int otp_button_pressed(uint8_t slot) {
             char number_str[9];
             if (otp_config->cfg_flags & OATH_HOTP8) {
                 sprintf(number_str, "%08lu", (long unsigned int) number);
-                add_keyboard_buffer((const uint8_t *) number_str, 8, true);
+                add_keyboard_buffer(CONST_BYTE_ARRAY((const uint8_t *)number_str, 8), true);
             }
             else {
                 sprintf(number_str, "%06lu", (long unsigned int) number);
-                add_keyboard_buffer((const uint8_t *) number_str, 6, true);
+                add_keyboard_buffer(CONST_BYTE_ARRAY((const uint8_t *)number_str, 6), true);
             }
             imf++;
             uint8_t new_chal[8];
@@ -467,7 +465,7 @@ static int otp_button_pressed(uint8_t slot) {
             flash_commit();
         }
         if (otp_config->tkt_flags & APPEND_CR) {
-            append_keyboard_buffer((const uint8_t *) "\r", 1);
+            append_keyboard_buffer(CONST_BYTE_ARRAY((const uint8_t *)"\r", 1));
         }
     }
 #endif
@@ -476,9 +474,9 @@ static int otp_button_pressed(uint8_t slot) {
         if (otp_config->cfg_flags & SHORT_TICKET) { // Not clear which is the purpose of SHORT_TICKET
             //fixed_size /= 2;
         }
-        add_keyboard_buffer(otp_config->fixed_data, fixed_size, false);
+        add_keyboard_buffer(CONST_BYTE_ARRAY(otp_config->fixed_data, fixed_size), false);
         if (otp_config->tkt_flags & APPEND_CR) {
-            append_keyboard_buffer((const uint8_t *) "\x28", 1);
+            append_keyboard_buffer(CONST_BYTE_ARRAY((const uint8_t *)"\x28", 1));
         }
     }
     else {
@@ -501,7 +499,7 @@ static int otp_button_pressed(uint8_t slot) {
         *po++ = ts >> 8;
         *po++ = ts >> 16;
         *po++ = session_counter[slot - 1];
-        random_fill_buffer(po, 2);
+        random_fill_buffer(BYTE_ARRAY(po, 2));
         po += 2;
         crc = calculate_crc(otpk + 6, 14);
         po += put_uint16_le(~crc, po);
@@ -513,9 +511,9 @@ static int otp_button_pressed(uint8_t slot) {
         uint8_t otp_out[44];
         encode_modhex(otpk, sizeof(otpk), otp_out);
         mbedtls_platform_zeroize(otpk, sizeof(otpk));
-        add_keyboard_buffer((const uint8_t *) otp_out, sizeof(otp_out), true);
+        add_keyboard_buffer(CONST_BYTE_ARRAY((const uint8_t *)otp_out, sizeof(otp_out)), true);
         if (otp_config->tkt_flags & APPEND_CR) {
-            append_keyboard_buffer((const uint8_t *) "\r", 1);
+            append_keyboard_buffer(CONST_BYTE_ARRAY((const uint8_t *)"\r", 1));
         }
 
         if (++session_counter[slot - 1] == 0) {

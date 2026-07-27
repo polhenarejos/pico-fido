@@ -182,25 +182,25 @@ uint32_t file_get_size(const file_t *file) {
     return test_file ? test_file->size : 0;
 }
 
-int file_read_at(const file_t *file, uint32_t offset, uint8_t *data, size_t len) {
+int file_read_at(const file_t *file, uint32_t offset, byte_array_t data) {
     const test_file_t *test_file = test_file_from_handle(file);
-    if (!test_file || (!data && len > 0) || offset > test_file->size || len > test_file->size - offset) {
+    if (!test_file || (!data.data && data.len > 0) || offset > test_file->size || data.len > test_file->size - offset) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
-    memcpy(data, test_file->storage + offset, len);
+    memcpy(data.data, test_file->storage + offset, data.len);
     return PICOKEYS_OK;
 }
 
-int file_put_data(file_t *file, const uint8_t *data, uint32_t len) {
+int file_put_data(file_t *file, const_byte_array_t data) {
     test_file_t *test_file = test_file_from_handle(file);
-    if (!test_file || (!data && len > 0) || len > sizeof(test_file->storage)) {
+    if (!test_file || (!data.data && data.len > 0) || data.len > sizeof(test_file->storage)) {
         return PICOKEYS_ERR_NO_MEMORY;
     }
-    if (len > 0) {
-        memcpy(test_file->storage, data, len);
+    if (data.len > 0) {
+        memcpy(test_file->storage, data.data, data.len);
     }
-    test_file->size = len;
-    test_file->file.data = len > 0 ? test_file->storage : NULL;
+    test_file->size = data.len;
+    test_file->file.data = data.len > 0 ? test_file->storage : NULL;
     return PICOKEYS_OK;
 }
 
@@ -239,10 +239,10 @@ bool flash_commit_sync(uint32_t timeout_ms) {
 
 static void test_read_object(uint16_t object_type, const uint8_t *expected, size_t expected_size) {
     uint8_t output[256];
-    size_t written = 0;
+    byte_buffer_t data = BYTE_BUFFER(output, sizeof(output));
     assert(expected_size <= sizeof(output));
-    assert(resident_container_read(TEST_SLOT, object_type, output, sizeof(output), &written) == PICOKEYS_OK);
-    assert(written == expected_size);
+    assert(resident_container_read(TEST_SLOT, object_type, &data) == PICOKEYS_OK);
+    assert(data.len == expected_size);
     assert(memcmp(output, expected, expected_size) == 0);
 }
 
@@ -271,7 +271,7 @@ static void test_create_update_reboot_delete(void) {
     device_key_available = false;
     test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
     test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
-    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, client_id, sizeof(client_id), &(size_t){ 0 }) == PICOKEYS_NO_LOGIN);
+    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, &BYTE_BUFFER(client_id, sizeof(client_id))) == PICOKEYS_NO_LOGIN);
     test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
     device_key_available = true;
 
@@ -290,7 +290,7 @@ static void test_create_update_reboot_delete(void) {
     secret_record = file_search((uint16_t)(0xd900u | TEST_SLOT));
     assert(file_has_data(secret_record));
     file_get_data(secret_record)[FILE_OBJECT_RECORD_HEADER_SIZE] ^= 0x01;
-    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, client_id, sizeof(client_id), &(size_t){ 0 }) == PICOKEYS_WRONG_SIGNATURE);
+    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, &BYTE_BUFFER(client_id, sizeof(client_id))) == PICOKEYS_WRONG_SIGNATURE);
     test_reboot();
     assert(resident_container_delete(TEST_SLOT) == PICOKEYS_OK);
     assert(test_allocated_files() == 0);
@@ -300,7 +300,7 @@ static void test_collision_rejected(void) {
     file_t *collision = file_new((uint16_t)(0xd100u | TEST_SLOT));
     static const uint8_t unrelated[] = { 1, 2, 3, 4 };
     assert(collision != NULL);
-    assert(file_put_data(collision, unrelated, sizeof(unrelated)) == PICOKEYS_OK);
+    assert(file_put_data(collision, CONST_BYTE_ARRAY(unrelated, sizeof(unrelated))) == PICOKEYS_OK);
     assert(!resident_container_can_create(TEST_SLOT));
 }
 
@@ -420,7 +420,7 @@ static void test_existing_container_fixture(void) {
     const file_object_authenticator_t *auth = fido_object_manifest_authenticator();
     const file_object_record_protector_t *protector = fido_object_record_protector();
     assert(auth && protector);
-    assert(file_object_policy_hash(resident_policy, sizeof(resident_policy), policy_hash) == PICOKEYS_OK);
+    assert(file_object_policy_hash(CONST_BYTE_ARRAY(resident_policy, sizeof(resident_policy)), policy_hash) == PICOKEYS_OK);
 
     for (size_t i = 0; i < sizeof(objects) / sizeof(objects[0]); i++) {
         uint16_t record_fid = (uint16_t)(((0xd3u + objects[i].object_type - 1u) << 8) | TEST_SLOT);
@@ -437,12 +437,16 @@ static void test_existing_container_fixture(void) {
         file_object_manifest_t record_manifest = manifest;
         record_manifest.object_count = 1;
         record_manifest.object = manifest.objects[i];
-        assert(file_object_record_seal(&record_manifest, policy_hash, protector, objects[i].data, objects[i].data_size, record_data[i], sizeof(record_data[i]), &record_sizes[i]) == PICOKEYS_OK);
-        assert(file_put_data(file_new(record_fid), record_data[i], (uint32_t)record_sizes[i]) == PICOKEYS_OK);
+        byte_buffer_t record = BYTE_BUFFER(record_data[i], sizeof(record_data[i]));
+        assert(file_object_record_seal(&record_manifest, policy_hash, protector, CONST_BYTE_ARRAY(objects[i].data, objects[i].data_size), &record) == PICOKEYS_OK);
+        record_sizes[i] = record.len;
+        assert(file_put_data(file_new(record_fid), CONST_BYTE_ARRAY(record_data[i], record_sizes[i])) == PICOKEYS_OK);
     }
-    assert(file_object_manifest_build(&manifest, NULL, 0, auth, manifest_data, sizeof(manifest_data), &manifest_size) == PICOKEYS_OK);
-    assert(file_put_data(file_new((uint16_t)(0xd100u | TEST_SLOT)), manifest_data, (uint32_t)manifest_size) == PICOKEYS_OK);
-    assert(file_put_data(file_new((uint16_t)(EF_CRED + TEST_SLOT)), marker, sizeof(marker)) == PICOKEYS_OK);
+    byte_buffer_t manifest_output = BYTE_BUFFER(manifest_data, sizeof(manifest_data));
+    assert(file_object_manifest_build(&manifest, CONST_BYTE_ARRAY(NULL, 0), auth, &manifest_output) == PICOKEYS_OK);
+    manifest_size = manifest_output.len;
+    assert(file_put_data(file_new((uint16_t)(0xd100u | TEST_SLOT)), CONST_BYTE_ARRAY(manifest_data, manifest_size)) == PICOKEYS_OK);
+    assert(file_put_data(file_new((uint16_t)(EF_CRED + TEST_SLOT)), CONST_BYTE_ARRAY(marker, sizeof(marker))) == PICOKEYS_OK);
     test_persist();
 
     for (size_t i = 0; i < sizeof(public_root); i++) {
@@ -468,12 +472,12 @@ static void test_existing_container_fixture(void) {
 
 static bool test_credential_matches(const uint8_t *first, size_t first_size, const uint8_t *second, size_t second_size) {
     uint8_t output[32] = { 0 };
-    size_t written = 0;
-    int r = resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, output, sizeof(output), &written);
+    byte_buffer_t data = BYTE_BUFFER(output, sizeof(output));
+    int r = resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_CREDENTIAL, &data);
     if (r != PICOKEYS_OK) {
         return false;
     }
-    return (written == first_size && memcmp(output, first, first_size) == 0) || (written == second_size && memcmp(output, second, second_size) == 0);
+    return (data.len == first_size && memcmp(output, first, first_size) == 0) || (data.len == second_size && memcmp(output, second, second_size) == 0);
 }
 
 static void test_power_loss_create_event(size_t failed_event) {
@@ -595,7 +599,7 @@ static void test_legacy_root_container_remains_accessible(void) {
     test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
 
     device_key_available = false;
-    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash), &(size_t){ 0 }) != PICOKEYS_OK);
+    assert(resident_container_read(TEST_SLOT, FIDO_RESIDENT_OBJECT_RP_ID_HASH, &BYTE_BUFFER(rp_id_hash, sizeof(rp_id_hash))) != PICOKEYS_OK);
     device_key_available = true;
 
     assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);

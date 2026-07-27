@@ -28,7 +28,7 @@ bool oath_container_is_marker(const file_t *file);
 bool oath_container_can_create(uint8_t slot);
 int oath_container_create(uint8_t slot, const uint8_t *credential, size_t credential_size, const uint8_t *metadata, size_t metadata_size);
 int oath_container_object_size(uint8_t slot, uint16_t object_type, uint32_t *object_size);
-int oath_container_read(uint8_t slot, uint16_t object_type, uint8_t *data, size_t capacity, size_t *written);
+int oath_container_read(uint8_t slot, uint16_t object_type, byte_buffer_t *data);
 int oath_container_update(uint8_t slot, const uint8_t *credential, size_t credential_size, const uint8_t *metadata, size_t metadata_size);
 int oath_container_delete(uint8_t slot);
 int oath_container_purge(uint8_t slot);

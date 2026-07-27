@@ -140,23 +140,23 @@ uint32_t file_get_size(const file_t *file) {
     return test_file ? test_file->size : 0;
 }
 
-int file_read_at(const file_t *file, uint32_t offset, uint8_t *data, size_t len) {
+int file_read_at(const file_t *file, uint32_t offset, byte_array_t data) {
     const test_file_t *test_file = test_file_from_handle(file);
-    if (!test_file || (!data && len > 0) || offset > test_file->size || len > test_file->size - offset) {
+    if (!test_file || (!data.data && data.len > 0) || offset > test_file->size || data.len > test_file->size - offset) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
-    memcpy(data, test_file->storage + offset, len);
+    memcpy(data.data, test_file->storage + offset, data.len);
     return PICOKEYS_OK;
 }
 
-int file_put_data(file_t *file, const uint8_t *data, uint32_t len) {
+int file_put_data(file_t *file, const_byte_array_t data) {
     test_file_t *test_file = test_file_from_handle(file);
-    if (!test_file || (!data && len > 0) || len > sizeof(test_file->storage)) {
+    if (!test_file || (!data.data && data.len > 0) || data.len > sizeof(test_file->storage)) {
         return PICOKEYS_ERR_NO_MEMORY;
     }
-    memcpy(test_file->storage, data, len);
-    test_file->size = len;
-    test_file->file.data = len > 0 ? test_file->storage : NULL;
+    memcpy(test_file->storage, data.data, data.len);
+    test_file->size = data.len;
+    test_file->file.data = data.len > 0 ? test_file->storage : NULL;
     return PICOKEYS_OK;
 }
 
@@ -191,9 +191,9 @@ bool flash_commit_sync(uint32_t timeout_ms) {
 
 static void test_read_slot(uint8_t slot, const uint8_t *expected, size_t expected_size) {
     uint8_t output[128] = { 0 };
-    size_t written = 0;
-    assert(otp_container_read_slot(slot, output, sizeof(output), &written) == PICOKEYS_OK);
-    assert(written == expected_size);
+    byte_buffer_t data = BYTE_BUFFER(output, sizeof(output));
+    assert(otp_container_read_slot(slot, &data) == PICOKEYS_OK);
+    assert(data.len == expected_size);
     assert(memcmp(output, expected, expected_size) == 0);
 }
 
@@ -211,8 +211,8 @@ static bool test_contains(const uint8_t *data, size_t data_size, const uint8_t *
 
 static bool test_slot_matches(uint8_t slot, const uint8_t *expected, size_t expected_size) {
     uint8_t output[128] = { 0 };
-    size_t written = 0;
-    return otp_container_read_slot(slot, output, sizeof(output), &written) == PICOKEYS_OK && written == expected_size && memcmp(output, expected, expected_size) == 0;
+    byte_buffer_t data = BYTE_BUFFER(output, sizeof(output));
+    return otp_container_read_slot(slot, &data) == PICOKEYS_OK && data.len == expected_size && memcmp(output, expected, expected_size) == 0;
 }
 
 static void test_power_loss_create(const uint8_t *secret, size_t secret_size, const uint8_t *metadata, size_t metadata_size) {
@@ -362,7 +362,7 @@ int main(void) {
 
     test_reset();
     static const uint8_t unrelated[] = { 0x70, 0x71, 0x72 };
-    assert(file_put_data(file_new(0xb800u), unrelated, sizeof(unrelated)) == PICOKEYS_OK);
+    assert(file_put_data(file_new(0xb800u), CONST_BYTE_ARRAY(unrelated, sizeof(unrelated))) == PICOKEYS_OK);
     assert(otp_container_write_slot(0, secret0, sizeof(secret0), metadata0, sizeof(metadata0)) == PICOKEYS_WRONG_DATA);
     assert(memcmp(file_get_data(file_search(0xb800u)), unrelated, sizeof(unrelated)) == 0);
 

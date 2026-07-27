@@ -73,7 +73,7 @@ static int resident_replace_file(uint16_t fid, const uint8_t *data, uint32_t dat
     if (!file) {
         return PICOKEYS_ERR_NO_MEMORY;
     }
-    return file_put_data(file, data, data_size);
+    return file_put_data(file, CONST_BYTE_ARRAY(data, data_size));
 }
 
 bool resident_container_is_marker(const file_t *file) {
@@ -93,7 +93,7 @@ static int resident_policy_hash(void *ctx, uint16_t policy_id, uint8_t hash[FILE
     if (policy_id != FIDO_RESIDENT_POLICY_ID) {
         return PICOKEYS_WRONG_DATA;
     }
-    return file_object_policy_hash(resident_internal_policy, sizeof(resident_internal_policy), hash);
+    return file_object_policy_hash(CONST_BYTE_ARRAY(resident_internal_policy, sizeof(resident_internal_policy)), hash);
 }
 
 static uint16_t resident_layout_manifest_fid(void *ctx, uint32_t container_id, uint8_t slot) {
@@ -270,30 +270,26 @@ int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_
     file_object_container_write_t writes[] = {
         {
             .object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH,
-            .data = rp_id_hash,
-            .data_size = RP_ID_HASH_LEN,
+            .data = CONST_BYTE_ARRAY(rp_id_hash, RP_ID_HASH_LEN),
             .policy_id = FIDO_RESIDENT_POLICY_ID,
             .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
         },
         {
             .object_type = FIDO_RESIDENT_OBJECT_CLIENT_ID,
-            .data = client_id,
-            .data_size = (uint32_t)client_id_size,
+            .data = CONST_BYTE_ARRAY(client_id, client_id_size),
             .policy_id = FIDO_RESIDENT_POLICY_ID,
             .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
         },
         {
             .object_type = FIDO_RESIDENT_OBJECT_CREDENTIAL,
-            .data = credential,
-            .data_size = (uint32_t)credential_size,
+            .data = CONST_BYTE_ARRAY(credential, credential_size),
             .policy_id = FIDO_RESIDENT_POLICY_ID,
             .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
             .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE
         },
         {
             .object_type = FIDO_RESIDENT_OBJECT_PUBLIC_KEY,
-            .data = public_key,
-            .data_size = (uint32_t)public_key_size,
+            .data = CONST_BYTE_ARRAY(public_key, public_key_size),
             .policy_id = FIDO_RESIDENT_POLICY_ID,
             .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
         }
@@ -313,8 +309,8 @@ int resident_container_object_size(uint8_t slot, uint16_t object_type, uint32_t 
     return file_object_container_object_size(&resident_container_layout, slot, object_type, 0, &primary, resident_legacy_crypto(&legacy), NULL, NULL, object_size);
 }
 
-int resident_container_read(uint8_t slot, uint16_t object_type, uint8_t *data, size_t capacity, size_t *written) {
-    if ((!data && capacity > 0) || !written || !resident_object_type_valid(object_type)) {
+int resident_container_read(uint8_t slot, uint16_t object_type, byte_buffer_t *data) {
+    if (!data || !resident_object_type_valid(object_type)) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
     file_object_container_crypto_t primary;
@@ -322,7 +318,7 @@ int resident_container_read(uint8_t slot, uint16_t object_type, uint8_t *data, s
     if (!resident_crypto(&primary, &legacy)) {
         return PICOKEYS_EXEC_ERROR;
     }
-    return file_object_container_read(&resident_container_layout, slot, object_type, 0, &primary, resident_legacy_crypto(&legacy), NULL, NULL, data, capacity, written);
+    return file_object_container_read(&resident_container_layout, slot, object_type, 0, &primary, resident_legacy_crypto(&legacy), NULL, NULL, data);
 }
 
 int resident_container_update_credential(uint8_t slot, const uint8_t *credential, size_t credential_size) {
@@ -331,8 +327,7 @@ int resident_container_update_credential(uint8_t slot, const uint8_t *credential
     }
     file_object_container_write_t write = {
         .object_type = FIDO_RESIDENT_OBJECT_CREDENTIAL,
-        .data = credential,
-        .data_size = (uint32_t)credential_size,
+        .data = CONST_BYTE_ARRAY(credential, credential_size),
         .policy_id = FIDO_RESIDENT_POLICY_ID,
         .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
         .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE

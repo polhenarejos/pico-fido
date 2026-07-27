@@ -31,7 +31,7 @@ bool resident_container_is_marker(const file_t *file);
 bool resident_container_can_create(uint8_t slot);
 int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_LEN], const uint8_t *client_id, size_t client_id_size, const uint8_t *credential, size_t credential_size, const uint8_t *public_key, size_t public_key_size);
 int resident_container_object_size(uint8_t slot, uint16_t object_type, uint32_t *object_size);
-int resident_container_read(uint8_t slot, uint16_t object_type, uint8_t *data, size_t capacity, size_t *written);
+int resident_container_read(uint8_t slot, uint16_t object_type, byte_buffer_t *data);
 int resident_container_update_credential(uint8_t slot, const uint8_t *credential, size_t credential_size);
 int resident_container_delete(uint8_t slot);
 

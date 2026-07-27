@@ -105,7 +105,7 @@ static int otp_policy_hash(void *ctx, uint16_t policy_id, uint8_t hash[FILE_OBJE
     if (policy_id != FIDO_OTP_POLICY_ID) {
         return PICOKEYS_WRONG_DATA;
     }
-    return file_object_policy_hash(otp_internal_policy, sizeof(otp_internal_policy), hash);
+    return file_object_policy_hash(CONST_BYTE_ARRAY(otp_internal_policy, sizeof(otp_internal_policy)), hash);
 }
 
 static uint16_t otp_layout_manifest_fid(void *ctx, uint32_t container_id, uint8_t slot) {
@@ -241,9 +241,9 @@ static int otp_active_slots_read(uint8_t *active) {
     if (!active || !otp_crypto(&primary)) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
-    size_t written = 0;
-    int r = file_object_container_read(&otp_container_layout, FIDO_OTP_CONTAINER_ID, FIDO_OTP_OBJECT_INDEX, 0, &primary, NULL, NULL, NULL, active, 1, &written);
-    if (r == PICOKEYS_OK && written != 1) {
+    byte_buffer_t output = BYTE_BUFFER(active, 1);
+    int r = file_object_container_read(&otp_container_layout, FIDO_OTP_CONTAINER_ID, FIDO_OTP_OBJECT_INDEX, 0, &primary, NULL, NULL, NULL, &output);
+    if (r == PICOKEYS_OK && output.len != 1) {
         return PICOKEYS_WRONG_LENGTH;
     }
     return r;
@@ -272,7 +272,7 @@ static int otp_marker_replace(uint8_t slot, bool present) {
     if (!marker) {
         return PICOKEYS_ERR_NO_MEMORY;
     }
-    int r = file_put_data(marker, data, sizeof(data));
+    int r = file_put_data(marker, CONST_BYTE_ARRAY(data, sizeof(data)));
     if (r != PICOKEYS_OK) {
         return r;
     }
@@ -300,8 +300,7 @@ static file_object_container_write_t otp_write(uint16_t object_type, uint16_t ob
     file_object_container_write_t write = {
         .object_type = object_type,
         .object_tag = object_tag,
-        .data = data,
-        .data_size = (uint32_t)data_size,
+        .data = CONST_BYTE_ARRAY(data, data_size),
         .policy_id = FIDO_OTP_POLICY_ID,
         .protection = object_type == FIDO_OTP_OBJECT_SECRET ? FILE_OBJECT_PROTECTION_AEAD_SECRET : FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
         .flags = object_type == FIDO_OTP_OBJECT_SECRET ? FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE | FILE_OBJECT_FLAG_TRANSACTION_GROUP : FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_TRANSACTION_GROUP,
@@ -321,12 +320,12 @@ static int otp_container_update(const file_object_container_write_t *writes, siz
     return file_object_container_update(&otp_container_layout, FIDO_OTP_CONTAINER_ID, writes, write_count, &primary, NULL);
 }
 
-static int otp_container_read_object(uint8_t slot, uint16_t object_type, uint8_t *data, size_t capacity, size_t *written) {
+static int otp_container_read_object(uint8_t slot, uint16_t object_type, byte_buffer_t *data) {
     file_object_container_crypto_t primary;
     if (!otp_crypto(&primary)) {
         return PICOKEYS_EXEC_ERROR;
     }
-    return file_object_container_read(&otp_container_layout, FIDO_OTP_CONTAINER_ID, object_type, slot, &primary, NULL, NULL, NULL, data, capacity, written);
+    return file_object_container_read(&otp_container_layout, FIDO_OTP_CONTAINER_ID, object_type, slot, &primary, NULL, NULL, NULL, data);
 }
 
 static int otp_container_bank_load(uint8_t *active, otp_container_slot_t slots[FIDO_OTP_SLOT_COUNT]) {
@@ -343,8 +342,8 @@ static int otp_container_bank_load(uint8_t *active, otp_container_slot_t slots[F
         return r;
     }
     for (uint8_t slot = 0; slot < FIDO_OTP_SLOT_COUNT; slot++) {
-        size_t secret_size = 0;
-        r = otp_container_read_object(slot, FIDO_OTP_OBJECT_SECRET, slots[slot].secret, sizeof(slots[slot].secret), &secret_size);
+        byte_buffer_t secret = BYTE_BUFFER(slots[slot].secret, sizeof(slots[slot].secret));
+        r = otp_container_read_object(slot, FIDO_OTP_OBJECT_SECRET, &secret);
         if (r == PICOKEYS_ERR_FILE_NOT_FOUND) {
             if ((*active & (1u << slot)) != 0) {
                 return PICOKEYS_WRONG_DATA;
@@ -354,13 +353,13 @@ static int otp_container_bank_load(uint8_t *active, otp_container_slot_t slots[F
         if (r != PICOKEYS_OK) {
             return r;
         }
-        size_t metadata_size = 0;
-        r = otp_container_read_object(slot, FIDO_OTP_OBJECT_METADATA, slots[slot].metadata, sizeof(slots[slot].metadata), &metadata_size);
+        byte_buffer_t metadata = BYTE_BUFFER(slots[slot].metadata, sizeof(slots[slot].metadata));
+        r = otp_container_read_object(slot, FIDO_OTP_OBJECT_METADATA, &metadata);
         if (r != PICOKEYS_OK) {
             return r;
         }
-        slots[slot].secret_size = secret_size;
-        slots[slot].metadata_size = metadata_size;
+        slots[slot].secret_size = secret.len;
+        slots[slot].metadata_size = metadata.len;
         slots[slot].stored = true;
     }
     return PICOKEYS_OK;
@@ -380,11 +379,11 @@ static int otp_container_bank_commit(uint8_t active, const otp_container_slot_t 
     return otp_container_update(writes, write_count);
 }
 
-int otp_container_read_slot(uint8_t slot, uint8_t *data, size_t capacity, size_t *written) {
-    if (!otp_slot_valid(slot) || (!data && capacity > 0) || !written || !otp_container_has_slot(slot)) {
+int otp_container_read_slot(uint8_t slot, byte_buffer_t *data) {
+    if (!otp_slot_valid(slot) || !data || !otp_container_has_slot(slot)) {
         return PICOKEYS_ERR_FILE_NOT_FOUND;
     }
-    return otp_container_read_object(slot, FIDO_OTP_OBJECT_SECRET, data, capacity, written);
+    return otp_container_read_object(slot, FIDO_OTP_OBJECT_SECRET, data);
 }
 
 int otp_container_write_slot(uint8_t slot, const uint8_t *data, size_t data_size, const uint8_t *metadata, size_t metadata_size) {

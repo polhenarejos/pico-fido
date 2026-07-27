@@ -780,7 +780,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     ctr++;
-    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
+    file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
     flash_commit();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);

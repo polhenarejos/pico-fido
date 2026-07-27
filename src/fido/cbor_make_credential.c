@@ -783,7 +783,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         dev_state_update(DEV_STATE_CRED_STATE);
     }
     ctr++;
-    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
+    file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
     flash_commit();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);

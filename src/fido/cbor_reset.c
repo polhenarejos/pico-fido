@@ -49,7 +49,7 @@ int cbor_reset(void) {
     file_t *ef_pin_policy = file_search_by_fid(EF_PIN_COMPLEXITY_POLICY, NULL, SPECIFY_EF);
     if (ef_pin_policy) {
         uint8_t default_pin_policy[2] = { 0 };
-        file_put_data(ef_pin_policy, default_pin_policy, sizeof(default_pin_policy));
+        file_put_data(ef_pin_policy, CONST_BYTE_ARRAY(default_pin_policy, sizeof(default_pin_policy)));
         flash_commit();
     }
 #endif

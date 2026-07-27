@@ -57,13 +57,13 @@ static int encrypt_dev_state_block(const file_t *ef_dev_state, dev_state_t state
         goto cleanup;
     }
 
-    ret = random_fill_buffer(output, CRED_STORE_STATE_SIZE);
+    ret = random_fill_buffer(BYTE_ARRAY(output, CRED_STORE_STATE_SIZE));
     if (ret != 0) {
         goto cleanup;
     }
 
     memcpy(output + CRED_STORE_STATE_SIZE, file_get_data(ef_dev_state) + dev_state_offset, CRED_STORE_STATE_SIZE);
-    ret = aes_encrypt(key, output, sizeof(key) * 8, PICOKEYS_AES_MODE_CBC, output + CRED_STORE_STATE_SIZE, CRED_STORE_STATE_SIZE);
+    ret = aes_encrypt(CONST_BYTE_ARRAY(key, sizeof(key)), output, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(output + CRED_STORE_STATE_SIZE, CRED_STORE_STATE_SIZE));
 
 cleanup:
     mbedtls_platform_zeroize(key, sizeof(key));
@@ -238,7 +238,7 @@ int cbor_get_info(void) {
 
     file_t *ef_dev_state = file_search_by_fid(EF_DEV_STATE, NULL, SPECIFY_EF);
     if (file_get_size(ef_dev_state) != DEV_STATE_SIZE) {
-        file_put_data(ef_dev_state, random_bytes_get(32), 32);
+        file_put_data(ef_dev_state, CONST_BYTE_ARRAY(random_bytes_get(32), 32));
         flash_commit();
     }
     if (encrypt_dev_state_block(ef_dev_state, DEV_STATE_DEV_ID, enc_identifier) != 0 ||

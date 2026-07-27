@@ -168,25 +168,25 @@ uint32_t file_get_size(const file_t *file) {
     return test_file ? test_file->size : 0;
 }
 
-int file_read_at(const file_t *file, uint32_t offset, uint8_t *data, size_t len) {
+int file_read_at(const file_t *file, uint32_t offset, byte_array_t data) {
     const test_file_t *test_file = test_file_from_handle(file);
-    if (!test_file || (!data && len > 0) || offset > test_file->size || len > test_file->size - offset) {
+    if (!test_file || (!data.data && data.len > 0) || offset > test_file->size || data.len > test_file->size - offset) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
-    memcpy(data, test_file->storage + offset, len);
+    memcpy(data.data, test_file->storage + offset, data.len);
     return PICOKEYS_OK;
 }
 
-int file_put_data(file_t *file, const uint8_t *data, uint32_t len) {
+int file_put_data(file_t *file, const_byte_array_t data) {
     test_file_t *test_file = test_file_from_handle(file);
-    if (!test_file || (!data && len > 0) || len > sizeof(test_file->storage)) {
+    if (!test_file || (!data.data && data.len > 0) || data.len > sizeof(test_file->storage)) {
         return PICOKEYS_ERR_NO_MEMORY;
     }
-    if (len > 0) {
-        memcpy(test_file->storage, data, len);
+    if (data.len > 0) {
+        memcpy(test_file->storage, data.data, data.len);
     }
-    test_file->size = len;
-    test_file->file.data = len > 0 ? test_file->storage : NULL;
+    test_file->size = data.len;
+    test_file->file.data = data.len > 0 ? test_file->storage : NULL;
     return PICOKEYS_OK;
 }
 
@@ -225,10 +225,10 @@ bool flash_commit_sync(uint32_t timeout_ms) {
 
 static void test_read_object(uint16_t object_type, const uint8_t *expected, size_t expected_size) {
     uint8_t output[256] = { 0 };
-    size_t written = 0;
+    byte_buffer_t data = BYTE_BUFFER(output, sizeof(output));
     assert(expected_size <= sizeof(output));
-    assert(oath_container_read(TEST_SLOT, object_type, output, sizeof(output), &written) == PICOKEYS_OK);
-    assert(written == expected_size);
+    assert(oath_container_read(TEST_SLOT, object_type, &data) == PICOKEYS_OK);
+    assert(data.len == expected_size);
     assert(memcmp(output, expected, expected_size) == 0);
 }
 
@@ -263,7 +263,7 @@ static void test_create_update_reboot_delete(void) {
 
 static void test_collision_rejected(void) {
     static const uint8_t unrelated[] = { 1, 2, 3, 4 };
-    assert(file_put_data(file_new((uint16_t)(0xb000u | TEST_SLOT)), unrelated, sizeof(unrelated)) == PICOKEYS_OK);
+    assert(file_put_data(file_new((uint16_t)(0xb000u | TEST_SLOT)), CONST_BYTE_ARRAY(unrelated, sizeof(unrelated))) == PICOKEYS_OK);
     assert(!oath_container_can_create(TEST_SLOT));
 }
 
@@ -275,7 +275,7 @@ static void test_reset_purge_removes_corrupt_container(void) {
     file_t *manifest = file_search((uint16_t)(0xb000u | TEST_SLOT));
     assert(file_has_data(manifest));
     file_get_data(manifest)[0] ^= 0x01;
-    assert(oath_container_read(TEST_SLOT, FIDO_OATH_OBJECT_CREDENTIAL, (uint8_t[16]){ 0 }, 16, &(size_t){ 0 }) != PICOKEYS_OK);
+    assert(oath_container_read(TEST_SLOT, FIDO_OATH_OBJECT_CREDENTIAL, &BYTE_BUFFER((uint8_t[16]){ 0 }, 16)) != PICOKEYS_OK);
     assert(oath_container_purge(TEST_SLOT) == PICOKEYS_OK);
     assert(!file_search((uint16_t)(EF_OATH_CRED + TEST_SLOT)));
     for (uint16_t prefix = 0xb0u; prefix <= 0xb5u; prefix++) {
@@ -304,11 +304,11 @@ static void test_interrupted_update_keeps_previous_generation(void) {
 
 static bool test_credential_matches(const uint8_t *first, size_t first_size, const uint8_t *second, size_t second_size) {
     uint8_t output[32] = { 0 };
-    size_t written = 0;
-    if (oath_container_read(TEST_SLOT, FIDO_OATH_OBJECT_CREDENTIAL, output, sizeof(output), &written) != PICOKEYS_OK) {
+    byte_buffer_t data = BYTE_BUFFER(output, sizeof(output));
+    if (oath_container_read(TEST_SLOT, FIDO_OATH_OBJECT_CREDENTIAL, &data) != PICOKEYS_OK) {
         return false;
     }
-    return (written == first_size && memcmp(output, first, first_size) == 0) || (written == second_size && memcmp(output, second, second_size) == 0);
+    return (data.len == first_size && memcmp(output, first, first_size) == 0) || (data.len == second_size && memcmp(output, second, second_size) == 0);
 }
 
 static void test_power_loss_create_event(size_t failed_event) {

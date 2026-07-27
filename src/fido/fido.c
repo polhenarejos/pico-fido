@@ -201,7 +201,7 @@ static int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_
     mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     uint8_t serial[16];
-    random_fill_buffer(serial, sizeof(serial));
+    random_fill_buffer(BYTE_ARRAY(serial, sizeof(serial)));
     mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
@@ -235,7 +235,7 @@ int load_keydev(uint8_t key[32]) {
         uint16_t fid_size = file_get_size(ef_keydev);
         if (fid_size == 32) {
             memcpy(key, file_get_data(ef_keydev), 32);
-            if (otp_key_1 && aes_decrypt(otp_key_1, NULL, 32 * 8, PICOKEYS_AES_MODE_CBC, key, 32) != PICOKEYS_OK) {
+            if (otp_key_1 && aes_decrypt(CONST_BYTE_ARRAY(otp_key_1, 32), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(key, 32)) != PICOKEYS_OK) {
                 return PICOKEYS_EXEC_ERROR;
             }
         }
@@ -245,18 +245,18 @@ int load_keydev(uint8_t key[32]) {
                 if (format == 0x02 || format == 0x03) {
                     uint8_t tmp_key[61], version = format == 0x03 ? 2 : 1;
                     memcpy(tmp_key, file_get_data(ef_keydev), sizeof(tmp_key));
-                    int ret = decrypt_with_aad(session_pin, tmp_key + 1, 60, version, key);
+                    int ret = decrypt_with_aad(session_pin, CONST_BYTE_ARRAY(tmp_key + 1, 60), version, key);
                     if (ret != PICOKEYS_OK) {
                         return PICOKEYS_EXEC_ERROR;
                     }
                     if (format == 0x02) {
                         tmp_key[0] = 0x03;
-                        ret = encrypt_with_aad(session_pin, key, 32, 2, tmp_key + 1);
+                        ret = encrypt_with_aad(session_pin, CONST_BYTE_ARRAY(key, 32), 2, tmp_key + 1);
                         if (ret != PICOKEYS_OK) {
                             mbedtls_platform_zeroize(tmp_key, sizeof(tmp_key));
                             return PICOKEYS_EXEC_ERROR;
                         }
-                        file_put_data(ef_keydev, tmp_key, sizeof(tmp_key));
+                        file_put_data(ef_keydev, CONST_BYTE_ARRAY(tmp_key, sizeof(tmp_key)));
                         flash_commit();
                     }
                     mbedtls_platform_zeroize(tmp_key, sizeof(tmp_key));
@@ -266,7 +266,7 @@ int load_keydev(uint8_t key[32]) {
                 }
                 uint8_t kbase[32];
                 derive_kbase(kbase);
-                int ret = aes_decrypt(kbase, pico_serial_hash, 32 * 8, PICOKEYS_AES_MODE_CBC, key, 32);
+                int ret = aes_decrypt(CONST_BYTE_ARRAY(kbase, 32), pico_serial_hash, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(key, 32));
                 if (ret != PICOKEYS_OK) {
                     mbedtls_platform_zeroize(kbase, sizeof(kbase));
                     return PICOKEYS_EXEC_ERROR;
@@ -325,7 +325,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
         if (new_key == true) {
             uint32_t val = 0;
-            random_fill_buffer((uint8_t *) &val, sizeof(val));
+            random_fill_buffer(BYTE_ARRAY((uint8_t *)&val, sizeof(val)));
             val |= 0x80000000;
             memcpy(&key_handle[i * sizeof(uint32_t)], &val, sizeof(uint32_t));
         }
@@ -370,12 +370,12 @@ int encrypt_keydev_f1(const uint8_t keydev[32]) {
     memcpy(kdata + 1, keydev, 32);
     uint8_t kbase[32];
     derive_kbase(kbase);
-    int ret = aes_encrypt(kbase, pico_serial_hash, 32 * 8, PICOKEYS_AES_MODE_CBC, kdata + 1, 32);
+    int ret = aes_encrypt(CONST_BYTE_ARRAY(kbase, 32), pico_serial_hash, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(kdata + 1, 32));
     mbedtls_platform_zeroize(kbase, sizeof(kbase));
     if (ret != PICOKEYS_OK) {
         return ret;
     }
-    ret = file_put_data(ef_keydev, kdata, 33);
+    ret = file_put_data(ef_keydev, CONST_BYTE_ARRAY(kdata, 33));
     mbedtls_platform_zeroize(kdata, sizeof(kdata));
     flash_commit();
     return ret;
@@ -440,7 +440,7 @@ int scan_files_fido(void) {
             if (ret <= 0) {
                 return ret;
             }
-            file_put_data(ef_certdev, cert + sizeof(cert) - ret, (uint16_t)ret);
+            file_put_data(ef_certdev, CONST_BYTE_ARRAY(cert + sizeof(cert) - ret, ret));
         }
         uint8_t *cert_data = file_get_data(ef_certdev);
         size_t cert_size = file_get_size(ef_certdev);
@@ -453,7 +453,7 @@ int scan_files_fido(void) {
     if (ef_counter) {
         if (!file_has_data(ef_counter)) {
             uint32_t v = 0;
-            file_put_data(ef_counter, (uint8_t *) &v, sizeof(v));
+            file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&v, sizeof(v)));
         }
     }
     else {
@@ -465,8 +465,8 @@ int scan_files_fido(void) {
     if (ef_authtoken) {
         if (!file_has_data(ef_authtoken)) {
             uint8_t t[32];
-            random_fill_buffer(t, sizeof(t));
-            file_put_data(ef_authtoken, t, sizeof(t));
+            random_fill_buffer(BYTE_ARRAY(t, sizeof(t)));
+            file_put_data(ef_authtoken, CONST_BYTE_ARRAY(t, sizeof(t)));
         }
         paut.data = file_get_data(ef_authtoken);
         paut.len = file_get_size(ef_authtoken);
@@ -478,8 +478,8 @@ int scan_files_fido(void) {
     if (ef_pauthtoken) {
         if (!file_has_data(ef_pauthtoken)) {
             uint8_t t[32];
-            random_fill_buffer(t, sizeof(t));
-            file_put_data(ef_pauthtoken, t, sizeof(t));
+            random_fill_buffer(BYTE_ARRAY(t, sizeof(t)));
+            file_put_data(ef_pauthtoken, CONST_BYTE_ARRAY(t, sizeof(t)));
         }
         ppaut.data = file_get_data(ef_pauthtoken);
         ppaut.len = file_get_size(ef_pauthtoken);
@@ -489,11 +489,11 @@ int scan_files_fido(void) {
     }
     ef_largeblob = file_search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     if (!file_has_data(ef_largeblob)) {
-        file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
+        file_put_data(ef_largeblob, CONST_BYTE_ARRAY((const uint8_t *)"\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17));
     }
     file_t *ef_dev_state = file_search_by_fid(EF_DEV_STATE, NULL, SPECIFY_EF);
     if (!file_has_data(ef_dev_state)) {
-        file_put_data(ef_dev_state, random_bytes_get(32), 32);
+        file_put_data(ef_dev_state, CONST_BYTE_ARRAY(random_bytes_get(32), 32));
     }
 
     flash_commit();
@@ -572,7 +572,7 @@ uint8_t get_opts(void) {
 
 void set_opts(uint8_t opts) {
     file_t *ef = file_search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
-    file_put_data(ef, &opts, sizeof(uint8_t));
+    file_put_data(ef, CONST_BYTE_ARRAY(&opts, sizeof(uint8_t)));
     flash_commit();
 }
 
@@ -585,15 +585,15 @@ int dev_state_update(dev_state_t state) {
         uint8_t dev_state[32] = {0};
         memcpy(dev_state, file_get_data(ef_dev_state), 32);
         if (state & DEV_STATE_DEV_ID) {
-            random_fill_buffer(dev_state, 16);
+            random_fill_buffer(BYTE_ARRAY(dev_state, 16));
         }
         else if (state & DEV_STATE_CRED_STATE) {
-            random_fill_buffer(dev_state + 16, 16);
+            random_fill_buffer(BYTE_ARRAY(dev_state + 16, 16));
         }
-        file_put_data(ef_dev_state, dev_state, 32);
+        file_put_data(ef_dev_state, CONST_BYTE_ARRAY(dev_state, 32));
     }
     else {
-        file_put_data(ef_dev_state, random_bytes_get(32), 32);
+        file_put_data(ef_dev_state, CONST_BYTE_ARRAY(random_bytes_get(32), 32));
     }
     flash_commit();
     return PICOKEYS_OK;

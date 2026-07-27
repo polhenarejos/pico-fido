@@ -81,7 +81,7 @@ static int oath_replace_file(uint16_t fid, const uint8_t *data, uint32_t data_si
     if (!file) {
         return PICOKEYS_ERR_NO_MEMORY;
     }
-    return file_put_data(file, data, data_size);
+    return file_put_data(file, CONST_BYTE_ARRAY(data, data_size));
 }
 
 bool oath_container_is_marker(const file_t *file) {
@@ -101,7 +101,7 @@ static int oath_policy_hash(void *ctx, uint16_t policy_id, uint8_t hash[FILE_OBJ
     if (policy_id != FIDO_OATH_POLICY_ID) {
         return PICOKEYS_WRONG_DATA;
     }
-    return file_object_policy_hash(oath_internal_policy, sizeof(oath_internal_policy), hash);
+    return file_object_policy_hash(CONST_BYTE_ARRAY(oath_internal_policy, sizeof(oath_internal_policy)), hash);
 }
 
 static uint16_t oath_layout_manifest_fid(void *ctx, uint32_t container_id, uint8_t slot) {
@@ -277,8 +277,7 @@ static int oath_container_write(uint8_t slot, const uint8_t *credential, size_t 
     const file_object_container_write_t writes[] = {
         {
             .object_type = FIDO_OATH_OBJECT_CREDENTIAL,
-            .data = credential,
-            .data_size = (uint32_t)credential_size,
+            .data = CONST_BYTE_ARRAY(credential, credential_size),
             .policy_id = FIDO_OATH_POLICY_ID,
             .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
             .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE | FILE_OBJECT_FLAG_TRANSACTION_GROUP,
@@ -286,8 +285,7 @@ static int oath_container_write(uint8_t slot, const uint8_t *credential, size_t 
         },
         {
             .object_type = FIDO_OATH_OBJECT_METADATA,
-            .data = metadata,
-            .data_size = (uint32_t)metadata_size,
+            .data = CONST_BYTE_ARRAY(metadata, metadata_size),
             .policy_id = FIDO_OATH_POLICY_ID,
             .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
             .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_TRANSACTION_GROUP,
@@ -315,15 +313,15 @@ int oath_container_object_size(uint8_t slot, uint16_t object_type, uint32_t *obj
     return file_object_container_object_size(&oath_container_layout, slot, object_type, 0, &primary, NULL, NULL, NULL, object_size);
 }
 
-int oath_container_read(uint8_t slot, uint16_t object_type, uint8_t *data, size_t capacity, size_t *written) {
-    if ((!data && capacity > 0) || !written || !oath_object_type_valid(object_type)) {
+int oath_container_read(uint8_t slot, uint16_t object_type, byte_buffer_t *data) {
+    if (!data || !oath_object_type_valid(object_type)) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
     file_object_container_crypto_t primary;
     if (!oath_crypto(&primary)) {
         return PICOKEYS_EXEC_ERROR;
     }
-    return file_object_container_read(&oath_container_layout, slot, object_type, 0, &primary, NULL, NULL, NULL, data, capacity, written);
+    return file_object_container_read(&oath_container_layout, slot, object_type, 0, &primary, NULL, NULL, NULL, data);
 }
 
 int oath_container_update(uint8_t slot, const uint8_t *credential, size_t credential_size, const uint8_t *metadata, size_t metadata_size) {

@@ -120,9 +120,9 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             }
             uint8_t zeros[32];
             memset(zeros, 0, sizeof(zeros));
-            file_put_data(ef_keydev_enc, vendorParam.data, (uint16_t)vendorParam.len);
-            file_put_data(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
-            file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
+            file_put_data(ef_keydev_enc, CONST_BYTE_ARRAY(vendorParam.data, vendorParam.len));
+            file_put_data(ef_keydev, CONST_BYTE_ARRAY(zeros, file_get_size(ef_keydev))); // Overwrite ef with 0
+            file_put_data(ef_keydev, CONST_BYTE_ARRAY(NULL, 0)); // Set ef to 0 bytes
             flash_commit();
             goto err;
         }

@@ -59,7 +59,7 @@ static bool load_pin_data(const file_t *ef, uint8_t pin_data[PIN_DATA_LEN], uint
 }
 
 static bool persist_pin_retry_counter(file_t *ef, const uint8_t *pin_data, uint16_t pin_data_len) {
-    if (file_put_data(ef, pin_data, pin_data_len) != PICOKEYS_OK) {
+    if (file_put_data(ef, CONST_BYTE_ARRAY(pin_data, pin_data_len)) != PICOKEYS_OK) {
         return false;
     }
     // Do not trust the decremented RAM copy until core0 has drained the flash queue.
@@ -195,8 +195,8 @@ static void resetAuthToken(bool persistent) {
     }
     file_t *ef = file_search_by_fid(fid, NULL, SPECIFY_EF);
     uint8_t t[32];
-    random_fill_buffer(t, sizeof(t));
-    file_put_data(ef, t, sizeof(t));
+    random_fill_buffer(BYTE_ARRAY(t, sizeof(t)));
+    file_put_data(ef, CONST_BYTE_ARRAY(t, sizeof(t)));
     flash_commit();
 }
 
@@ -222,12 +222,12 @@ int resetPersistentPinUvAuthToken(void) {
 int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out) {
     if (protocol == 1) {
         memcpy(out, in, in_len);
-        return aes_encrypt(key, NULL, 32 * 8, PICOKEYS_AES_MODE_CBC, out, in_len);
+        return aes_encrypt(CONST_BYTE_ARRAY(key, 32), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(out, in_len));
     }
     else if (protocol == 2) {
-        random_fill_buffer(out, IV_SIZE);
+        random_fill_buffer(BYTE_ARRAY(out, IV_SIZE));
         memcpy(out + IV_SIZE, in, in_len);
-        return aes_encrypt(key + 32, out, 32 * 8, PICOKEYS_AES_MODE_CBC, out + IV_SIZE, in_len);
+        return aes_encrypt(CONST_BYTE_ARRAY(key + 32, 32), out, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(out + IV_SIZE, in_len));
     }
 
     return -1;
@@ -236,11 +236,11 @@ int encrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in
 int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in_len, uint8_t *out) {
     if (protocol == 1) {
         memcpy(out, in, in_len);
-        return aes_decrypt(key, NULL, 32 * 8, PICOKEYS_AES_MODE_CBC, out, in_len);
+        return aes_decrypt(CONST_BYTE_ARRAY(key, 32), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(out, in_len));
     }
     else if (protocol == 2) {
         memcpy(out, in + IV_SIZE, in_len - IV_SIZE);
-        return aes_decrypt(key + 32, in, 32 * 8, PICOKEYS_AES_MODE_CBC, out, in_len - IV_SIZE);
+        return aes_decrypt(CONST_BYTE_ARRAY(key + 32, 32), in, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(out, in_len - IV_SIZE));
     }
 
     return -1;
@@ -309,8 +309,8 @@ static int check_keydev_encrypted(const uint8_t pin_token[32]) {
     if (file_get_data(ef_keydev) && *file_get_data(ef_keydev) == 0x01) {
         uint8_t tmp_keydev[61];
         tmp_keydev[0] = 0x03; // Change format to encrypted
-        encrypt_with_aad(pin_token, file_get_data(ef_keydev) + 1, 32, 2, tmp_keydev + 1);
-        file_put_data(ef_keydev, tmp_keydev, sizeof(tmp_keydev));
+        encrypt_with_aad(pin_token, CONST_BYTE_ARRAY(file_get_data(ef_keydev) + 1, 32), 2, tmp_keydev + 1);
+        file_put_data(ef_keydev, CONST_BYTE_ARRAY(tmp_keydev, sizeof(tmp_keydev)));
         mbedtls_platform_zeroize(tmp_keydev, sizeof(tmp_keydev));
         flash_commit();
     }
@@ -518,11 +518,11 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         hsh[2] = 1; // New format indicator
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_byte_len, dhash);
         mbedtls_platform_zeroize(paddedNewPin, sizeof(paddedNewPin));
-        pin_derive_verifier(dhash, 16, hsh + 3);
-        file_put_data(ef_pin, hsh, sizeof(hsh));
+        pin_derive_verifier(CONST_BYTE_ARRAY(dhash, 16), hsh + 3);
+        file_put_data(ef_pin, CONST_BYTE_ARRAY(hsh, sizeof(hsh)));
         flash_commit();
 
-        pin_derive_session(dhash, 16, session_pin);
+        pin_derive_session(CONST_BYTE_ARRAY(dhash, 16), session_pin);
         ret = check_keydev_encrypted(session_pin);
         if (ret != PICOKEYS_OK) {
             CBOR_ERROR(ret);
@@ -601,10 +601,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint8_t dhash[32], off = 3;
         if (pin_data_len == PIN_LEGACY_DATA_LEN) {
             off = 2;
-            double_hash_pin(paddedNewPin, 16, dhash);
+            double_hash_pin(CONST_BYTE_ARRAY(paddedNewPin, 16), dhash);
         }
         else {
-            pin_derive_verifier(paddedNewPin, 16, dhash);
+            pin_derive_verifier(CONST_BYTE_ARRAY(paddedNewPin, 16), dhash);
         }
 
         if (mbedtls_ct_memcmp(dhash, pin_data + off, 32) != 0) {
@@ -624,18 +624,18 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (off == 2) {
             // Upgrade pin file to new format
             pin_data[2] = 1;      // New format indicator
-            pin_derive_verifier(paddedNewPin, 16, pin_data + 3);
+            pin_derive_verifier(CONST_BYTE_ARRAY(paddedNewPin, 16), pin_data + 3);
 
-            hash_multi(paddedNewPin, 16, session_pin);
+            hash_multi(CONST_BYTE_ARRAY(paddedNewPin, 16), session_pin);
             ret = load_keydev(keydev);
             if (ret != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
             }
             encrypt_keydev_f1(keydev);
         }
-        pin_derive_session(paddedNewPin, 16, session_pin);
+        pin_derive_session(CONST_BYTE_ARRAY(paddedNewPin, 16), session_pin);
         pin_data[0] = MAX_PIN_RETRIES;
-        file_put_data(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, CONST_BYTE_ARRAY(pin_data, sizeof(pin_data)));
         flash_commit();
 
         ret = check_keydev_encrypted(session_pin);
@@ -681,7 +681,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         encrypt_keydev_f1(keydev);
 
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_byte_len, dhash);
-        pin_derive_session(dhash, 16, session_pin);
+        pin_derive_session(CONST_BYTE_ARRAY(dhash, 16), session_pin);
         ret = check_keydev_encrypted(session_pin);
         if (ret != PICOKEYS_OK) {
             CBOR_ERROR(ret);
@@ -691,12 +691,12 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         pin_data[0] = MAX_PIN_RETRIES;
         pin_data[1] = pin_codepoints;
         pin_data[2] = 1; // New format indicator
-        pin_derive_verifier(dhash, 16, pin_data + 3);
+        pin_derive_verifier(CONST_BYTE_ARRAY(dhash, 16), pin_data + 3);
 
         if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 && mbedtls_ct_memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
-        file_put_data(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, CONST_BYTE_ARRAY(pin_data, sizeof(pin_data)));
 
         mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(dhash, sizeof(dhash));
@@ -704,7 +704,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             uint8_t *tmpf = (uint8_t *) calloc(1, file_get_size(ef_minpin));
             memcpy(tmpf, file_get_data(ef_minpin), file_get_size(ef_minpin));
             tmpf[1] = 0;
-            file_put_data(ef_minpin, tmpf, file_get_size(ef_minpin));
+            file_put_data(ef_minpin, CONST_BYTE_ARRAY(tmpf, file_get_size(ef_minpin)));
             free(tmpf);
         }
         flash_commit();
@@ -777,10 +777,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint8_t dhash[32], off = 3;
         if (pin_data_len == PIN_LEGACY_DATA_LEN) {
             off = 2;
-            double_hash_pin(paddedNewPin, 16, dhash);
+            double_hash_pin(CONST_BYTE_ARRAY(paddedNewPin, 16), dhash);
         }
         else {
-            pin_derive_verifier(paddedNewPin, 16, dhash);
+            pin_derive_verifier(CONST_BYTE_ARRAY(paddedNewPin, 16), dhash);
         }
         if (mbedtls_ct_memcmp(dhash, pin_data + off, 32) != 0) {
             regenerate();
@@ -802,8 +802,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if (off == 2) {
             // Upgrade pin file to new format
             pin_data[2] = 1;      // New format indicator
-            pin_derive_verifier(paddedNewPin, 16, pin_data + 3);
-            hash_multi(paddedNewPin, 16, session_pin);
+            pin_derive_verifier(CONST_BYTE_ARRAY(paddedNewPin, 16), pin_data + 3);
+            hash_multi(CONST_BYTE_ARRAY(paddedNewPin, 16), session_pin);
             ret = load_keydev(keydev);
             if (ret != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_PIN_INVALID);
@@ -811,7 +811,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             encrypt_keydev_f1(keydev);
         }
 
-        pin_derive_session(paddedNewPin, 16, session_pin);
+        pin_derive_session(CONST_BYTE_ARRAY(paddedNewPin, 16), session_pin);
         ret = check_keydev_encrypted(session_pin);
         if (ret != PICOKEYS_OK) {
             CBOR_ERROR(ret);
@@ -820,7 +820,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         pin_data[0] = MAX_PIN_RETRIES;
         new_pin_mismatches = 0;
 
-        file_put_data(ef_pin, pin_data, sizeof(pin_data));
+        file_put_data(ef_pin, CONST_BYTE_ARRAY(pin_data, sizeof(pin_data)));
         mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
 
         flash_commit();
