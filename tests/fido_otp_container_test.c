@@ -215,6 +215,79 @@ static bool test_slot_matches(uint8_t slot, const uint8_t *expected, size_t expe
     return otp_container_read_slot(slot, output, sizeof(output), &written) == PICOKEYS_OK && written == expected_size && memcmp(output, expected, expected_size) == 0;
 }
 
+static void test_power_loss_create(const uint8_t *secret, size_t secret_size, const uint8_t *metadata, size_t metadata_size) {
+    test_reset();
+    assert(otp_container_write_slot(0, secret, secret_size, metadata, metadata_size) == PICOKEYS_OK);
+    size_t create_events = power_loss_event;
+    assert(create_events > 0);
+
+    for (size_t failed_event = 1; failed_event <= create_events; failed_event++) {
+        test_reset();
+        if (setjmp(power_loss_env) == 0) {
+            power_loss_at = failed_event;
+            power_loss_armed = true;
+            (void)otp_container_write_slot(0, secret, secret_size, metadata, metadata_size);
+            assert(false);
+        }
+        test_reboot();
+        if (otp_container_has_slot(0)) {
+            assert(test_slot_matches(0, secret, secret_size));
+        }
+        else {
+            assert(otp_container_write_slot(0, secret, secret_size, metadata, metadata_size) == PICOKEYS_OK);
+            assert(test_slot_matches(0, secret, secret_size));
+        }
+    }
+}
+
+static void test_power_loss_update(const uint8_t *secret, size_t secret_size, const uint8_t *metadata, size_t metadata_size, const uint8_t *replacement, size_t replacement_size, const uint8_t *replacement_metadata, size_t replacement_metadata_size) {
+    test_reset();
+    assert(otp_container_write_slot(0, secret, secret_size, metadata, metadata_size) == PICOKEYS_OK);
+    power_loss_event = 0;
+    assert(otp_container_write_slot(0, replacement, replacement_size, replacement_metadata, replacement_metadata_size) == PICOKEYS_OK);
+    size_t update_events = power_loss_event;
+    assert(update_events > 0);
+
+    for (size_t failed_event = 1; failed_event <= update_events; failed_event++) {
+        test_reset();
+        assert(otp_container_write_slot(0, secret, secret_size, metadata, metadata_size) == PICOKEYS_OK);
+        if (setjmp(power_loss_env) == 0) {
+            power_loss_event = 0;
+            power_loss_at = failed_event;
+            power_loss_armed = true;
+            (void)otp_container_write_slot(0, replacement, replacement_size, replacement_metadata, replacement_metadata_size);
+            assert(false);
+        }
+        test_reboot();
+        assert(test_slot_matches(0, secret, secret_size) || test_slot_matches(0, replacement, replacement_size));
+    }
+}
+
+static void test_power_loss_delete(const uint8_t *secret, size_t secret_size, const uint8_t *metadata, size_t metadata_size) {
+    test_reset();
+    assert(otp_container_write_slot(0, secret, secret_size, metadata, metadata_size) == PICOKEYS_OK);
+    power_loss_event = 0;
+    assert(otp_container_delete_slot(0) == PICOKEYS_OK);
+    size_t delete_events = power_loss_event;
+    assert(delete_events > 0);
+
+    for (size_t failed_event = 1; failed_event <= delete_events; failed_event++) {
+        test_reset();
+        assert(otp_container_write_slot(0, secret, secret_size, metadata, metadata_size) == PICOKEYS_OK);
+        if (setjmp(power_loss_env) == 0) {
+            power_loss_event = 0;
+            power_loss_at = failed_event;
+            power_loss_armed = true;
+            (void)otp_container_delete_slot(0);
+            assert(false);
+        }
+        test_reboot();
+        if (otp_container_has_slot(0)) {
+            assert(test_slot_matches(0, secret, secret_size));
+        }
+    }
+}
+
 static void test_power_loss_swap(const uint8_t *secret0, size_t secret0_size, const uint8_t *metadata0, size_t metadata0_size, const uint8_t *secret1, size_t secret1_size, const uint8_t *metadata1, size_t metadata1_size) {
     test_reset();
     assert(otp_container_write_slot(0, secret0, secret0_size, metadata0, metadata0_size) == PICOKEYS_OK);
@@ -282,6 +355,9 @@ int main(void) {
     assert(otp_container_has_slot(2));
     test_read_slot(2, updated0, sizeof(updated0));
 
+    test_power_loss_create(secret0, sizeof(secret0), metadata0, sizeof(metadata0));
+    test_power_loss_update(secret0, sizeof(secret0), metadata0, sizeof(metadata0), updated0, sizeof(updated0), updated_metadata0, sizeof(updated_metadata0));
+    test_power_loss_delete(secret0, sizeof(secret0), metadata0, sizeof(metadata0));
     test_power_loss_swap(secret0, sizeof(secret0), metadata0, sizeof(metadata0), secret1, sizeof(secret1), metadata1, sizeof(metadata1));
 
     test_reset();
