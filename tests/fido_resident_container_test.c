@@ -199,7 +199,7 @@ int file_put_data(file_t *file, const_byte_array_t data) {
     if (data.len > 0) {
         memcpy(test_file->storage, data.data, data.len);
     }
-    test_file->size = data.len;
+    test_file->size = (uint32_t)data.len;
     test_file->file.data = data.len > 0 ? test_file->storage : NULL;
     return PICOKEYS_OK;
 }

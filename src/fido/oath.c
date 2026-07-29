@@ -97,7 +97,7 @@ static bool oath_response_append(uint8_t tag, const uint8_t *data, size_t len) {
     res_APDU[res_APDU_size++] = tag;
     res_APDU[res_APDU_size++] = (uint8_t)len;
     memcpy(res_APDU + res_APDU_size, data, len);
-    res_APDU_size += len;
+    res_APDU_size += (uint16_t)len;
     return true;
 }
 
@@ -179,7 +179,7 @@ static int oath_unload(void) {
     return PICOKEYS_OK;
 }
 
-static bool oath_key_is_secure(const uint8_t *data, uint16_t len) {
+static bool oath_key_is_secure(const uint8_t *data, size_t len) {
     return data != NULL && len > OATH_SECURE_KEY_OVERHEAD && memcmp(data, oath_secure_key_magic, sizeof(oath_secure_key_magic)) == 0 && data[sizeof(oath_secure_key_magic)] == OATH_SECURE_KEY_VERSION;
 }
 
@@ -191,7 +191,7 @@ static int oath_derive_key(uint8_t key[32]) {
     return ret == 0 ? PICOKEYS_OK : PICOKEYS_EXEC_ERROR;
 }
 
-static int oath_encrypt_key(const uint8_t *plain, uint16_t plain_len, uint8_t **encrypted, uint16_t *encrypted_len) {
+static int oath_encrypt_key(const uint8_t *plain, size_t plain_len, uint8_t **encrypted, uint16_t *encrypted_len) {
     if (plain == NULL || encrypted == NULL || encrypted_len == NULL) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
@@ -222,9 +222,12 @@ static int oath_encrypt_key(const uint8_t *plain, uint16_t plain_len, uint8_t **
     return PICOKEYS_OK;
 }
 
-static int oath_decrypt_key(const uint8_t *stored, uint16_t stored_len, uint8_t **decrypted, uint16_t *decrypted_len) {
+static int oath_decrypt_key(const uint8_t *stored, size_t stored_len, uint8_t **decrypted, uint16_t *decrypted_len) {
     if (stored == NULL || decrypted == NULL || decrypted_len == NULL) {
         return PICOKEYS_ERR_NULL_PARAM;
+    }
+    if (stored_len > UINT16_MAX) {
+        return PICOKEYS_WRONG_DATA;
     }
     if (!oath_key_is_secure(stored, stored_len)) {
         uint8_t *copy = (uint8_t *)calloc(1, stored_len);
@@ -233,11 +236,14 @@ static int oath_decrypt_key(const uint8_t *stored, uint16_t stored_len, uint8_t 
         }
         memcpy(copy, stored, stored_len);
         *decrypted = copy;
-        *decrypted_len = stored_len;
+        *decrypted_len = (uint16_t)stored_len;
         return PICOKEYS_OK;
     }
 
-    uint16_t out_len = stored_len - OATH_SECURE_KEY_OVERHEAD;
+    size_t out_len = stored_len - OATH_SECURE_KEY_OVERHEAD;
+    if (out_len > UINT16_MAX) {
+        return PICOKEYS_WRONG_DATA;
+    }
     uint8_t *out = (uint8_t *)calloc(1, out_len);
     if (out == NULL) {
         return PICOKEYS_EXEC_ERROR;
@@ -254,7 +260,7 @@ static int oath_decrypt_key(const uint8_t *stored, uint16_t stored_len, uint8_t 
         return ret;
     }
     *decrypted = out;
-    *decrypted_len = out_len;
+    *decrypted_len = (uint16_t)out_len;
     return PICOKEYS_OK;
 }
 
@@ -270,7 +276,7 @@ static uint8_t *tlv_append(uint8_t *out, uint16_t tag, const uint8_t *data, uint
     return out + len;
 }
 
-static int oath_put_credential_data(file_t *ef, const uint8_t *data, uint16_t len) {
+static int oath_put_credential_data(file_t *ef, const uint8_t *data, size_t len) {
     tlv_ctx_t ctxi;
     tlv_ctx_init(BYTE_ARRAY((uint8_t *)data, len), &ctxi);
     tlv_ctx_t key = { 0 };
@@ -285,11 +291,12 @@ static int oath_put_credential_data(file_t *ef, const uint8_t *data, uint16_t le
         return ret;
     }
 
-    uint16_t out_len = 0;
+    size_t out_len = 0;
     uint8_t *p = NULL;
     tlv_item_t item;
     while (tlv_walk(&ctxi, &p, &item)) {
-        out_len += tlv_len_tag(item.tag, item.tag == TAG_KEY ? encrypted_len : item.value.len);
+        uint16_t value_len = item.tag == TAG_KEY ? encrypted_len : (uint16_t)item.value.len;
+        out_len += tlv_len_tag(item.tag, value_len);
     }
     uint8_t *out = (uint8_t *)calloc(1, out_len);
     if (out == NULL) {
@@ -304,7 +311,7 @@ static int oath_put_credential_data(file_t *ef, const uint8_t *data, uint16_t le
             op = tlv_append(op, item.tag, encrypted, encrypted_len);
         }
         else {
-            op = tlv_append(op, item.tag, item.value.data, item.value.len);
+            op = tlv_append(op, item.tag, item.value.data, (uint16_t)item.value.len);
         }
     }
 
@@ -316,7 +323,7 @@ static int oath_put_credential_data(file_t *ef, const uint8_t *data, uint16_t le
     return ret;
 }
 
-static int oath_put_code_key(file_t *ef, const uint8_t *key, uint16_t key_len) {
+static int oath_put_code_key(file_t *ef, const uint8_t *key, size_t key_len) {
     if (oath_key_is_secure(key, key_len)) {
         return file_put_data(ef, CONST_BYTE_ARRAY(key, key_len));
     }
@@ -430,8 +437,12 @@ static int oath_credential_open(uint16_t fid, uint16_t object_type, oath_credent
         return PICOKEYS_ERR_FILE_NOT_FOUND;
     }
     if (!oath_container_is_marker(file)) {
+        uint32_t file_size = file_get_size(file);
+        if (file_size > UINT16_MAX) {
+            return PICOKEYS_WRONG_LENGTH;
+        }
         credential->data = file_get_data(file);
-        credential->size = file_get_size(file);
+        credential->size = (uint16_t)file_size;
         return PICOKEYS_OK;
     }
 
@@ -486,10 +497,10 @@ static int oath_credential_metadata(const uint8_t *data, uint16_t data_size, uin
         return PICOKEYS_WRONG_DATA;
     }
 
-    size_t size = tlv_len_tag(TAG_NAME, name.len) + tlv_len_tag(TAG_KEY, 2);
+    size_t size = tlv_len_tag(TAG_NAME, (uint16_t)name.len) + tlv_len_tag(TAG_KEY, 2);
     bool has_property = tlv_find_tag(&input, TAG_PROPERTY, &property);
     if (has_property) {
-        size += tlv_len_tag(TAG_PROPERTY, property.len);
+        size += tlv_len_tag(TAG_PROPERTY, (uint16_t)property.len);
     }
     bool has_password_safe = tlv_find_tag(&input, TAG_PWS_LOGIN, &password) || tlv_find_tag(&input, TAG_PWS_PASSWORD, &password) || tlv_find_tag(&input, TAG_PWS_METADATA, &password);
     if (has_password_safe) {
@@ -504,10 +515,10 @@ static int oath_credential_metadata(const uint8_t *data, uint16_t data_size, uin
         return PICOKEYS_ERR_NO_MEMORY;
     }
     uint8_t *position = out;
-    position = tlv_append(position, TAG_NAME, name.data, name.len);
+    position = tlv_append(position, TAG_NAME, name.data, (uint16_t)name.len);
     position = tlv_append(position, TAG_KEY, key.data, 2);
     if (has_property) {
-        position = tlv_append(position, TAG_PROPERTY, property.data, property.len);
+        position = tlv_append(position, TAG_PROPERTY, property.data, (uint16_t)property.len);
     }
     if (has_password_safe) {
         position = tlv_append(position, TAG_PWS_METADATA, NULL, 0);
@@ -800,7 +811,8 @@ static int cmd_list(void) {
                     oath_credential_close(&credential);
                     continue;
                 }
-                if (name.len > UINT8_MAX - 1 - (ext ? 1 : 0) ||
+                size_t name_overhead = 1u + (ext ? 1u : 0u);
+                if (name.len > (size_t)UINT8_MAX - name_overhead ||
                     !oath_response_has_room(3 + name.len + (ext ? 1 : 0))) {
                     mbedtls_platform_zeroize(plain_key, plain_key_len);
                     free(plain_key);
@@ -810,7 +822,8 @@ static int cmd_list(void) {
                 res_APDU[res_APDU_size++] = TAG_NAME_LIST;
                 res_APDU[res_APDU_size++] = (uint8_t)(name.len + 1 + (ext ? 1 : 0));
                 res_APDU[res_APDU_size++] = plain_key[0];
-                memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
+                memcpy(res_APDU + res_APDU_size, name.data, name.len);
+                res_APDU_size += (uint16_t)name.len;
                 if (ext) {
                     uint8_t props = 0x0;
                     if (tlv_find_tag(&ctxi, TAG_PWS_LOGIN, &pws) == true || tlv_find_tag(&ctxi, TAG_PWS_PASSWORD, &pws) == true || tlv_find_tag(&ctxi, TAG_PWS_METADATA, &pws) == true) {
@@ -1086,7 +1099,8 @@ static int cmd_calculate_all(void) {
             }
             res_APDU[res_APDU_size++] = TAG_NAME;
             res_APDU[res_APDU_size++] = (uint8_t)name.len;
-            memcpy(res_APDU + res_APDU_size, name.data, name.len); res_APDU_size += name.len;
+            memcpy(res_APDU + res_APDU_size, name.data, name.len);
+            res_APDU_size += (uint16_t)name.len;
             if (is_hotp) {
                 res_APDU[res_APDU_size++] = TAG_NO_RESPONSE;
                 res_APDU[res_APDU_size++] = 1;
@@ -1118,7 +1132,7 @@ static int cmd_send_remaining(void) {
     return SW_OK();
 }
 
-static bool otp_pin_matches(const uint8_t *record, uint16_t record_len, const uint8_t *pin, uint16_t pin_len) {
+static bool otp_pin_matches(const uint8_t *record, size_t record_len, const uint8_t *pin, size_t pin_len) {
     uint8_t verifier[32] = { 0 };
     bool matches = false;
 
@@ -1135,7 +1149,7 @@ static bool otp_pin_matches(const uint8_t *record, uint16_t record_len, const ui
     return matches;
 }
 
-static void otp_pin_record_v1(const uint8_t *pin, uint16_t pin_len, uint8_t record[OTP_PIN_V1_SIZE]) {
+static void otp_pin_record_v1(const uint8_t *pin, size_t pin_len, uint8_t record[OTP_PIN_V1_SIZE]) {
     memset(record, 0, OTP_PIN_V1_SIZE);
     record[0] = MAX_OTP_COUNTER;
     record[1] = OTP_PIN_FORMAT_V1;
@@ -1149,7 +1163,7 @@ typedef enum {
     OTP_PIN_STORAGE_ERROR,
 } otp_pin_match_result_t;
 
-static otp_pin_match_result_t oath_check_pin(file_t *ef_otp_pin, uint16_t record_len, const uint8_t *pin, uint16_t pin_len) {
+static otp_pin_match_result_t oath_check_pin(file_t *ef_otp_pin, size_t record_len, const uint8_t *pin, size_t pin_len) {
     uint8_t record[OTP_PIN_V1_SIZE] = { 0 };
     if (!file_has_data(ef_otp_pin) || file_get_data(ef_otp_pin) == NULL || (record_len != OTP_PIN_LEGACY_SIZE && record_len != OTP_PIN_V1_SIZE)) {
         return OTP_PIN_STORAGE_ERROR;
@@ -1199,7 +1213,7 @@ static int cmd_set_otp_pin(void) {
 static int cmd_change_otp_pin(void) {
     uint8_t record[OTP_PIN_V1_SIZE] = { 0 };
     file_t *ef_otp_pin = file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
-    uint16_t record_len = file_get_size(ef_otp_pin);
+    size_t record_len = file_get_size(ef_otp_pin);
     if (!file_has_data(ef_otp_pin) || (record_len != OTP_PIN_LEGACY_SIZE && record_len != OTP_PIN_V1_SIZE)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
@@ -1231,7 +1245,7 @@ static int cmd_change_otp_pin(void) {
 static int cmd_verify_otp_pin(void) {
     uint8_t record[OTP_PIN_V1_SIZE] = { 0 };
     file_t *ef_otp_pin = file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF);
-    uint16_t record_len = file_get_size(ef_otp_pin);
+    size_t record_len = file_get_size(ef_otp_pin);
     if (!file_has_data(ef_otp_pin) || (record_len != OTP_PIN_LEGACY_SIZE && record_len != OTP_PIN_V1_SIZE)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
@@ -1368,6 +1382,9 @@ static int cmd_rename(void) {
     if (name.len == new_name.len && memcmp(name.data, new_name.data, name.len) == 0) {
         return SW_WRONG_DATA();
     }
+    if (new_name.len > UINT8_MAX) {
+        return SW_WRONG_DATA();
+    }
     uint16_t fid = 0;
     if (!find_oath_cred(name.data, name.len, &fid)) {
         return SW_DATA_INVALID();
@@ -1389,7 +1406,7 @@ static int cmd_rename(void) {
         return SW_EXEC_ERROR();
     }
     memcpy(new_data, fdata, name.data - fdata);
-    *(new_data + (name.data - fdata) - 1) = new_name.len;
+    *(new_data + (name.data - fdata) - 1) = (uint8_t)new_name.len;
     memcpy(new_data + (name.data - fdata), new_name.data, new_name.len);
     memcpy(new_data + (name.data - fdata) + new_name.len, name.data + name.len, fsize - (name.data + name.len - fdata));
     int ret = oath_credential_write(fid, new_data, (uint16_t)(fsize + new_name.len - name.len));

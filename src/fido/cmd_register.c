@@ -82,7 +82,11 @@ int cmd_register(void) {
     if (ret != 0) {
         return SW_EXEC_ERROR();
     }
-    uint16_t ef_certdev_size = file_get_size(ef_certdev);
+    uint32_t stored_certdev_size = file_get_size(ef_certdev);
+    if (stored_certdev_size > CTAP_MAX_ATT_CERT_SIZE) {
+        return SW_EXEC_ERROR();
+    }
+    uint16_t ef_certdev_size = (uint16_t)stored_certdev_size;
     memcpy(resp->keyHandleCertSig + KEY_HANDLE_LEN, file_get_data(ef_certdev), ef_certdev_size);
     uint8_t hash[32], sign_base[1 + CTAP_APPID_SIZE + CTAP_CHAL_SIZE + KEY_HANDLE_LEN + CTAP_EC_POINT_SIZE];
     sign_base[0] = CTAP_REGISTER_HASH_ID;

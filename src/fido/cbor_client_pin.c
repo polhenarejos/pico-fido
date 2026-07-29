@@ -45,12 +45,13 @@ static bool hkey_init = false;
 #define PIN_RETRY_COMMIT_TIMEOUT_MS 500
 
 static bool load_pin_data(const file_t *ef, uint8_t pin_data[PIN_DATA_LEN], uint16_t *pin_data_len) {
-    uint16_t len = file_get_size(ef);
+    uint32_t stored_len = file_get_size(ef);
     const uint8_t *data = file_get_data(ef);
 
-    if (!data || (len != PIN_LEGACY_DATA_LEN && len != PIN_DATA_LEN)) {
+    if (!data || (stored_len != PIN_LEGACY_DATA_LEN && stored_len != PIN_DATA_LEN)) {
         return false;
     }
+    uint16_t len = (uint16_t)stored_len;
 
     memset(pin_data, 0, PIN_DATA_LEN);
     memcpy(pin_data, data, len);
@@ -246,25 +247,6 @@ int decrypt(uint8_t protocol, const uint8_t *key, const uint8_t *in, uint16_t in
     return -1;
 }
 
-static int __attribute__((unused)) authenticate(uint8_t protocol, const uint8_t *key, const uint8_t *data, size_t len, uint8_t *sign) {
-    uint8_t hmac[32];
-    int ret =
-        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, hmac);
-    if (ret != 0) {
-        return ret;
-    }
-    if (protocol == 1) {
-        memcpy(sign, hmac, 16);
-    }
-    else if (protocol == 2) {
-        memcpy(sign, hmac, 32);
-    }
-    else {
-        return -1;
-    }
-    return 0;
-}
-
 int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *sign) {
     uint8_t hmac[32];
     //if (paut.in_use == false)
@@ -285,10 +267,6 @@ int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t l
 static int initialize(void) {
     regenerate();
     return resetPinUvAuthToken();
-}
-
-static int __attribute__((unused)) getPublicKey(void) {
-    return 0;
 }
 
 void pin_uv_auth_token_tick(void) {
@@ -514,7 +492,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         uint8_t hsh[35], dhash[32];
         hsh[0] = MAX_PIN_RETRIES;
-        hsh[1] = pin_codepoints;
+        hsh[1] = (uint8_t)pin_codepoints;
         hsh[2] = 1; // New format indicator
         mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), paddedNewPin, pin_byte_len, dhash);
         mbedtls_platform_zeroize(paddedNewPin, sizeof(paddedNewPin));
@@ -689,7 +667,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         flash_commit();
 
         pin_data[0] = MAX_PIN_RETRIES;
-        pin_data[1] = pin_codepoints;
+        pin_data[1] = (uint8_t)pin_codepoints;
         pin_data[2] = 1; // New format indicator
         pin_derive_verifier(CONST_BYTE_ARRAY(dhash, 16), pin_data + 3);
 

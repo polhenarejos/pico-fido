@@ -151,7 +151,7 @@ typedef struct otp_slot_metadata {
     uint8_t cfg_flags;
 }) otp_slot_metadata_t;
 
-static bool otp_slot_is_secure(const uint8_t *data, uint16_t len) {
+static bool otp_slot_is_secure(const uint8_t *data, size_t len) {
     return data != NULL && len >= OTP_SLOT_SECURE_OVERHEAD + otp_config_size &&
            memcmp(data, otp_slot_magic, sizeof(otp_slot_magic)) == 0 &&
            data[sizeof(otp_slot_magic)] == OTP_SLOT_FORMAT_V1;
@@ -205,17 +205,17 @@ static int otp_slot_load(uint16_t fid, uint8_t plain[OTP_SLOT_PLAIN_MAX], uint16
     }
 
     const uint8_t *stored = file_get_data(ef);
-    uint16_t stored_len = file_get_size(ef);
+    size_t stored_len = file_get_size(ef);
     if (!otp_slot_is_secure(stored, stored_len)) {
         if (stored_len != otp_config_size && stored_len != OTP_SLOT_PLAIN_MAX) {
             return PICOKEYS_WRONG_DATA;
         }
         memcpy(plain, stored, stored_len);
-        *plain_len = stored_len;
+        *plain_len = (uint16_t)stored_len;
         return PICOKEYS_OK;
     }
 
-    uint16_t decrypted_len = stored_len - OTP_SLOT_SECURE_OVERHEAD;
+    size_t decrypted_len = stored_len - OTP_SLOT_SECURE_OVERHEAD;
     if (decrypted_len != otp_config_size && decrypted_len != OTP_SLOT_PLAIN_MAX) {
         return PICOKEYS_WRONG_DATA;
     }
@@ -229,7 +229,7 @@ static int otp_slot_load(uint16_t fid, uint8_t plain[OTP_SLOT_PLAIN_MAX], uint16
         mbedtls_platform_zeroize(plain, OTP_SLOT_PLAIN_MAX);
         return PICOKEYS_EXEC_ERROR;
     }
-    *plain_len = decrypted_len;
+    *plain_len = (uint16_t)decrypted_len;
     return PICOKEYS_OK;
 }
 
@@ -442,7 +442,7 @@ static int otp_button_pressed(uint8_t slot) {
         int ret = calculate_oath(1, tmp_key, sizeof(tmp_key), chal, sizeof(chal));
         mbedtls_platform_zeroize(tmp_key, sizeof(tmp_key));
         if (ret == PICOKEYS_OK) {
-            uint32_t base = otp_config->cfg_flags & OATH_HOTP8 ? 1e8 : 1e6;
+            uint32_t base = otp_config->cfg_flags & OATH_HOTP8 ? 100000000u : 1000000u;
             uint32_t number = get_uint16_be(res_APDU + 2);
             number %= base;
             char number_str[9];
@@ -495,9 +495,9 @@ static int otp_button_pressed(uint8_t slot) {
         po += UID_SIZE;
         po += put_uint16_le(counter, po);
         ts >>= 1;
-        *po++ = ts & 0xff;
-        *po++ = ts >> 8;
-        *po++ = ts >> 16;
+        *po++ = (uint8_t)(ts & 0xffu);
+        *po++ = (uint8_t)(ts >> 8);
+        *po++ = (uint8_t)(ts >> 16);
         *po++ = session_counter[slot - 1];
         random_fill_buffer(BYTE_ARRAY(po, 2));
         po += 2;
@@ -548,7 +548,7 @@ static int otp_unload(void) {
 
 uint8_t status_byte = 0x0;
 static uint16_t otp_status_ext(void) {
-    for (int i = 0; i < 4; i++) {
+    for (uint8_t i = 0; i < 4; i++) {
         uint16_t fid = (uint16_t)(EF_OTP_SLOT1 + i);
         if (otp_slot_has_data(fid)) {
             uint8_t data[OTP_SLOT_PLAIN_MAX] = { 0 };
@@ -556,7 +556,7 @@ static uint16_t otp_status_ext(void) {
             if (otp_slot_load(fid, data, &data_len) != PICOKEYS_OK) {
                 continue;
             }
-            res_APDU[res_APDU_size++] = 0xB0 + i;
+            res_APDU[res_APDU_size++] = (uint8_t)(0xB0u + i);
             res_APDU[res_APDU_size++] = 0; // Filled later
             uint8_t *p = res_APDU + res_APDU_size;
             otp_config_t *otp_config = (otp_config_t *)data;
@@ -577,7 +577,8 @@ static uint16_t otp_status_ext(void) {
                 memcpy(p, otp_config->fixed_data, 6);
                 p += 6;
             }
-            uint8_t len = p - (res_APDU + res_APDU_size);
+            size_t response_len = (size_t)(p - (res_APDU + res_APDU_size));
+            uint8_t len = (uint8_t)response_len;
             res_APDU[res_APDU_size - 1] = len;
             res_APDU_size += len;
             mbedtls_platform_zeroize(data, sizeof(data));
@@ -997,13 +998,13 @@ uint8_t otp_exp_seq = 0, otp_curr_seq = 0;
 uint8_t otp_header[4] = {0};
 
 static int otp_send_frame(uint8_t *frame, size_t frame_len) {
+    if (frame_len > (size_t)UINT8_MAX * 7u - sizeof(uint16_t)) {
+        return PICOKEYS_WRONG_LENGTH;
+    }
     uint16_t crc = calculate_crc(frame, frame_len);
     frame_len += put_uint16_le(~crc, frame + frame_len);
-    *get_send_buffer_size(ITF_KEYBOARD) = frame_len;
-    otp_exp_seq = (frame_len / 7);
-    if (frame_len % 7) {
-        otp_exp_seq++;
-    }
+    *get_send_buffer_size(ITF_KEYBOARD) = (uint16_t)frame_len;
+    otp_exp_seq = (uint8_t)((frame_len + 6u) / 7u);
     otp_curr_seq = 0;
     return 0;
 }

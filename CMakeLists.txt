@@ -208,14 +208,17 @@ if(NOT ESP_PLATFORM)
                 target_compile_options(pico_fido PRIVATE ${DEBUG_APDU_SANITIZER_OPTIONS})
                 target_link_options(pico_fido PRIVATE ${DEBUG_APDU_SANITIZER_OPTIONS})
             endif()
-        else()
+        elseif(NOT MSVC)
             set(EMULATION_NON_APPLE_LINK_OPTIONS
                 -Wl,--gc-sections
             )
             target_link_options(pico_fido PRIVATE ${EMULATION_NON_APPLE_LINK_OPTIONS})
         endif()
 
-        target_link_libraries(pico_fido PRIVATE picokeys_sdk mbedtls pthread m)
+        target_link_libraries(pico_fido PRIVATE picokeys_sdk mbedtls)
+        if(NOT MSVC)
+            target_link_libraries(pico_fido PRIVATE pthread m)
+        endif()
 
         add_executable(fido_object_provider_test
             ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/src/fs/object_crypto_provider.c

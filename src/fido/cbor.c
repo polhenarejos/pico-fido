@@ -96,7 +96,7 @@ int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     return CTAP1_ERR_INVALID_CMD;
 }
 
-void *cbor_thread(void *arg) __attribute__((unused));
+void *cbor_thread(void *arg);
 void *cbor_thread(void *arg) {
     (void)arg;
     card_init_core1();

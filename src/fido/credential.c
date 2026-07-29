@@ -96,7 +96,7 @@ int credential_rp_id_decrypt(const file_t *ef, uint8_t **rp_id, size_t *rp_id_le
         return -1;
     }
     uint8_t *record = file_get_data(ef);
-    uint16_t record_len = file_get_size(ef);
+    uint32_t record_len = file_get_size(ef);
     uint8_t *tail = record + RP_RECORD_HEADER_LEN;
     size_t tail_len = record_len - RP_RECORD_HEADER_LEN;
     *rp_id = NULL;
@@ -149,7 +149,7 @@ int credential_migrate_rp_secure(void) {
             continue;
         }
         uint8_t *record = file_get_data(ef);
-        uint16_t record_len = file_get_size(ef);
+        uint32_t record_len = file_get_size(ef);
         if (record_len < RP_RECORD_HEADER_LEN) {
             continue;
         }

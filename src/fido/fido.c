@@ -232,7 +232,7 @@ int load_keydev(uint8_t key[32]) {
         memcpy(key, keydev_dec, sizeof(keydev_dec));
     }
     else {
-        uint16_t fid_size = file_get_size(ef_keydev);
+        uint32_t fid_size = file_get_size(ef_keydev);
         if (fid_size == 32) {
             memcpy(key, file_get_data(ef_keydev), 32);
             if (otp_key_1 && aes_decrypt(CONST_BYTE_ARRAY(otp_key_1, 32), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(key, 32)) != PICOKEYS_OK) {
@@ -607,7 +607,10 @@ static int cmd_vendor(void) {
     int ret = cbor_vendor(apdu.data, apdu.nc);
     res_APDU = old_buf;
     if (ret != 0) {
-        return set_res_sw(0x64, ret);
+        if (ret < 0 || ret > UINT8_MAX) {
+            return SW_EXEC_ERROR();
+        }
+        return set_res_sw(0x64, (uint8_t)ret);
     }
     res_APDU_size += 1;
     memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
@@ -620,7 +623,10 @@ static int cmd_cbor(void) {
     int ret = cbor_parse(0x90, apdu.data, apdu.nc);
     res_APDU = old_buf;
     if (ret != 0) {
-        return set_res_sw(0x64, ret);
+        if (ret < 0 || ret > UINT8_MAX) {
+            return SW_EXEC_ERROR();
+        }
+        return set_res_sw(0x64, (uint8_t)ret);
     }
     res_APDU_size += 1;
     memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);

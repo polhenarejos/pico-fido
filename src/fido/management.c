@@ -147,15 +147,23 @@ int man_get_config(void) {
         res_APDU[res_APDU_size++] = 0x00;
     }
     else {
-        memcpy(res_APDU + res_APDU_size, file_get_data(ef), file_get_size(ef));
-        res_APDU_size += file_get_size(ef);
+        uint32_t config_size = file_get_size(ef);
+        if ((uint32_t)res_APDU_size > (uint32_t)UINT8_MAX ||
+            config_size > (uint32_t)UINT8_MAX - (uint32_t)res_APDU_size) {
+            return PICOKEYS_ERR_MEMORY_FATAL;
+        }
+        uint16_t config_len = (uint16_t)config_size;
+        memcpy(res_APDU + res_APDU_size, file_get_data(ef), config_len);
+        res_APDU_size += config_len;
     }
     res_APDU[0] = (uint8_t)(res_APDU_size - 1);
     return 0;
 }
 
 static int cmd_read_config(void) {
-    man_get_config();
+    if (man_get_config() != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
     return SW_OK();
 }
 

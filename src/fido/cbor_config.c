@@ -127,7 +127,8 @@ int cbor_config(const uint8_t *data, size_t len) {
     if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
-    if (pinUvAuthParam.len != (pinUvAuthProtocol == 1 ? 16 : 32)) {
+    size_t expected_auth_len = pinUvAuthProtocol == 1 ? 16u : 32u;
+    if (pinUvAuthParam.len != expected_auth_len) {
         CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
     }
 
