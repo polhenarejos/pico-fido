@@ -54,6 +54,65 @@ wait_for_emulator() {
     return 1
 }
 
+wait_for_ccid() {
+    log_file="$1"
+
+    if python3 - "${EMULATOR_PID}" <<'PY'
+import os
+import sys
+import time
+
+from smartcard.System import readers
+
+
+emulator_pid = int(sys.argv[1])
+deadline = time.monotonic() + 10
+last_error = "no PC/SC readers found"
+
+while time.monotonic() < deadline:
+    try:
+        available_readers = readers()
+        if not available_readers:
+            last_error = "no PC/SC readers found"
+
+        for reader in available_readers:
+            connection = reader.createConnection()
+            try:
+                connection.connect()
+            except Exception as error:
+                last_error = f"{reader}: {error}"
+                continue
+
+            try:
+                connection.disconnect()
+            except Exception:
+                pass
+            sys.exit(0)
+    except Exception as error:
+        last_error = str(error)
+
+    try:
+        os.kill(emulator_pid, 0)
+    except ProcessLookupError:
+        print("emulator exited while waiting for CCID", file=sys.stderr)
+        sys.exit(2)
+
+    time.sleep(0.1)
+
+print(f"CCID did not become ready: {last_error}", file=sys.stderr)
+sys.exit(1)
+PY
+    then
+        return 0
+    else
+        status=$?
+    fi
+
+    echo "Emulator did not expose a usable CCID card:" >&2
+    cat "${log_file}" >&2
+    return "${status}"
+}
+
 start_emulator() {
     emulator="$1"
     phase="$2"
@@ -65,6 +124,7 @@ start_emulator() {
     ) &
     EMULATOR_PID=$!
     wait_for_emulator "${log_file}"
+    wait_for_ccid "${log_file}"
 }
 
 run_phase() {
