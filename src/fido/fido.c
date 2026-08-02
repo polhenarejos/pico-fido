@@ -52,6 +52,7 @@ persistentPinUvAuthToken_t ppaut = { 0 };
 
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
+bool keydev_unlocked = false;
 uint8_t session_pin[32] = { 0 };
 
 const uint8_t fido_aid[] = {
@@ -224,6 +225,8 @@ static int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_
 }
 
 int load_keydev(uint8_t key[32]) {
+    bool pin_wrapped = false;
+
     if (has_keydev_dec == false && !file_has_data(ef_keydev)) {
         return PICOKEYS_ERR_MEMORY_FATAL;
     }
@@ -243,6 +246,7 @@ int load_keydev(uint8_t key[32]) {
             uint8_t format = *file_get_data(ef_keydev);
             if (format == 0x01 || format == 0x02 || format == 0x03) { // Format indicator
                 if (format == 0x02 || format == 0x03) {
+                    pin_wrapped = true;
                     uint8_t tmp_key[61], version = format == 0x03 ? 2 : 1;
                     memcpy(tmp_key, file_get_data(ef_keydev), sizeof(tmp_key));
                     int ret = decrypt_with_aad(session_pin, CONST_BYTE_ARRAY(tmp_key + 1, 60), version, key);
@@ -276,6 +280,9 @@ int load_keydev(uint8_t key[32]) {
         }
     }
 
+    if (pin_wrapped) {
+        keydev_unlocked = true;
+    }
     return PICOKEYS_OK;
 }
 
@@ -508,6 +515,7 @@ void scan_all(void) {
 extern bool needs_power_cycle;
 void init_fido(void) {
     fido_object_authorization_session_invalidate();
+    keydev_unlocked = false;
     scan_all();
     credential_migrate_rp_secure();
 #ifdef ENABLE_OTP_APP

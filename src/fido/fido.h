@@ -158,6 +158,7 @@ extern persistentPinUvAuthToken_t ppaut;
 extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *sign);
 
 extern uint8_t session_pin[32];
+extern bool keydev_unlocked;
 extern uint8_t certdev_sha256[32];
 
 typedef enum {

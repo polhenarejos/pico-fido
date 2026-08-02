@@ -127,9 +127,7 @@ int cbor_get_info(void) {
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "rk"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, !(get_opts() & FIDO2_OPT_NORK)));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "alwaysUv"));
-    uint8_t *keydev_data = file_get_data(ef_keydev);
-    bool keydev_pin_wrapped = file_get_size(ef_keydev) == 61 && keydev_data != NULL && (keydev_data[0] == 0x02 || keydev_data[0] == 0x03);
-    bool alwaysUv = (get_opts() & FIDO2_OPT_AUV) || keydev_pin_wrapped;
+    bool alwaysUv = (get_opts() & FIDO2_OPT_AUV) || (file_has_data(ef_pin) && !keydev_unlocked);
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, alwaysUv));
     CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "credMgmt"));
     CBOR_CHECK(cbor_encode_boolean(&arrayEncoder, true));
