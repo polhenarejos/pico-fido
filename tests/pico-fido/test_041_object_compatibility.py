@@ -5,7 +5,8 @@ Run this test against externally managed emulator instances in three phases:
 2. PICO_FIDO_COMPAT_PHASE=upgrade with the current firmware on the same flash.
 3. PICO_FIDO_COMPAT_PHASE=restart after restarting the current firmware.
 
-Use tests/run-test-041-compatibility.sh to automate all three phases.
+Use tests/run-test-041-compatibility.bat on Windows or the corresponding
+.sh launcher on Linux to automate all three phases.
 """
 
 import hashlib

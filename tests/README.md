@@ -2,6 +2,13 @@
 
 This directory contains Pico Fido test code and conformance-related documentation.
 
+## Windows launchers
+
+The top-level test and Docker workflows have `.bat` launchers for Windows.
+They use Docker Desktop and mount the checkout at `/workspace` in the Linux
+test container. The `.sh` counterparts remain available for Linux and the
+Ubuntu GitHub Actions jobs.
+
 ## FIDO Alliance conformance results
 
 The current FIDO Alliance Conformance Test App results are documented in

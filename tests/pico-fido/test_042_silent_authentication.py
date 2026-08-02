@@ -1,9 +1,10 @@
 """
 Exercise silent credential authentication after a process restart.
 
-Run the create and verify phases with tests/run-test-042-silent-authentication.sh
-so both phases use the same flash image and the verify phase starts without the
-PIN-derived device-key session in RAM.
+Run the create and verify phases with tests/run-test-042-silent-authentication.bat
+on Windows or the corresponding .sh launcher on Linux. Both phases use the same
+flash image, and the verify phase starts without the PIN-derived device-key
+session in RAM.
 """
 
 import os
@@ -107,6 +108,7 @@ def verify_state() -> None:
     device = Device()
 
     # These assertions must run before any PIN operation in this process.
+    assert device.client()._backend.ctap2.get_info().options["alwaysUv"] is True
     silent_assertion(device, state["nonresident"])
     silent_assertion(device, state["resident"])
 
