@@ -116,6 +116,37 @@ def test_algorithms(device, info, alg):
     if ({'alg': alg, 'type': 'public-key'} in info.algorithms):
         device.doMC(key_params=[{"alg": alg, "type": "public-key"}])
 
+@pytest.mark.parametrize(
+    "alg, verifier",
+    [
+        (ES256.ALGORITHM, ES256),
+        (ES384.ALGORITHM, ES384),
+        (ES512.ALGORITHM, ES512),
+        (EdDSA.ALGORITHM, EdDSA),
+        (ES256K.ALGORITHM, ES256K),
+    ],
+)
+def test_signing_curves_get_assertion_signature(device, info, alg, verifier):
+    advertised = {'alg': alg, 'type': 'public-key'} in info.algorithms
+    if not advertised and alg != ES256K.ALGORITHM:
+        pytest.skip("algorithm is not advertised by this authenticator")
+
+    try:
+        mc = device.doMC(key_params=[{"alg": alg, "type": "public-key"}])
+    except CtapError as e:
+        if alg == ES256K.ALGORITHM and e.code == CtapError.ERR.UNSUPPORTED_ALGORITHM:
+            pytest.skip("ES256K is not accepted by this firmware build")
+        raise
+
+    att_obj = mc['res'].attestation_object
+    cred_id = att_obj.auth_data.credential_data.credential_id
+    ga = device.doGA(allow_list=[{"id": cred_id, "type": "public-key"}])
+    assertion = ga['res'].get_response(0)
+    signed_data = assertion.response.authenticator_data + ga['req']['client_data'].hash
+    public_key = att_obj.auth_data.credential_data.public_key
+
+    verifier(public_key).verify(signed_data, assertion.response.signature)
+
 def test_missing_pubKeyCredParams_type(device):
     with pytest.raises(CtapError) as e:
         device.MC(key_params=[{"alg": ES256.ALGORITHM}])
@@ -136,6 +167,12 @@ def test_bad_type_pubKeyCredParams_alg(device):
         device.MC(key_params=[{"alg": "7", "type": "public-key"}])
 
     assert e.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
+
+def test_unsupported_pubKeyCredParams_type(device):
+    with pytest.raises(CtapError) as e:
+        device.MC(key_params=[{"alg": ES256.ALGORITHM, "type": "rot13"}])
+
+    assert e.value.code == CtapError.ERR.UNSUPPORTED_ALGORITHM
 
 def test_unsupported_algorithm(device):
     with pytest.raises(CtapError) as e:

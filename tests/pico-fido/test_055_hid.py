@@ -88,6 +88,22 @@ class TestHID(object):
         else:
             print("U2F not implemented.")
 
+    def test_msg_vendor_select_does_not_hijack_u2f_after_init(self, device):
+        management_aid = b"\xa0\x00\x00\x05\x27\x47\x11\x17"
+        select_management = (
+            b"\x00\xa4\x04\x00" + bytes([len(management_aid)]) + management_aid
+        )
+        u2f_version = b"\x00\x03\x00\x00\x00"
+
+        selected = device.send_data(CTAPHID.MSG, select_management)
+        assert selected[-2:] == b"\x90\x00"
+
+        device.send_data(CTAPHID.INIT, b"\x12\x34\x56\x78\x9a\xbc\xde\xf0")
+        version = device.send_data(CTAPHID.MSG, u2f_version)
+
+        assert version != b"\x6d\x00"
+        assert version == b"U2F_V2\x90\x00"
+
     def test_invalid_hid_cmd(self, device):
         r = device.send_data(CTAPHID.INIT, "\x11\x22\x33\x44\x55\x66\x77\x88")
 

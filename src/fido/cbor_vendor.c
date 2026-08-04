@@ -15,7 +15,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
+#include "serial.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
@@ -34,6 +35,9 @@ extern bool has_keydev_dec;
 mse_t mse = { .init = false };
 
 int mse_decrypt_ct(uint8_t *data, size_t len) {
+    if (data == NULL || len < 16) {
+        return -1;
+    }
     mbedtls_chachapoly_context chatx;
     mbedtls_chachapoly_init(&chatx);
     mbedtls_chachapoly_setkey(&chatx, mse.key_enc + 12);
@@ -42,7 +46,7 @@ int mse_decrypt_ct(uint8_t *data, size_t len) {
     return ret;
 }
 
-int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
+static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
@@ -111,12 +115,15 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             if (vendorParam.present == false) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
             }
+            if (check_user_presence() == false) {
+                CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+            }
             uint8_t zeros[32];
             memset(zeros, 0, sizeof(zeros));
-            file_put_data(ef_keydev_enc, vendorParam.data, (uint16_t)vendorParam.len);
-            file_put_data(ef_keydev, zeros, file_get_size(ef_keydev)); // Overwrite ef with 0
-            file_put_data(ef_keydev, NULL, 0); // Set ef to 0 bytes
-            low_flash_available();
+            file_put_data(ef_keydev_enc, CONST_BYTE_ARRAY(vendorParam.data, vendorParam.len));
+            file_put_data(ef_keydev, CONST_BYTE_ARRAY(zeros, file_get_size(ef_keydev))); // Overwrite ef with 0
+            file_put_data(ef_keydev, CONST_BYTE_ARRAY(NULL, 0)); // Set ef to 0 bytes
+            flash_commit();
             goto err;
         }
         else {
@@ -132,7 +139,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             mbedtls_ecdh_context hkey;
             mbedtls_ecdh_init(&hkey);
             mbedtls_ecdh_setup(&hkey, MBEDTLS_ECP_DP_SECP256R1);
-            int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_gen, NULL);
+            int ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_fill_iterator, NULL);
             mbedtls_mpi_lset(&hkey.ctx.mbed_ecdh.Qp.Z, 1);
             if (ret != 0) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -154,7 +161,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
 
-            ret = mbedtls_ecdh_calc_secret(&hkey, &olen, buf, MBEDTLS_ECP_MAX_BYTES, random_gen, NULL);
+            ret = mbedtls_ecdh_calc_secret(&hkey, &olen, buf, MBEDTLS_ECP_MAX_BYTES, random_fill_iterator, NULL);
             if (ret != 0) {
                 mbedtls_ecdh_free(&hkey);
                 mbedtls_platform_zeroize(buf, sizeof(buf));
@@ -177,6 +184,9 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     else if (cmd == CTAP_VENDOR_UNLOCK) {
         if (mse.init == false) {
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+        }
+        if (vendorParam.present == false || vendorParam.len != sizeof(keydev_dec) + 16) {
+            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
 
         mbedtls_chachapoly_context chatx;
@@ -216,7 +226,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
-            ret = mbedtls_ecp_mul(&ekey.grp, &ekey.Q, &ekey.d, &ekey.grp.G, random_gen, NULL);
+            ret = mbedtls_ecp_keypair_calc_public(&ekey, random_fill_iterator, NULL);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ekey);
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
@@ -232,7 +242,7 @@ int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             mbedtls_x509write_csr_set_key(&ctx, &key);
             mbedtls_x509write_csr_set_md_alg(&ctx, MBEDTLS_MD_SHA256);
             mbedtls_x509write_csr_set_extension(&ctx, "\x2B\x06\x01\x04\x01\x82\xE5\x1C\x01\x01\x04", 0xB, 0, aaguid, sizeof(aaguid));
-            ret = mbedtls_x509write_csr_der(&ctx, buffer, sizeof(buffer), random_gen, NULL);
+            ret = mbedtls_x509write_csr_der(&ctx, buffer, sizeof(buffer), random_fill_iterator, NULL);
             mbedtls_ecdsa_free(&ekey);
             if (ret <= 0) {
                 mbedtls_x509write_csr_free(&ctx);

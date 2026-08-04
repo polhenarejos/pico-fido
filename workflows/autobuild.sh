@@ -49,6 +49,7 @@ cd build
 esptool.py --chip ESP32-S2 merge_bin -o ../release/pico_fido_esp32-s2.bin @flash_args
 cd ..
 else
+sudo apt install -y libtss2-dev tpm2-tools swtpm cmake
 mkdir build
 cd build
 cmake -DENABLE_EMULATION=1 ..

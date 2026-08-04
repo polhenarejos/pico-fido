@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "cbor.h"
 #include "ctap.h"
 #if defined(PICO_PLATFORM)
@@ -32,6 +32,7 @@
 #include "random.h"
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
+extern char *rp_id, *user_name, *display_name;
 
 bool residentx = false;
 Credential credsx[MAX_CREDENTIAL_COUNT_IN_LIST] = { 0 };
@@ -42,7 +43,7 @@ uint32_t timerx = 0;
 uint8_t *datax = NULL;
 size_t lenx = 0;
 
-void reset_gna_state() {
+void reset_gna_state(void) {
     for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
         credential_free(&credsx[i]);
     }
@@ -124,6 +125,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         else if (val_u == 0x03) { // excludeList
             CBOR_PARSE_ARRAY_START(_f1, 2)
             {
+                if (allowList_len >= MAX_CREDENTIAL_COUNT_IN_LIST) {
+                    CBOR_ERROR(CTAP2_ERR_LIMIT_EXCEEDED);
+                }
                 PublicKeyCredentialDescriptor *pc = &allowList[allowList_len];
                 CBOR_PARSE_MAP_START(_f2, 3)
                 {
@@ -133,6 +137,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     if (strcmp(_fd3, "transports") == 0) {
                         CBOR_PARSE_ARRAY_START(_f3, 4)
                         {
+                            if (pc->transports_len >= sizeof(pc->transports) / sizeof(pc->transports[0])) {
+                                CBOR_ERROR(CTAP2_ERR_LIMIT_EXCEEDED);
+                            }
                             CBOR_FIELD_GET_TEXT(pc->transports[pc->transports_len], 4);
                             pc->transports_len++;
                         }
@@ -205,12 +212,18 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     if (rpId.present == false || clientDataHash.present == false) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
     }
+    rp_id = rpId.data;
+    user_name = NULL;
+    display_name = NULL;
 
     uint8_t flags = 0;
-    uint8_t rp_id_hash[32] = {0};
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
     mbedtls_sha256((uint8_t *) rpId.data, rpId.len, rp_id_hash, 0);
 
     bool resident = false;
+#ifndef ENABLE_EMULATION
+    bool button_pressed = false;
+#endif
     uint8_t numberOfCredentials = 0;
     Credential *selcred = NULL;
     if (next == false) {
@@ -219,6 +232,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 if (check_user_presence() == false) {
                     CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                 }
+#ifndef ENABLE_EMULATION
+                button_pressed = phy_data.up_btn != 0;
+#endif
                 if (!file_has_data(ef_pin)) {
                     CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
                 }
@@ -272,8 +288,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             if (!(paut.permissions & CTAP_PERMISSION_GA)) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
             }
-            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, 32) != 0) {
+            if (paut.has_rp_id == true && memcmp(paut.rp_id_hash, rp_id_hash, RP_ID_HASH_LEN) != 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+            }
+            if (paut.has_rp_id == false) {
+                memcpy(paut.rp_id_hash, rp_id_hash, RP_ID_HASH_LEN);
+                paut.has_rp_id = true;
             }
             flags |= FIDO2_AUT_FLAG_UV;
             // Check pinUvAuthToken permissions. See 6.2.2.4
@@ -301,11 +321,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
                 if (credential_is_resident(allowList[e].id.data, allowList[e].id.len)) {
                     for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                        file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-                        if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
+                        file_t *ef = file_search((uint16_t)(EF_CRED + i));
+                        if (!file_has_data(ef) || !credential_resident_matches_rp(ef, rp_id_hash)) {
                             continue;
                         }
-                        if (memcmp(file_get_data(ef) + 32, allowList[e].id.data, CRED_RESIDENT_LEN) == 0) {
+                        if (credential_resident_matches_id(ef, allowList[e].id.data, allowList[e].id.len)) {
                             if (credential_load_resident(ef, rp_id_hash, &creds[creds_len]) != 0) {
                                 // Should never happen
                                 credential_free(&creds[creds_len]);
@@ -328,11 +348,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                         // Even we provide allowList, we need to check if the credential is resident
                         if (!resident) {
                             for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                                file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-                                if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
+                                file_t *ef = file_search((uint16_t)(EF_CRED + i));
+                                if (!file_has_data(ef) || !credential_resident_matches_rp(ef, rp_id_hash)) {
                                     continue;
                                 }
-                                if (memcmp(file_get_data(ef) + 32, allowList[e].id.data, allowList[e].id.len) == 0) {
+                                if (credential_resident_matches_id(ef, allowList[e].id.data, allowList[e].id.len)) {
                                     resident = true;
                                     break;
                                 }
@@ -347,8 +367,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         else {
             for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-                if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
+                file_t *ef = file_search((uint16_t)(EF_CRED + i));
+                if (!file_has_data(ef) || !credential_resident_matches_rp(ef, rp_id_hash)) {
                     continue;
                 }
                 int ret = credential_load_resident(ef, rp_id_hash, &creds[creds_len]);
@@ -401,12 +421,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     }
                     if (credential_is_resident(allowList[e].id.data, allowList[e].id.len)) {
                         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS && creds_len < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
-                            file_t *ef = search_dynamic_file((uint16_t)(EF_CRED + i));
-                            if (!file_has_data(ef) || memcmp(file_get_data(ef), rp_id_hash, 32) != 0) {
+                            file_t *ef = file_search((uint16_t)(EF_CRED + i));
+                            if (!file_has_data(ef) || !credential_resident_matches_rp(ef, rp_id_hash)) {
                                 continue;
                             }
-                            if (memcmp(file_get_data(ef) + 32, allowList[e].id.data, CRED_RESIDENT_LEN) == 0) {
-                                if (credential_verify(file_get_data(ef) + 32 + CRED_RESIDENT_LEN, file_get_size(ef) - 32 - CRED_RESIDENT_LEN, rp_id_hash, true) == 0) {
+                            if (credential_resident_matches_id(ef, allowList[e].id.data, allowList[e].id.len)) {
+                                if (credential_resident_verify(ef, rp_id_hash, true) == 0) {
                                     numberOfCredentials++;
                                 }
                                 break;
@@ -443,6 +463,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     if (check_user_presence() == false) {
                         CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
+#ifndef ENABLE_EMULATION
+                    button_pressed = phy_data.up_btn != 0;
+#endif
                 }
             }
             else {
@@ -450,6 +473,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     if (check_user_presence() == false) {
                         CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
+#ifndef ENABLE_EMULATION
+                    button_pressed = phy_data.up_btn != 0;
+#endif
                 }
             }
             flags |= FIDO2_AUT_FLAG_UP;
@@ -476,6 +502,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
                     credential_free(&credsx[i]);
                 }
+                numberOfCredentials = MIN(numberOfCredentials, MAX_CREDENTIAL_COUNT_IN_LIST);
                 for (int i = 0; i < numberOfCredentials; i++) {
                     credsx[i] = creds[i];
                 }
@@ -497,10 +524,20 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
 
     int ret = 0;
+    const uint8_t *key_seed = NULL;
+    size_t key_seed_len = 0;
+    if (selcred) {
+        key_seed = selcred->id.data;
+        key_seed_len = selcred->id.len;
+        if (selcred->residentId.present == true && credential_resident_id_uses_stable_keys(selcred->residentId.data, selcred->residentId.len)) {
+            key_seed = selcred->residentId.data;
+            key_seed_len = selcred->residentId.len;
+        }
+    }
     uint8_t largeBlobKey[32] = {0};
     if (selcred) {
         if (extensions.largeBlobKey == ptrue && selcred->extensions.largeBlobKey == ptrue) {
-            ret = credential_derive_large_blob_key(selcred->id.data, selcred->id.len, largeBlobKey);
+            ret = credential_derive_large_blob_key(key_seed, key_seed_len, largeBlobKey);
             if (ret != 0) {
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
@@ -569,7 +606,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
                 }
                 uint8_t cred_random[64] = {0}, *crd = NULL;
-                ret = credential_derive_hmac_key(selcred->id.data, selcred->id.len, cred_random);
+                ret = credential_derive_hmac_key(key_seed, key_seed_len, cred_random);
                 if (ret != 0) {
                     mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
                     CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -606,12 +643,12 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
 
     uint32_t ctr = get_sign_counter();
 
-    size_t aut_data_len = 32 + 1 + 4 + ext_len;
+    size_t aut_data_len = RP_ID_HASH_LEN + 1 + 4 + ext_len;
     aut_data = (uint8_t *) calloc(1, aut_data_len + clientDataHash.len);
     uint8_t *pa = aut_data;
-    memcpy(pa, rp_id_hash, 32); pa += 32;
+    memcpy(pa, rp_id_hash, RP_ID_HASH_LEN); pa += RP_ID_HASH_LEN;
     *pa++ = flags;
-    pa += put_uint32_t_be(ctr, pa);
+    pa += put_uint32_be(ctr, pa);
     memcpy(pa, ext, ext_len); pa += ext_len;
     if ((size_t)(pa - aut_data) != aut_data_len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
@@ -624,9 +661,9 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_ecp_keypair_init(&ekey);
     size_t olen = 0;
     if (selcred) {
-        ret = fido_load_key((int)selcred->curve, selcred->id.data, &ekey);
+        ret = fido_load_key((int)selcred->curve, key_seed, &ekey);
         if (ret != 0) {
-            if (derive_key(rp_id_hash, false, selcred->id.data, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
+            if (derive_key(rp_id_hash, false, (uint8_t *)key_seed, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
                 mbedtls_ecp_keypair_free(&ekey);
                 CBOR_ERROR(CTAP1_ERR_OTHER);
             }
@@ -644,11 +681,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
 #endif
         if (md != NULL) {
             ret = mbedtls_md(md, aut_data, aut_data_len + clientDataHash.len, hash);
-            ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_gen, NULL);
+            ret = mbedtls_ecdsa_write_signature(&ekey, mbedtls_md_get_type(md), hash, mbedtls_md_get_size(md), sig, sizeof(sig), &olen, random_fill_iterator, NULL);
         }
 #ifdef MBEDTLS_EDDSA_C
         else {
-            ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_gen, NULL);
+            ret = mbedtls_eddsa_write_signature(&ekey, aut_data, aut_data_len + clientDataHash.len, sig, sizeof(sig), &olen, MBEDTLS_EDDSA_PURE, NULL, 0, random_fill_iterator, NULL);
         }
 #endif
     }
@@ -680,9 +717,14 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
     if (selcred) {
         if (resident) {
-            uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
-            credential_derive_resident(selcred->id.data, selcred->id.len, cred_idr);
-            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
+            if (selcred->residentId.present == true) {
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->residentId.data, selcred->residentId.len));
+            }
+            else {
+                uint8_t cred_idr[CRED_RESIDENT_LEN] = {0};
+                credential_derive_resident(selcred->id.data, selcred->id.len, cred_idr);
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, cred_idr, sizeof(cred_idr)));
+            }
         }
         else {
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->id.data, selcred->id.len));
@@ -703,7 +745,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     if (selcred && selcred->opts.present == true && selcred->opts.rk == ptrue) {
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
         uint8_t lu = 1;
-        if (numberOfCredentials > 1 && allowList_len == 0) {
+        if (numberOfCredentials > 1 && allowList_len == 0 && (flags & FIDO2_AUT_FLAG_UV)) {
             if (selcred->userName.present == true) {
                 lu++;
             }
@@ -714,7 +756,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, lu));
         CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "id"));
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder2, selcred->userId.data, selcred->userId.len));
-        if (numberOfCredentials > 1 && allowList_len == 0) {
+        if (numberOfCredentials > 1 && allowList_len == 0 && (flags & FIDO2_AUT_FLAG_UV)) {
             if (selcred->userName.present == true) {
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "name"));
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, selcred->userName.data));
@@ -738,8 +780,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     ctr++;
-    file_put_data(ef_counter, (uint8_t *) &ctr, sizeof(ctr));
-    low_flash_available();
+    file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
+    flash_commit();
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
@@ -765,11 +807,19 @@ err:
         free(aut_data);
     }
     if (error != CborNoError) {
+        if (next == false) {
+            reset_gna_state();
+        }
         if (error == CborErrorImproperValue) {
             return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
         }
         return error;
     }
+#ifndef ENABLE_EMULATION
+    if (!button_pressed) {
+        fido_led_3_blinks();
+    }
+#endif
     res_APDU_size = (uint16_t)resp_size;
     return 0;
 }

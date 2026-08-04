@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "fido.h"
 #include "ctap2_cbor.h"
 
@@ -384,7 +384,7 @@ static const known_app_t kapps[] = {
 
 const known_app_t *find_app_by_rp_id_hash(const uint8_t *rp_id_hash) {
     for (const known_app_t *ka = &kapps[0]; ka->rp_id_hash != NULL; ka++) {
-        if (memcmp(rp_id_hash, ka->rp_id_hash, 32) == 0) {
+        if (memcmp(rp_id_hash, ka->rp_id_hash, RP_ID_HASH_LEN) == 0) {
             return ka;
         }
     }

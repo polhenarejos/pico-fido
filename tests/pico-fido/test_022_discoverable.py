@@ -99,7 +99,7 @@ def test_multiple_rk_nodisplay(device, MCRes_DC):
     assert len(regs) == len(auths)
 
     for x in auths:
-        for y in ("name", "displayName", "id"):
+        for y in ("id",):
             if y not in x.user.keys():
                 print("FAIL: %s was not in user: " % y, x.user)
 
@@ -171,7 +171,7 @@ def test_rk_maximum_list_capacity_per_rp_nodisplay(info, device, MCRes_DC):
     assert len(auths) == len(users)
 
     for x, u in zip(auths, users):
-        for y in ("name", "displayName", "id"):
+        for y in ("id",):
             assert y in x.user.keys()
             assert x.user[y] == u[y]
 

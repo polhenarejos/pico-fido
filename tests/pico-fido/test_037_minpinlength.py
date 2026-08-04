@@ -18,6 +18,7 @@
 """
 
 
+import os
 import pytest
 from fido2.ctap2.extensions import CredProtectExtension
 from fido2.webauthn import UserVerificationRequirement
@@ -27,6 +28,7 @@ from fido2.ctap2 import Config
 
 PIN='12345678'
 MINPINLENGTH=6
+MAX_RPIDS_MINPIN_LENGTH=120
 
 @pytest.fixture(scope="function")
 def MCMinPin(device):
@@ -84,6 +86,64 @@ def test_no_setminpin(device, SetMinPin, MCMinPin):
     with pytest.raises(CtapError) as e:
         cfg.set_min_pin_length(MINPINLENGTH-2,rp_ids=['example.com'])
     assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
+
+def test_setminpin_rejects_above_max_pin_length(device):
+    device.reset()
+    ClientPin(device.client()._backend.ctap2).set_pin(PIN)
+    cfg = FidoConfig(device)
+    with pytest.raises(CtapError) as e:
+        cfg.set_min_pin_length(256, rp_ids=['example.com'])
+    assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
+
+def test_setminpin_too_many_rpids(device):
+    device.reset()
+    ClientPin(device.client()._backend.ctap2).set_pin(PIN)
+    cfg = FidoConfig(device)
+    # Keep the encoded Config request below GetInfo.maxMsgSize (1024).  Recent
+    # python-fido2 releases reject oversized requests locally, before the
+    # authenticator can enforce its maxRPIDsForSetMinPINLength limit.
+    rp_ids = [f"r{i}" for i in range(MAX_RPIDS_MINPIN_LENGTH + 1)]
+    with pytest.raises(CtapError) as e:
+        cfg.set_min_pin_length(MINPINLENGTH,rp_ids=rp_ids)
+    assert e.value.code == CtapError.ERR.KEY_STORE_FULL
+
+
+def test_toggle_always_uv_config_subcommand(device):
+    device.reset()
+    ClientPin(device.client()._backend.ctap2).set_pin(PIN)
+    cfg = FidoConfig(device)
+    ctap = device.client()._backend.ctap2
+    before = ctap.get_info().options["alwaysUv"]
+
+    cfg.toggle_always_uv()
+
+    assert ctap.get_info().options["alwaysUv"] is not before
+
+
+def test_pin_complexity_policy_extension(device):
+    device.reset()
+    ClientPin(device.client()._backend.ctap2).set_pin(PIN)
+    cfg = FidoConfig(device)
+    cfg.set_min_pin_length(
+        MINPINLENGTH,
+        rp_ids=["example.com"],
+        pin_complexity_policy=True,
+    )
+
+    assert device.client()._backend.ctap2.get_info().pin_complexity_policy is True
+    client_data_hash = os.urandom(32)
+    pin_token = ClientPin(device.client()._backend.ctap2).get_pin_token(
+        PIN, permissions=ClientPin.PERMISSION.MAKE_CREDENTIAL
+    )
+    protocol = PinProtocolV2()
+    response = device.MC(
+        client_data_hash=client_data_hash,
+        rp={"id": "example.com", "name": "Example RP"},
+        extensions={"pinComplexityPolicy": True},
+        pin_uv_protocol=protocol.VERSION,
+        pin_uv_param=protocol.authenticate(pin_token, client_data_hash),
+    )
+    assert response["res"].auth_data.extensions["pinComplexityPolicy"] is True
 
 def test_setminpin_check_force(device, SetMinPin, MCMinPin):
     cfg = FidoConfig(device)

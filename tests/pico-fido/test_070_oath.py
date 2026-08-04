@@ -25,11 +25,16 @@ INS_PUT = 0x01
 INS_DELETE = 0x02
 INS_SET_CODE = 0x03
 INS_RESET = 0x04
+INS_RENAME = 0x05
 INS_LIST = 0xa1
 INS_CALCULATE = 0xa2
 INS_VALIDATE = 0xa3
 INS_CALC_ALL = 0xa4
 INS_SEND_REMAINING = 0xa5
+INS_VERIFY_CODE = 0xb1
+INS_SET_PIN = 0xb4
+INS_CHANGE_PIN = 0xb3
+INS_VERIFY_PIN = 0xb2
 
 RESP_MORE_DATA = 0x61
 
@@ -45,6 +50,8 @@ TAG_VERSION = 0x79
 TAG_IMF = 0x7a
 TAG_ALGO = 0x7b
 TAG_TOUCH_RESPONSE = 0x7c
+TAG_PASSWORD = 0x80
+TAG_NEW_PASSWORD = 0x81
 
 TYPE_MASK = 0xf0
 TYPE_HOTP = 0x10
@@ -61,6 +68,101 @@ PROP_REQUIRE_TOUCH = 0x02
 
 def test_select_oath(select_oath):
     pass
+
+def test_otp_pin_set_verify_and_change(reset_oath):
+    old_pin = list(b"123456")
+    new_pin = list(b"654321")
+
+    send_apdu(
+        reset_oath,
+        INS_SET_PIN,
+        p1=0,
+        p2=0,
+        data=[TAG_PASSWORD, len(old_pin)] + old_pin,
+    )
+    send_apdu(
+        reset_oath,
+        INS_VERIFY_PIN,
+        p1=0,
+        p2=0,
+        data=[TAG_PASSWORD, len(old_pin)] + old_pin,
+    )
+    send_apdu(
+        reset_oath,
+        INS_CHANGE_PIN,
+        p1=0,
+        p2=0,
+        data=(
+            [TAG_PASSWORD, len(old_pin)] + old_pin +
+            [TAG_NEW_PASSWORD, len(new_pin)] + new_pin
+        ),
+    )
+
+    with pytest.raises(APDUResponse) as e:
+        send_apdu(
+            reset_oath,
+            INS_VERIFY_PIN,
+            p1=0,
+            p2=0,
+            data=[TAG_PASSWORD, len(old_pin)] + old_pin,
+        )
+    assert [e.value.sw1, e.value.sw2] == [0x69, 0x82]
+
+    send_apdu(
+        reset_oath,
+        INS_VERIFY_PIN,
+        p1=0,
+        p2=0,
+        data=[TAG_PASSWORD, len(new_pin)] + new_pin,
+    )
+
+def test_otp_pin_change_stops_at_retry_floor(reset_oath):
+    old_pin = list(b"123456")
+    new_pin = list(b"654321")
+    wrong_pin = list(b"000000")
+
+    send_apdu(
+        reset_oath,
+        INS_SET_PIN,
+        p1=0,
+        p2=0,
+        data=[TAG_PASSWORD, len(old_pin)] + old_pin,
+    )
+    for _ in range(3):
+        with pytest.raises(APDUResponse) as e:
+            send_apdu(
+                reset_oath,
+                INS_CHANGE_PIN,
+                p1=0,
+                p2=0,
+                data=(
+                    [TAG_PASSWORD, len(wrong_pin)] + wrong_pin +
+                    [TAG_NEW_PASSWORD, len(new_pin)] + new_pin
+                ),
+            )
+        assert [e.value.sw1, e.value.sw2] == [0x69, 0x82]
+
+    with pytest.raises(APDUResponse) as e:
+        send_apdu(
+            reset_oath,
+            INS_CHANGE_PIN,
+            p1=0,
+            p2=0,
+            data=(
+                [TAG_PASSWORD, len(old_pin)] + old_pin +
+                [TAG_NEW_PASSWORD, len(new_pin)] + new_pin
+            ),
+        )
+    assert [e.value.sw1, e.value.sw2] == [0x69, 0x82]
+
+    send_apdu(reset_oath, INS_RESET, p1=0xde, p2=0xad)
+    send_apdu(
+        reset_oath,
+        INS_SET_PIN,
+        p1=0,
+        p2=0,
+        data=[TAG_PASSWORD, len(new_pin)] + new_pin,
+    )
 
 def list_apdu(ccid_card):
     resp = send_apdu(ccid_card, INS_LIST, p1=0, p2=0)
@@ -88,6 +190,24 @@ def test_life(reset_oath):
     resp = send_apdu(reset_oath, INS_DELETE, p1=0, p2=0, data=data)
     resp = list_apdu(reset_oath)
     assert(len(resp) == 0)
+
+
+def test_rename_prefix_extension(reset_oath):
+    old_name = b"30/test"
+    new_name = b"30/test2"
+    key = list(bytes(b"foo bar"))
+
+    put_data = [TAG_NAME, len(old_name)] + list(old_name)
+    put_data += [TAG_KEY, len(key) + 2, TYPE_TOTP | ALG_SHA1, 6] + key
+    send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=put_data)
+
+    rename_data = [TAG_NAME, len(old_name)] + list(old_name)
+    rename_data += [TAG_NAME, len(new_name)] + list(new_name)
+    send_apdu(reset_oath, INS_RENAME, p1=0, p2=0, data=rename_data)
+
+    resp = list_apdu(reset_oath)
+    exp = [TAG_NAME_LIST, len(new_name) + 1, TYPE_TOTP | ALG_SHA1] + list(new_name)
+    assert resp == exp
 
 def test_overwrite(reset_oath):
     data = data_name + data_key
@@ -123,6 +243,21 @@ def test_auth(reset_oath):
         resp = list_apdu(reset_oath)
     assert([e.value.sw1, e.value.sw2] == [0x69, 0x82])
 
+    pin = list(b"123456")
+    with pytest.raises(APDUResponse) as e:
+        send_apdu(
+            reset_oath,
+            INS_SET_PIN,
+            p1=0,
+            p2=0,
+            data=[TAG_PASSWORD, len(pin)] + pin,
+        )
+    assert [e.value.sw1, e.value.sw2] == [0x69, 0x82]
+
+    with pytest.raises(APDUResponse) as e:
+        send_apdu(reset_oath, INS_VERIFY_CODE, p1=0, p2=0)
+    assert [e.value.sw1, e.value.sw2] == [0x69, 0x82]
+
     aid = [0xa0, 0x00, 0x00, 0x05, 0x27, 0x21, 0x01]
     resp = send_apdu(reset_oath, 0xA4, 0x04, 0x00, aid)
     assert(resp[15] == TAG_CHALLENGE)
@@ -133,6 +268,11 @@ def test_auth(reset_oath):
     exp = [TAG_RESPONSE, 20] + list(hmac.digest(bytes(key), bytes(chal), 'sha1'))
     assert(exp == resp)
     resp = list_apdu(reset_oath)
+
+    send_apdu(reset_oath, 0xA4, 0x04, 0x00, aid)
+    with pytest.raises(APDUResponse) as e:
+        list_apdu(reset_oath)
+    assert [e.value.sw1, e.value.sw2] == [0x69, 0x82]
 
 def test_bothoath(reset_oath):
     digits = 6

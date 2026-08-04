@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
@@ -34,6 +34,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
     CborError error = CborNoError;
     uint64_t get = 0, offset = UINT64_MAX, length = 0, pinUvAuthProtocol = 0;
     CborByteString set = { 0 }, pinUvAuthParam = { 0 };
+    bool get_present = false;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -50,6 +51,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         val_c = val_u + 1;
         if (val_u == 0x01) {
             CBOR_FIELD_GET_UINT(get, 1);
+            get_present = true;
         }
         else if (val_u == 0x02) {
             CBOR_FIELD_GET_BYTES(set, 1);
@@ -72,19 +74,19 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
     if (offset == UINT64_MAX) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
-    if (get == 0 && set.present == false) {
+    if (get_present == false && set.present == false) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
-    if (get != 0 && set.present == true) {
+    if (get_present == true && set.present == true) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
 
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    if (get > 0) {
+    if (get_present == true) {
         if (length != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
-        if (length > MAX_FRAGMENT_LENGTH) {
+        if (get > MAX_FRAGMENT_LENGTH) {
             CBOR_ERROR(CTAP1_ERR_INVALID_LEN);
         }
         if (offset > file_get_size(ef_largeblob)) {
@@ -92,8 +94,8 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         }
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
-        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_largeblob) + offset,
-                                           MIN(get, file_get_size(ef_largeblob) - offset)));
+        size_t fragment_len = MIN(get, file_get_size(ef_largeblob) - offset);
+        CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, fragment_len > 0 ? file_get_data(ef_largeblob) + offset : NULL, fragment_len));
     }
     else {
         if (set.len > MAX_FRAGMENT_LENGTH) {
@@ -126,10 +128,17 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         if (pinUvAuthProtocol == 0) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         }
+        if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
+        size_t expected_auth_len = pinUvAuthProtocol == 1 ? 16u : 32u;
+        if (pinUvAuthParam.len != expected_auth_len) {
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+        }
         uint8_t verify_data[70] = { 0 };
         memset(verify_data, 0xff, 32);
         verify_data[32] = 0x0C;
-        put_uint32_t_le((uint32_t)offset, verify_data + 34);
+        put_uint32_le((uint32_t)offset, verify_data + 34);
         mbedtls_sha256(set.data, set.len, verify_data + 38, 0);
         if (verify((uint8_t)pinUvAuthProtocol, paut.data, verify_data, (uint16_t)sizeof(verify_data), pinUvAuthParam.data) != 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
@@ -151,8 +160,8 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
             if (expectedLength > 17 && memcmp(sha, temp_lba + expectedLength - 16, 16) != 0) {
                 CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
             }
-            file_put_data(ef_largeblob, temp_lba, (uint16_t)expectedLength);
-            low_flash_available();
+            file_put_data(ef_largeblob, CONST_BYTE_ARRAY(temp_lba, expectedLength));
+            flash_commit();
         }
         goto err;
     }
@@ -162,7 +171,10 @@ err:
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(set);
     if (error != CborNoError) {
-        return -CTAP2_ERR_INVALID_CBOR;
+        if (error == CborErrorImproperValue) {
+            return CTAP2_ERR_CBOR_UNEXPECTED_TYPE;
+        }
+        return error;
     }
     res_APDU_size = (uint16_t)cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     return 0;

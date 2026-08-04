@@ -15,9 +15,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include "picokeys.h"
+#include "button.h"
 #include "fido.h"
-#include "kek.h"
+#include "led/led.h"
+#include "serial.h"
 #include "apdu.h"
 #include "ctap.h"
 #include "files.h"
@@ -25,6 +27,8 @@
 #include "random.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/hkdf.h"
+#include "mbedtls/constant_time.h"
+#include "mbedtls/sha256.h"
 #if defined(USB_ITF_CCID)
 #include "ccid/ccid.h"
 #endif
@@ -33,19 +37,22 @@
 #endif
 #include <math.h>
 #include "management.h"
+#include "object_authorization.h"
 #include "hid/ctap_hid.h"
+#include "ctap2_cbor.h"
+#include "credential.h"
 #include "version.h"
 #include "crypto_utils.h"
 #include "otp.h"
 
-int fido_process_apdu();
-int fido_unload();
+static int fido_unload(void);
 
 pinUvAuthToken_t paut = { 0 };
 persistentPinUvAuthToken_t ppaut = { 0 };
 
 uint8_t keydev_dec[32];
 bool has_keydev_dec = false;
+bool keydev_unlocked = false;
 uint8_t session_pin[32] = { 0 };
 
 const uint8_t fido_aid[] = {
@@ -64,25 +71,27 @@ const uint8_t atr_fido[] = {
     0x75, 0x62, 0x69, 0x4b, 0x65, 0x79, 0x40
 };
 
-uint8_t fido_get_version_major() {
+uint8_t certdev_sha256[32] = { 0 };
+
+static uint8_t fido_get_version_major(void) {
     return PICO_FIDO_VERSION_MAJOR;
 }
-uint8_t fido_get_version_minor() {
+static uint8_t fido_get_version_minor(void) {
     return PICO_FIDO_VERSION_MINOR;
 }
 
-int fido_select(app_t *a, uint8_t force) {
+static int fido_select(app_t *a, uint8_t force) {
     (void) force;
     if (cap_supported(CAP_FIDO2)) {
         a->process_apdu = fido_process_apdu;
         a->unload = fido_unload;
-        return PICOKEY_OK;
+        return PICOKEYS_OK;
     }
-    return PICOKEY_ERR_FILE_NOT_FOUND;
+    return PICOKEYS_ERR_FILE_NOT_FOUND;
 }
 
-extern uint8_t (*get_version_major)();
-extern uint8_t (*get_version_minor)();
+extern uint8_t (*get_version_major)(void);
+extern uint8_t (*get_version_minor)(void);
 
 INITIALIZER ( fido_ctor ) {
 #if defined(USB_ITF_CCID) || defined(ENABLE_EMULATION)
@@ -94,8 +103,9 @@ INITIALIZER ( fido_ctor ) {
     register_app(fido_select, fido_aid_backup);
 }
 
-int fido_unload() {
-    return PICOKEY_OK;
+static int fido_unload(void) {
+    fido_object_authorization_session_invalidate();
+    return PICOKEYS_OK;
 }
 
 mbedtls_ecp_group_id fido_curve_to_mbedtls(int curve) {
@@ -150,7 +160,7 @@ int mbedtls_curve_to_fido(mbedtls_ecp_group_id id) {
         return FIDO2_CURVE_P256K1;
     }
     else if (id == MBEDTLS_ECP_DP_CURVE25519) {
-        return MBEDTLS_ECP_DP_CURVE25519;
+        return FIDO2_CURVE_X25519;
     }
     else if (id == MBEDTLS_ECP_DP_CURVE448) {
         return FIDO2_CURVE_X448;
@@ -173,14 +183,18 @@ int fido_load_key(int curve, const uint8_t *cred_id, mbedtls_ecp_keypair *key) {
     }
     uint8_t key_path[KEY_PATH_LEN];
     memcpy(key_path, cred_id, KEY_PATH_LEN);
-    *(uint32_t *) key_path = 0x80000000 | 10022;
+    uint32_t key_path_first = 0x80000000u | 10022u;
+    memcpy(key_path, &key_path_first, sizeof(key_path_first));
     for (size_t i = 1; i < KEY_PATH_ENTRIES; i++) {
-        *(uint32_t *) (key_path + i * sizeof(uint32_t)) |= 0x80000000;
+        uint32_t part = 0;
+        memcpy(&part, key_path + i * sizeof(uint32_t), sizeof(part));
+        part |= 0x80000000u;
+        memcpy(key_path + i * sizeof(uint32_t), &part, sizeof(part));
     }
     return derive_key(NULL, false, key_path, mbedtls_curve, key);
 }
 
-int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size) {
+static int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffer_size) {
     mbedtls_x509write_cert ctx;
     mbedtls_x509write_crt_init(&ctx);
     mbedtls_x509write_crt_set_version(&ctx, MBEDTLS_X509_CRT_VERSION_3);
@@ -188,7 +202,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_issuer_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     mbedtls_x509write_crt_set_subject_name(&ctx, "C=ES,O=Pico HSM,CN=Pico FIDO");
     uint8_t serial[16];
-    random_gen(NULL, serial, sizeof(serial));
+    random_fill_buffer(BYTE_ARRAY(serial, sizeof(serial)));
     mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
@@ -203,7 +217,7 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
     mbedtls_x509write_crt_set_key_usage(&ctx,
                                         MBEDTLS_X509_KU_DIGITAL_SIGNATURE |
                                         MBEDTLS_X509_KU_KEY_CERT_SIGN);
-    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_gen, NULL);
+    int ret = mbedtls_x509write_crt_der(&ctx, buffer, buffer_size, random_fill_iterator, NULL);
     mbedtls_x509write_crt_free(&ctx);
     /* pk cannot be freed, as it is freed later */
     //mbedtls_pk_free(&key);
@@ -211,56 +225,71 @@ int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_t buffe
 }
 
 int load_keydev(uint8_t key[32]) {
+    bool pin_wrapped = false;
+
     if (has_keydev_dec == false && !file_has_data(ef_keydev)) {
-        return PICOKEY_ERR_MEMORY_FATAL;
+        return PICOKEYS_ERR_MEMORY_FATAL;
     }
 
     if (has_keydev_dec == true) {
         memcpy(key, keydev_dec, sizeof(keydev_dec));
     }
     else {
-        uint16_t fid_size = file_get_size(ef_keydev);
+        uint32_t fid_size = file_get_size(ef_keydev);
         if (fid_size == 32) {
             memcpy(key, file_get_data(ef_keydev), 32);
-            if (mkek_decrypt(key, 32) != PICOKEY_OK) {
-                return PICOKEY_EXEC_ERROR;
-            }
-            if (otp_key_1 && aes_decrypt(otp_key_1, NULL, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32) != PICOKEY_OK) {
-                return PICOKEY_EXEC_ERROR;
+            if (otp_key_1 && aes_decrypt(CONST_BYTE_ARRAY(otp_key_1, 32), NULL, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(key, 32)) != PICOKEYS_OK) {
+                return PICOKEYS_EXEC_ERROR;
             }
         }
         else if (fid_size == 33 || fid_size == 61) {
             uint8_t format = *file_get_data(ef_keydev);
-            if (format == 0x01 || format == 0x02) { // Format indicator
-                if (format == 0x02) {
-                    uint8_t tmp_key[61];
+            if (format == 0x01 || format == 0x02 || format == 0x03) { // Format indicator
+                if (format == 0x02 || format == 0x03) {
+                    pin_wrapped = true;
+                    uint8_t tmp_key[61], version = format == 0x03 ? 2 : 1;
                     memcpy(tmp_key, file_get_data(ef_keydev), sizeof(tmp_key));
-                    int ret = decrypt_with_aad(session_pin, tmp_key + 1, 60, key);
-                    if (ret != PICOKEY_OK) {
-                        return PICOKEY_EXEC_ERROR;
+                    int ret = decrypt_with_aad(session_pin, CONST_BYTE_ARRAY(tmp_key + 1, 60), version, key);
+                    if (ret != PICOKEYS_OK) {
+                        return PICOKEYS_EXEC_ERROR;
                     }
+                    if (format == 0x02) {
+                        tmp_key[0] = 0x03;
+                        ret = encrypt_with_aad(session_pin, CONST_BYTE_ARRAY(key, 32), 2, tmp_key + 1);
+                        if (ret != PICOKEYS_OK) {
+                            mbedtls_platform_zeroize(tmp_key, sizeof(tmp_key));
+                            return PICOKEYS_EXEC_ERROR;
+                        }
+                        file_put_data(ef_keydev, CONST_BYTE_ARRAY(tmp_key, sizeof(tmp_key)));
+                        flash_commit();
+                    }
+                    mbedtls_platform_zeroize(tmp_key, sizeof(tmp_key));
                 }
                 else {
                     memcpy(key, file_get_data(ef_keydev) + 1, 32);
                 }
                 uint8_t kbase[32];
                 derive_kbase(kbase);
-                int ret = aes_decrypt(kbase, pico_serial_hash, 32 * 8, PICO_KEYS_AES_MODE_CBC, key, 32);
-                if (ret != PICOKEY_OK) {
+                int ret = aes_decrypt(CONST_BYTE_ARRAY(kbase, 32), pico_serial_hash, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(key, 32));
+                if (ret != PICOKEYS_OK) {
                     mbedtls_platform_zeroize(kbase, sizeof(kbase));
-                    return PICOKEY_EXEC_ERROR;
+                    return PICOKEYS_EXEC_ERROR;
                 }
                 mbedtls_platform_zeroize(kbase, sizeof(kbase));
             }
         }
     }
 
-    return PICOKEY_OK;
+    if (pin_wrapped) {
+        keydev_unlocked = true;
+    }
+    return PICOKEYS_OK;
 }
 
 int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *key) {
     for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
-        uint32_t k = *(uint32_t *) &keyHandle[i * sizeof(uint32_t)];
+        uint32_t k = 0;
+        memcpy(&k, &keyHandle[i * sizeof(uint32_t)], sizeof(k));
         if (!(k & 0x80000000)) {
             return -1;
         }
@@ -288,14 +317,14 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypa
     memcpy(key_base + CTAP_APPID_SIZE, keyHandle, KEY_PATH_LEN);
     ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), d, 32, key_base, sizeof(key_base), hmac);
     mbedtls_platform_zeroize(d, sizeof(d));
-    return memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
+    return mbedtls_ct_memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
 }
 
 int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecp_keypair *key) {
     uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
     int r = 0;
     memset(outk, 0, sizeof(outk));
-    if ((r = load_keydev(outk)) != PICOKEY_OK) {
+    if ((r = load_keydev(outk)) != PICOKEYS_OK) {
         printf("Error loading keydev: %d\n", r);
         return r;
     }
@@ -303,7 +332,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
     for (size_t i = 0; i < KEY_PATH_ENTRIES; i++) {
         if (new_key == true) {
             uint32_t val = 0;
-            random_gen(NULL, (uint8_t *) &val, sizeof(val));
+            random_fill_buffer(BYTE_ARRAY((uint8_t *)&val, sizeof(val)));
             val |= 0x80000000;
             memcpy(&key_handle[i * sizeof(uint32_t)], &val, sizeof(uint32_t));
         }
@@ -331,17 +360,12 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         if (cinfo->bit_size % 8 != 0) {
             outk[0] >>= 8 - (cinfo->bit_size % 8);
         }
-        r = mbedtls_ecp_read_key(curve, key, outk, (size_t)ceil((float) cinfo->bit_size / 8));
+        r = mbedtls_ecp_read_key(curve, key, outk, (size_t)((cinfo->bit_size + 7) / 8));
         mbedtls_platform_zeroize(outk, sizeof(outk));
         if (r != 0) {
             return r;
         }
-#ifdef MBEDTLS_EDDSA_C
-        if (curve == MBEDTLS_ECP_DP_ED25519) {
-            return mbedtls_ecp_point_edwards(&key->grp, &key->Q, &key->d, random_gen, NULL);
-        }
-#endif
-        return mbedtls_ecp_mul(&key->grp, &key->Q, &key->d, &key->grp.G, random_gen, NULL);
+        return mbedtls_ecp_keypair_calc_public(key, random_fill_iterator, NULL);
     }
     mbedtls_platform_zeroize(outk, sizeof(outk));
     return r;
@@ -353,28 +377,26 @@ int encrypt_keydev_f1(const uint8_t keydev[32]) {
     memcpy(kdata + 1, keydev, 32);
     uint8_t kbase[32];
     derive_kbase(kbase);
-    int ret = aes_encrypt(kbase, pico_serial_hash, 32 * 8, PICO_KEYS_AES_MODE_CBC, kdata + 1, 32);
+    int ret = aes_encrypt(CONST_BYTE_ARRAY(kbase, 32), pico_serial_hash, PICOKEYS_AES_MODE_CBC, BYTE_ARRAY(kdata + 1, 32));
     mbedtls_platform_zeroize(kbase, sizeof(kbase));
-    if (ret != PICOKEY_OK) {
+    if (ret != PICOKEYS_OK) {
         return ret;
     }
-    ret = file_put_data(ef_keydev, kdata, 33);
+    ret = file_put_data(ef_keydev, CONST_BYTE_ARRAY(kdata, 33));
     mbedtls_platform_zeroize(kdata, sizeof(kdata));
-    low_flash_available();
+    flash_commit();
     return ret;
 }
 
-int scan_files_fido() {
-    ef_keydev = search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
-    ef_keydev_enc = search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
-    ef_mkek = search_by_fid(EF_MKEK, NULL, SPECIFY_EF);
+int scan_files_fido(void) {
+    ef_keydev = file_search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
+    ef_keydev_enc = file_search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
     if (ef_keydev) {
         if (!file_has_data(ef_keydev) && !file_has_data(ef_keydev_enc)) {
             printf("KEY DEVICE is empty. Generating SECP256R1 curve...");
             mbedtls_ecdsa_context ecdsa;
             mbedtls_ecdsa_init(&ecdsa);
-            uint8_t index = 0;
-            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, random_gen, &index);
+            int ret = mbedtls_ecdsa_genkey(&ecdsa, MBEDTLS_ECP_DP_SECP256R1, random_fill_iterator, NULL);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&ecdsa);
                 return ret;
@@ -385,12 +407,12 @@ int scan_files_fido() {
             if (ret != 0 || key_size != 32) {
                 mbedtls_platform_zeroize(keydev, sizeof(keydev));
                 mbedtls_ecdsa_free(&ecdsa);
-                return ret != 0 ? ret : PICOKEY_EXEC_ERROR;
+                return ret != 0 ? ret : PICOKEYS_EXEC_ERROR;
             }
             encrypt_keydev_f1(keydev);
             mbedtls_platform_zeroize(keydev, sizeof(keydev));
             mbedtls_ecdsa_free(&ecdsa);
-            if (ret != PICOKEY_OK) {
+            if (ret != PICOKEYS_OK) {
                 return ret;
             }
             printf(" done!\n");
@@ -399,7 +421,7 @@ int scan_files_fido() {
     else {
         printf("FATAL ERROR: KEY DEV not found in memory!\r\n");
     }
-    ef_certdev = search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
+    ef_certdev = file_search_by_fid(EF_EE_DEV, NULL, SPECIFY_EF);
     if (ef_certdev) {
         if (!file_has_data(ef_certdev)) {
             uint8_t cert[2048], outk[32];
@@ -415,7 +437,7 @@ int scan_files_fido() {
                 mbedtls_ecdsa_free(&key);
                 return ret;
             }
-            ret = mbedtls_ecp_mul(&key.grp, &key.Q, &key.d, &key.grp.G, random_gen, NULL);
+            ret = mbedtls_ecp_keypair_calc_public(&key, random_fill_iterator, NULL);
             if (ret != 0) {
                 mbedtls_ecdsa_free(&key);
                 return ret;
@@ -425,29 +447,33 @@ int scan_files_fido() {
             if (ret <= 0) {
                 return ret;
             }
-            file_put_data(ef_certdev, cert + sizeof(cert) - ret, (uint16_t)ret);
+            file_put_data(ef_certdev, CONST_BYTE_ARRAY(cert + sizeof(cert) - ret, ret));
         }
+        uint8_t *cert_data = file_get_data(ef_certdev);
+        size_t cert_size = file_get_size(ef_certdev);
+        mbedtls_sha256(cert_data, cert_size, certdev_sha256, 0);
     }
     else {
         printf("FATAL ERROR: CERT DEV not found in memory!\r\n");
     }
-    ef_counter = search_by_fid(EF_COUNTER, NULL, SPECIFY_EF);
+    ef_counter = file_search_by_fid(EF_COUNTER, NULL, SPECIFY_EF);
     if (ef_counter) {
         if (!file_has_data(ef_counter)) {
             uint32_t v = 0;
-            file_put_data(ef_counter, (uint8_t *) &v, sizeof(v));
+            file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&v, sizeof(v)));
         }
     }
     else {
         printf("FATAL ERROR: Global counter not found in memory!\r\n");
     }
-    ef_pin = search_by_fid(EF_PIN, NULL, SPECIFY_EF);
-    ef_authtoken = search_by_fid(EF_AUTHTOKEN, NULL, SPECIFY_EF);
+    ef_pin = file_search_by_fid(EF_PIN, NULL, SPECIFY_EF);
+    ef_pin_admin = file_search_by_fid(EF_PIN_ADMIN, NULL, SPECIFY_EF);
+    ef_authtoken = file_search_by_fid(EF_AUTHTOKEN, NULL, SPECIFY_EF);
     if (ef_authtoken) {
         if (!file_has_data(ef_authtoken)) {
             uint8_t t[32];
-            random_gen(NULL, t, sizeof(t));
-            file_put_data(ef_authtoken, t, sizeof(t));
+            random_fill_buffer(BYTE_ARRAY(t, sizeof(t)));
+            file_put_data(ef_authtoken, CONST_BYTE_ARRAY(t, sizeof(t)));
         }
         paut.data = file_get_data(ef_authtoken);
         paut.len = file_get_size(ef_authtoken);
@@ -455,12 +481,12 @@ int scan_files_fido() {
     else {
         printf("FATAL ERROR: Auth Token not found in memory!\r\n");
     }
-    file_t *ef_pauthtoken = search_by_fid(EF_PAUTHTOKEN, NULL, SPECIFY_EF);
+    file_t *ef_pauthtoken = file_search_by_fid(EF_PAUTHTOKEN, NULL, SPECIFY_EF);
     if (ef_pauthtoken) {
         if (!file_has_data(ef_pauthtoken)) {
             uint8_t t[32];
-            random_gen(NULL, t, sizeof(t));
-            file_put_data(ef_pauthtoken, t, sizeof(t));
+            random_fill_buffer(BYTE_ARRAY(t, sizeof(t)));
+            file_put_data(ef_pauthtoken, CONST_BYTE_ARRAY(t, sizeof(t)));
         }
         ppaut.data = file_get_data(ef_pauthtoken);
         ppaut.len = file_get_size(ef_pauthtoken);
@@ -468,46 +494,64 @@ int scan_files_fido() {
     else {
         printf("FATAL ERROR: Persistent Auth Token not found in memory!\r\n");
     }
-    ef_largeblob = search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
+    ef_largeblob = file_search_by_fid(EF_LARGEBLOB, NULL, SPECIFY_EF);
     if (!file_has_data(ef_largeblob)) {
-        file_put_data(ef_largeblob, (const uint8_t *) "\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17);
+        file_put_data(ef_largeblob, CONST_BYTE_ARRAY((const uint8_t *)"\x80\x76\xbe\x8b\x52\x8d\x00\x75\xf7\xaa\xe9\x8d\x6f\xa5\x7a\x6d\x3c", 17));
+    }
+    file_t *ef_dev_state = file_search_by_fid(EF_DEV_STATE, NULL, SPECIFY_EF);
+    if (!file_has_data(ef_dev_state)) {
+        file_put_data(ef_dev_state, CONST_BYTE_ARRAY(random_bytes_get(32), 32));
     }
 
-    low_flash_available();
-    return PICOKEY_OK;
+    flash_commit();
+    return PICOKEYS_OK;
 }
 
-void scan_all() {
-    scan_flash();
+void scan_all(void) {
+    file_scan_flash();
     scan_files_fido();
 }
 
-extern void init_otp();
 extern bool needs_power_cycle;
-void init_fido() {
+void init_fido(void) {
+    fido_object_authorization_session_invalidate();
+    keydev_unlocked = false;
     scan_all();
+    credential_migrate_rp_secure();
 #ifdef ENABLE_OTP_APP
     init_otp();
 #endif
     needs_power_cycle = false;
 }
 
-bool wait_button_pressed() {
+int wait_button_pressed(void) {
     uint32_t val = EV_PRESS_BUTTON;
 #if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
     queue_try_add(&card_to_usb_q, &val);
     do {
         queue_remove_blocking(&usb_to_card_q, &val);
-    } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT);
+    } while (val != EV_BUTTON_PRESSED && val != EV_BUTTON_TIMEOUT && val != EV_BUTTON_CANCELLED);
 #endif
-    return val == EV_BUTTON_TIMEOUT;
+    if (val == EV_BUTTON_TIMEOUT) {
+        return 1;
+    }
+    else if (val == EV_BUTTON_CANCELLED) {
+        return 2;
+    }
+    return 0;
 }
 
 uint32_t user_present_time_limit = 0;
 
-bool check_user_presence() {
+bool check_user_presence(void) {
     if (user_present_time_limit == 0 || user_present_time_limit + TRANSPORT_TIME_LIMIT < board_millis()) {
-        if (wait_button_pressed() == true) { //timeout
+        bool previous_force_button_wait = force_button_wait;
+#ifdef FORCE_BUTTON_WAIT
+        force_button_wait = true;
+#endif
+        int ret = wait_button_pressed();
+        force_button_wait = previous_force_button_wait;
+        if (ret > 0) {
             return false;
         }
         //user_present_time_limit = board_millis();
@@ -515,13 +559,19 @@ bool check_user_presence() {
     return true;
 }
 
-uint32_t get_sign_counter() {
-    uint8_t *caddr = file_get_data(ef_counter);
-    return get_uint32_t_le(caddr);
+void fido_led_3_blinks(void) {
+#ifndef ENABLE_EMULATION
+    led_blink_n_times(3, LED_COLOR_GREEN, 100, 100);
+#endif
 }
 
-uint8_t get_opts() {
-    file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
+uint32_t get_sign_counter(void) {
+    uint8_t *caddr = file_get_data(ef_counter);
+    return get_uint32_le(caddr);
+}
+
+uint8_t get_opts(void) {
+    file_t *ef = file_search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
     if (file_has_data(ef)) {
         return *file_get_data(ef);
     }
@@ -529,40 +579,62 @@ uint8_t get_opts() {
 }
 
 void set_opts(uint8_t opts) {
-    file_t *ef = search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
-    file_put_data(ef, &opts, sizeof(uint8_t));
-    low_flash_available();
+    file_t *ef = file_search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
+    file_put_data(ef, CONST_BYTE_ARRAY(&opts, sizeof(uint8_t)));
+    flash_commit();
 }
 
-extern int cmd_register();
-extern int cmd_authenticate();
-extern int cmd_version();
-extern int cbor_parse(int, uint8_t *, size_t);
-extern int cbor_vendor(const uint8_t *data, size_t len);
-extern void driver_init_hid();
+int dev_state_update(dev_state_t state) {
+    file_t *ef_dev_state = file_search_by_fid(EF_DEV_STATE, NULL, SPECIFY_EF);
+    if (!ef_dev_state) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    if (file_get_size(ef_dev_state) == 32) {
+        uint8_t dev_state[32] = {0};
+        memcpy(dev_state, file_get_data(ef_dev_state), 32);
+        if (state & DEV_STATE_DEV_ID) {
+            random_fill_buffer(BYTE_ARRAY(dev_state, 16));
+        }
+        else if (state & DEV_STATE_CRED_STATE) {
+            random_fill_buffer(BYTE_ARRAY(dev_state + 16, 16));
+        }
+        file_put_data(ef_dev_state, CONST_BYTE_ARRAY(dev_state, 32));
+    }
+    else {
+        file_put_data(ef_dev_state, CONST_BYTE_ARRAY(random_bytes_get(32), 32));
+    }
+    flash_commit();
+    return PICOKEYS_OK;
+}
 
 #define CTAP_CBOR 0x10
 
-int cmd_vendor() {
+static int cmd_vendor(void) {
     uint8_t *old_buf = res_APDU;
     driver_init_hid();
     int ret = cbor_vendor(apdu.data, apdu.nc);
     res_APDU = old_buf;
     if (ret != 0) {
-        return set_res_sw(0x64, ret);
+        if (ret < 0 || ret > UINT8_MAX) {
+            return SW_EXEC_ERROR();
+        }
+        return set_res_sw(0x64, (uint8_t)ret);
     }
     res_APDU_size += 1;
     memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
     return SW_OK();
 }
 
-int cmd_cbor() {
+static int cmd_cbor(void) {
     uint8_t *old_buf = res_APDU;
     driver_init_hid();
     int ret = cbor_parse(0x90, apdu.data, apdu.nc);
     res_APDU = old_buf;
     if (ret != 0) {
-        return set_res_sw(0x64, ret);
+        if (ret < 0 || ret > UINT8_MAX) {
+            return SW_EXEC_ERROR();
+        }
+        return set_res_sw(0x64, (uint8_t)ret);
     }
     res_APDU_size += 1;
     memcpy(res_APDU, ctap_resp->init.data, res_APDU_size);
@@ -578,7 +650,7 @@ static const cmd_t cmds[] = {
     { 0x00, 0x0 }
 };
 
-int fido_process_apdu() {
+int fido_process_apdu(void) {
     if (CLA(apdu) != 0x00 && CLA(apdu) != 0x80) {
         return SW_CLA_NOT_SUPPORTED();
     }

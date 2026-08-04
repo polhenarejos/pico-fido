@@ -217,6 +217,7 @@ def test_silent_ok(device, MCRes):
     res = device.GA(options={"up": False}, allow_list=[
             {"id": MCRes['res'].attestation_object.auth_data.credential_data.credential_id, "type": "public-key"}
         ])
+    assert (res['res'].auth_data.flags & (1 << 0)) == 0
 
 def test_silent_ko(device, MCRes):
     cred = MCRes['res'].attestation_object.auth_data.credential_data.credential_id + b'\x00'
@@ -230,4 +231,16 @@ def test_credential_resets(device, MCRes, GARes):
     device.reset()
     with pytest.raises(CtapError) as e:
         new_auth = device.doGA()
+    assert e.value.code == CtapError.ERR.NO_CREDENTIALS
+
+def test_get_assertion_after_reset_returns_no_credentials(device):
+    mc = device.doMC()
+    cred_id = mc['res'].attestation_object.auth_data.credential_data.credential_id
+
+    device.doGA(allow_list=[{"id": cred_id, "type": "public-key"}])
+    device.reset()
+
+    with pytest.raises(CtapError) as e:
+        device.GA(allow_list=[{"id": cred_id, "type": "public-key"}])
+
     assert e.value.code == CtapError.ERR.NO_CREDENTIALS

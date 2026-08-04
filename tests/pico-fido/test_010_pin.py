@@ -19,6 +19,7 @@
 
 
 import os
+import hashlib
 import pytest
 from fido2.ctap import CtapError
 from fido2.client import ClientPin
@@ -26,6 +27,44 @@ from fido2.webauthn import UserVerificationRequirement
 from fido2.utils import hmac_sha256
 
 from utils import *
+
+def _pad_pin_unchecked(pin):
+    # Bypass python-fido2's local PIN policy check so firmware sees this edge case.
+    pin_padded = pin.encode().ljust(64, b"\0")
+    pin_padded += b"\0" * (-(len(pin_padded) - 16) % 16)
+    return pin_padded
+
+def _raw_set_pin(client_pin, pin):
+    key_agreement, shared_secret = client_pin._get_shared_secret()
+    pin_enc = client_pin.protocol.encrypt(shared_secret, _pad_pin_unchecked(pin))
+    pin_uv_param = client_pin.protocol.authenticate(shared_secret, pin_enc)
+    return client_pin.ctap.client_pin(
+        client_pin.protocol.VERSION,
+        ClientPin.CMD.SET_PIN,
+        key_agreement=key_agreement,
+        new_pin_enc=pin_enc,
+        pin_uv_param=pin_uv_param,
+    )
+
+def _raw_change_pin(client_pin, old_pin, new_pin):
+    key_agreement, shared_secret = client_pin._get_shared_secret()
+    pin_hash_enc = client_pin.protocol.encrypt(
+        shared_secret,
+        hashlib.sha256(old_pin.encode()).digest()[:16],
+    )
+    new_pin_enc = client_pin.protocol.encrypt(shared_secret, _pad_pin_unchecked(new_pin))
+    pin_uv_param = client_pin.protocol.authenticate(
+        shared_secret,
+        new_pin_enc + pin_hash_enc,
+    )
+    return client_pin.ctap.client_pin(
+        client_pin.protocol.VERSION,
+        ClientPin.CMD.CHANGE_PIN,
+        key_agreement=key_agreement,
+        pin_hash_enc=pin_hash_enc,
+        new_pin_enc=new_pin_enc,
+        pin_uv_param=pin_uv_param,
+    )
 
 def test_lockout(device, resetdevice, client_pin):
     pin = "TestPin"
@@ -84,6 +123,15 @@ def test_set_pin_too_big(client_pin):
     with pytest.raises(CtapError) as e:
         client_pin.set_pin("A" * 64)
     assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
+
+def test_set_pin_too_short_multibyte_codepoints(device, client_pin):
+    device.reset()
+    try:
+        with pytest.raises(CtapError) as e:
+            _raw_set_pin(client_pin, "\u20ac" * 3)
+        assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
+    finally:
+        device.reset()
 
 def test_get_pin_token_but_no_pin_set(resetdevice, client_pin):
     with pytest.raises(CtapError) as e:
@@ -222,6 +270,18 @@ def test_change_pin(device, client_pin):
     assert auth.auth_data.flags & (1 << 2)
 
     verify(reg, auth, client_data_hash=cdh)
+
+def test_change_pin_too_short_multibyte_codepoints(device, client_pin):
+    device.reset()
+    client_pin.set_pin(PIN1)
+
+    try:
+        with pytest.raises(CtapError) as e:
+            _raw_change_pin(client_pin, PIN1, "\u20ac" * 3)
+
+        assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
+    finally:
+        device.reset()
 
 def test_pin_attempts(device, client_pin):
     # Flip 1 bit

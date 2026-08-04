@@ -18,11 +18,12 @@
 """
 
 
+import os
 import pytest
 from fido2.ctap import CtapError
 from fido2.ctap2.extensions import HmacSecretExtension
 from fido2.utils import hmac_sha256
-from fido2.ctap2.pin import PinProtocolV2
+from fido2.ctap2.pin import ClientPin, PinProtocolV1, PinProtocolV2
 from fido2.webauthn import UserVerificationRequirement
 from fido2.client import ClientError
 from utils import *
@@ -120,6 +121,65 @@ def test_missing_saltEnc(device,):
     with pytest.raises(CtapError) as e:
         device.GA(extensions={"hmac-secret": { 3: b'1234'}})
     assert e.value.code == CtapError.ERR.MISSING_PARAMETER
+
+def test_make_credential_hmac_secret_mc_empty_salt(device):
+    key_agreement = {
+        1: 2,
+        3: -25,
+        -1: 1,
+        -2: b'\x00' * 32,
+        -3: b'\x00' * 32,
+    }
+    with pytest.raises(CtapError) as e:
+        device.MC(extensions={
+            "hmac-secret": True,
+            "hmac-secret-mc": {
+                1: key_agreement,
+                2: b'',
+                3: b'\x00' * 32,
+                4: 2,
+            },
+        })
+    assert e.value.code == CtapError.ERR.MISSING_PARAMETER
+
+
+@pytest.mark.parametrize(
+    ("protocol_type", "salt_count"),
+    [(PinProtocolV1, 1), (PinProtocolV1, 2), (PinProtocolV2, 1), (PinProtocolV2, 2)],
+)
+def test_make_credential_hmac_secret_mc(device, protocol_type, salt_count):
+    device.reset()
+    ctap = device.client()._backend.ctap2
+    protocol = protocol_type()
+    client_pin = ClientPin(ctap, protocol)
+    client_pin.set_pin("12345678")
+    pin_token = client_pin.get_pin_token(
+        "12345678", permissions=ClientPin.PERMISSION.MAKE_CREDENTIAL
+    )
+    key_agreement, shared_secret = client_pin._get_shared_secret()
+    salt = b"\x01" * (32 * salt_count)
+    salt_enc = protocol.encrypt(shared_secret, salt)
+    client_data_hash = os.urandom(32)
+
+    response = device.MC(
+        client_data_hash=client_data_hash,
+        extensions={
+            "hmac-secret": True,
+            "hmac-secret-mc": {
+                1: key_agreement,
+                2: salt_enc,
+                3: protocol.authenticate(shared_secret, salt_enc),
+                4: protocol.VERSION,
+            },
+        },
+        pin_uv_protocol=protocol.VERSION,
+        pin_uv_param=protocol.authenticate(pin_token, client_data_hash),
+    )
+
+    result = response["res"].auth_data.extensions["hmac-secret-mc"]
+    assert isinstance(result, bytes)
+    assert len(result) == len(salt_enc)
+    assert len(protocol.decrypt(shared_secret, result)) == len(salt)
 
 def test_bad_auth(device,  MCHmacSecret):
 

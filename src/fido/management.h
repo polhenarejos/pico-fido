@@ -50,6 +50,6 @@
 #define FLAG_EJECT 0x80
 
 extern bool cap_supported(uint16_t cap);
-extern int man_get_config();
+extern int man_get_config(void);
 
 #endif //_MANAGEMENT_H

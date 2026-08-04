@@ -15,26 +15,26 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "pico_keys.h"
+#include <stdio.h>
+#include "picokeys.h"
+#include "serial.h"
 #include "fido.h"
 #include "apdu.h"
 #include "version.h"
 #include "files.h"
-#include "asn1.h"
+#include "tlv.h"
 #include "management.h"
 
 bool is_gpg = true;
 
-int man_process_apdu();
-int man_unload();
+static int man_process_apdu(void);
+static int man_unload(void);
 
 const uint8_t man_aid[] = {
     8,
     0xa0, 0x00, 0x00, 0x05, 0x27, 0x47, 0x11, 0x17
 };
-extern void scan_all();
-extern void init_otp();
-int man_select(app_t *a, uint8_t force) {
+static int man_select(app_t *a, uint8_t force) {
     a->process_apdu = man_process_apdu;
     a->unload = man_unload;
     sprintf((char *) res_APDU, "%d.%d.0", PICO_FIDO_VERSION_MAJOR, PICO_FIDO_VERSION_MINOR);
@@ -47,30 +47,29 @@ int man_select(app_t *a, uint8_t force) {
 #endif
     }
     is_gpg = false;
-    return PICOKEY_OK;
+    return PICOKEYS_OK;
 }
 
 INITIALIZER ( man_ctor ) {
     register_app(man_select, man_aid);
 }
 
-int man_unload() {
-    return PICOKEY_OK;
+static int man_unload(void) {
+    return PICOKEYS_OK;
 }
 
 bool cap_supported(uint16_t cap) {
-    file_t *ef = search_dynamic_file(EF_DEV_CONF);
+    file_t *ef = file_search(EF_DEV_CONF);
     if (file_has_data(ef)) {
-        uint16_t tag = 0x0;
-        uint8_t *tag_data = NULL, *p = NULL;
-        uint16_t tag_len = 0;
-        asn1_ctx_t ctxi;
-        asn1_ctx_init(file_get_data(ef), file_get_size(ef), &ctxi);
-        while (walk_tlv(&ctxi, &p, &tag, &tag_len, &tag_data)) {
-            if (tag == TAG_USB_ENABLED) {
-                uint16_t ecaps = tag_data[0];
-                if (tag_len == 2) {
-                    ecaps = get_uint16_t_be(tag_data);
+        uint8_t *p = NULL;
+        tlv_item_t item;
+        tlv_ctx_t ctxi;
+        tlv_ctx_init(BYTE_ARRAY(file_get_data(ef), file_get_size(ef)), &ctxi);
+        while (tlv_walk(&ctxi, &p, &item)) {
+            if (item.tag == TAG_USB_ENABLED) {
+                uint16_t ecaps = item.value.data[0];
+                if (item.value.len == 2) {
+                    ecaps = get_uint16_be(item.value.data);
                 }
                 return ecaps & cap;
             }
@@ -88,17 +87,17 @@ static uint8_t _piv_aid[] = {
     0xA0, 0x00, 0x00, 0x03, 0x8,
 };
 
-int man_get_config() {
-    file_t *ef = search_dynamic_file(EF_DEV_CONF);
+int man_get_config(void) {
+    file_t *ef = file_search(EF_DEV_CONF);
     res_APDU_size = 0;
     res_APDU[res_APDU_size++] = 0; // Overall length. Filled later
     res_APDU[res_APDU_size++] = TAG_USB_SUPPORTED;
     res_APDU[res_APDU_size++] = 2;
     uint16_t caps = CAP_FIDO2 | CAP_OTP | CAP_U2F | CAP_OATH;
-    if (app_exists(_openpgp_aid + 1, _openpgp_aid[0])) {
+    if (app_exists(CONST_BYTE_ARRAY(_openpgp_aid + 1, _openpgp_aid[0]))) {
         caps |= CAP_OPENPGP;
     }
-    if (app_exists(_piv_aid + 1, _piv_aid[0])) {
+    if (app_exists(CONST_BYTE_ARRAY(_piv_aid + 1, _piv_aid[0]))) {
         caps |= CAP_PIV;
     }
     res_APDU[res_APDU_size++] = caps >> 8;
@@ -148,25 +147,39 @@ int man_get_config() {
         res_APDU[res_APDU_size++] = 0x00;
     }
     else {
-        memcpy(res_APDU + res_APDU_size, file_get_data(ef), file_get_size(ef));
-        res_APDU_size += file_get_size(ef);
+        uint32_t config_size = file_get_size(ef);
+        if ((uint32_t)res_APDU_size > (uint32_t)UINT8_MAX ||
+            config_size > (uint32_t)UINT8_MAX - (uint32_t)res_APDU_size) {
+            return PICOKEYS_ERR_MEMORY_FATAL;
+        }
+        uint16_t config_len = (uint16_t)config_size;
+        memcpy(res_APDU + res_APDU_size, file_get_data(ef), config_len);
+        res_APDU_size += config_len;
     }
     res_APDU[0] = (uint8_t)(res_APDU_size - 1);
     return 0;
 }
 
-int cmd_read_config() {
-    man_get_config();
+static int cmd_read_config(void) {
+    if (man_get_config() != PICOKEYS_OK) {
+        return SW_EXEC_ERROR();
+    }
     return SW_OK();
 }
 
-int cmd_write_config() {
+static int cmd_write_config(void) {
+    if (apdu.nc < 1) {
+        return SW_WRONG_DATA();
+    }
     if (apdu.data[0] != apdu.nc - 1) {
         return SW_WRONG_DATA();
     }
+    if (check_user_presence() == false) {
+        return SW_CONDITIONS_NOT_SATISFIED();
+    }
     file_t *ef = file_new(EF_DEV_CONF);
-    file_put_data(ef, apdu.data + 1, (uint16_t)(apdu.nc - 1));
-    low_flash_available();
+    file_put_data(ef, CONST_BYTE_ARRAY(apdu.data + 1, apdu.nc - 1));
+    flash_commit();
 #ifndef ENABLE_EMULATION
     if (cap_supported(CAP_OTP)) {
         phy_data.enabled_usb_itf |= PHY_USB_ITF_KB;
@@ -179,8 +192,8 @@ int cmd_write_config() {
     return SW_OK();
 }
 
-extern int cbor_reset();
-int cmd_factory_reset() {
+extern int cbor_reset(void);
+static int cmd_factory_reset(void) {
     cbor_reset();
     return SW_OK();
 }
@@ -196,7 +209,7 @@ static const cmd_t cmds[] = {
     { 0x00, 0x0 }
 };
 
-int man_process_apdu() {
+static int man_process_apdu(void) {
     if (CLA(apdu) != 0x00) {
         return SW_CLA_NOT_SUPPORTED();
     }
