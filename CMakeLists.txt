@@ -134,6 +134,10 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_large_blobs.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/management.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/defs.c
+    ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/x509.c
+    ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/x509_crt.c
+    ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/pkparse.c
+    ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/pk_ecc.c
 )
 
 if(ENABLE_OATH_APP)

@@ -28,6 +28,7 @@
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/hkdf.h"
 #include "mbedtls/x509_csr.h"
+#include "mbedtls/x509_crt.h"
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
@@ -251,6 +252,39 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
             CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, buffer + sizeof(buffer) - ret, ret));
+        }
+    }
+    else if (cmd == CTAP_VENDOR_VAULT) {
+        if (vendorCmd == 0x01) {
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            if (ef_vault_cert && file_has_data(ef_vault_cert)) {
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, file_get_data(ef_vault_cert), file_get_size(ef_vault_cert)));
+            }
+            else {
+                CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, NULL, 0));
+            }
+        }
+        else if (vendorCmd == 0x02) {
+            if (!ef_vault_cert || !vendorParam.present || vendorParam.len == 0 || vendorParam.len > 1900) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            mbedtls_x509_crt cert;
+            mbedtls_x509_crt_init(&cert);
+            int ret = mbedtls_x509_crt_parse(&cert, vendorParam.data, vendorParam.len);
+            mbedtls_x509_crt_free(&cert);
+            if (ret != 0) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            if (!check_user_presence()) {
+                CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+            }
+            file_put_data(ef_vault_cert, CONST_BYTE_ARRAY(vendorParam.data, vendorParam.len));
+            flash_commit();
+            goto err;
+        }
+        else {
+            CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
         }
     }
     else {
