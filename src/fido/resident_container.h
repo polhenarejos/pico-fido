@@ -26,12 +26,32 @@
 #define FIDO_RESIDENT_OBJECT_CLIENT_ID 0x0002u
 #define FIDO_RESIDENT_OBJECT_CREDENTIAL 0x0003u
 #define FIDO_RESIDENT_OBJECT_PUBLIC_KEY 0x0004u
+#define FIDO_RESIDENT_OBJECT_METADATA 0x0005u
+
+#define FIDO_RESIDENT_METADATA_SIZE 6u
+
+typedef enum {
+    FIDO_RESIDENT_STATUS_ACTIVE = 0,
+    FIDO_RESIDENT_STATUS_EXPIRED = 1,
+    FIDO_RESIDENT_STATUS_REVOKED = 2
+} fido_resident_status_t;
+
+#define FIDO_RESIDENT_PROPERTY_NATIVE 0x00u
+#define FIDO_RESIDENT_PROPERTY_IMPORTED 0x01u
+
+typedef struct fido_resident_metadata {
+    uint8_t status;
+    uint8_t properties;
+    uint32_t expiration;
+} fido_resident_metadata_t;
 
 bool resident_container_is_marker(const file_t *file);
 bool resident_container_can_create(uint8_t slot);
 int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_LEN], const uint8_t *client_id, size_t client_id_size, const uint8_t *credential, size_t credential_size, const uint8_t *public_key, size_t public_key_size);
 int resident_container_object_size(uint8_t slot, uint16_t object_type, uint32_t *object_size);
 int resident_container_read(uint8_t slot, uint16_t object_type, byte_buffer_t *data);
+int resident_container_read_metadata(uint8_t slot, fido_resident_metadata_t *metadata);
+int resident_container_update_metadata(uint8_t slot, const fido_resident_metadata_t *metadata);
 int resident_container_update_credential(uint8_t slot, const uint8_t *credential, size_t credential_size);
 int resident_container_delete(uint8_t slot);
 

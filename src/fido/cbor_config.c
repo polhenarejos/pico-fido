@@ -28,9 +28,19 @@
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/sha256.h"
 #include "file.h"
+#include "pico_time.h"
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
+
+static file_t *config_resident_credential(uint64_t slot) {
+    if (slot > UINT8_MAX) {
+        return NULL;
+    }
+    file_t *ef = file_search((uint16_t)(EF_CRED + (uint8_t)slot));
+    return resident_container_is_marker(ef) ? ef : NULL;
+}
+
 int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
@@ -43,6 +53,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     //CborEncoder mapEncoder;
     uint8_t *raw_subpara = NULL;
     const bool *forceChangePin = NULL, *pinPolicy = NULL;
+    bool vendorCommandIdPresent = false, vendorParamIntPresent = false;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -69,12 +80,14 @@ int cbor_config(const uint8_t *data, size_t len) {
                     CBOR_FIELD_GET_UINT(subpara, 2);
                     if (subpara == 0x01) {
                         CBOR_FIELD_GET_UINT(vendorCommandId, 2);
+                        vendorCommandIdPresent = true;
                     }
                     else if (subpara == 0x02) {
                         CBOR_FIELD_GET_BYTES(vendorParamByteString, 2);
                     }
                     else if (subpara == 0x03) {
                         CBOR_FIELD_GET_UINT(vendorParamInt, 2);
+                        vendorParamIntPresent = true;
                     }
                     else if (subpara == 0x04) {
                         CBOR_FIELD_GET_TEXT(vendorParamTextString, 2);
@@ -224,6 +237,44 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         else if (vendorCommandId == CTAP_CONFIG_MCUV_NOTRQD) {
             set_opts(get_opts() ^ FIDO2_OPT_MCUV_NOTRQD);
+        }
+        else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_REVOKE) {
+            if (!vendorCommandIdPresent || !vendorParamIntPresent || vendorParamByteString.present) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            file_t *ef = config_resident_credential(vendorParamInt);
+            fido_resident_metadata_t metadata;
+            if (!ef || credential_resident_read_metadata(ef, &metadata) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+            }
+            metadata.status = FIDO_RESIDENT_STATUS_REVOKED;
+            if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
+        }
+        else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_EXPIRE) {
+            if (!vendorCommandIdPresent || !vendorParamIntPresent || !vendorParamByteString.present || vendorParamByteString.len != sizeof(uint32_t)) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            if (!has_set_rtc()) {
+                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
+            file_t *ef = config_resident_credential(vendorParamInt);
+            fido_resident_metadata_t metadata;
+            if (!ef || credential_resident_read_metadata(ef, &metadata) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+            }
+            if (metadata.status != FIDO_RESIDENT_STATUS_ACTIVE ||
+                (metadata.expiration != 0 && (uint64_t)metadata.expiration <= (uint64_t)get_rtc_time())) {
+                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
+            metadata.expiration = get_uint32_be(vendorParamByteString.data);
+            if (metadata.expiration != 0 && (uint64_t)metadata.expiration <= (uint64_t)get_rtc_time()) {
+                metadata.status = FIDO_RESIDENT_STATUS_EXPIRED;
+            }
+            if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
         }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);

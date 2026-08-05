@@ -262,11 +262,16 @@ static void test_create_update_reboot_delete(void) {
     assert(resident_container_can_create(TEST_SLOT));
     assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
     assert(resident_container_is_marker(file_search((uint16_t)(EF_CRED + TEST_SLOT))));
-    assert(test_allocated_files() == 6);
+    assert(test_allocated_files() == 7);
     test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
     test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
     test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
     test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
+    fido_resident_metadata_t metadata;
+    assert(resident_container_read_metadata(TEST_SLOT, &metadata) == PICOKEYS_OK);
+    assert(metadata.status == FIDO_RESIDENT_STATUS_ACTIVE);
+    assert(metadata.properties == FIDO_RESIDENT_PROPERTY_NATIVE);
+    assert(metadata.expiration == 0);
 
     device_key_available = false;
     test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
@@ -280,13 +285,23 @@ static void test_create_update_reboot_delete(void) {
     assert(!test_contains(file_get_data(secret_record), file_get_size(secret_record), credential, sizeof(credential)));
 
     assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);
-    assert(test_allocated_files() == 6);
+    assert(test_allocated_files() == 7);
     test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
     test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
+    metadata = (fido_resident_metadata_t) {
+        .status = FIDO_RESIDENT_STATUS_REVOKED,
+        .properties = FIDO_RESIDENT_PROPERTY_IMPORTED,
+        .expiration = 0x12345678u
+    };
+    assert(resident_container_update_metadata(TEST_SLOT, &metadata) == PICOKEYS_OK);
+    memset(&metadata, 0, sizeof(metadata));
+    assert(resident_container_read_metadata(TEST_SLOT, &metadata) == PICOKEYS_OK);
+    assert(metadata.status == FIDO_RESIDENT_STATUS_REVOKED);
+    assert(metadata.properties == FIDO_RESIDENT_PROPERTY_IMPORTED);
+    assert(metadata.expiration == 0x12345678u);
     test_reboot();
     test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
     test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
-
     secret_record = file_search((uint16_t)(0xd900u | TEST_SLOT));
     assert(file_has_data(secret_record));
     file_get_data(secret_record)[FILE_OBJECT_RECORD_HEADER_SIZE] ^= 0x01;
