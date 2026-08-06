@@ -186,7 +186,7 @@ int cbor_config(const uint8_t *data, size_t len) {
 
             mbedtls_chachapoly_context chatx;
             int ret = mse_decrypt_ct(vendorParamByteString.data, vendorParamByteString.len);
-            if (ret != 0) {
+            if (ret != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
 
