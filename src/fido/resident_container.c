@@ -26,6 +26,10 @@
 #define FIDO_RESIDENT_MANIFEST_SLOT_1_PREFIX 0xd2u
 #define FIDO_RESIDENT_RECORD_SLOT_0_PREFIX 0xd3u
 #define FIDO_RESIDENT_RECORD_SLOT_1_PREFIX 0xd7u
+#define FIDO_RESIDENT_RECORD_PRIVATE_SLOT_0_PREFIX 0xe0u
+#define FIDO_RESIDENT_RECORD_PRIVATE_SLOT_1_PREFIX 0xe1u
+#define FIDO_RESIDENT_RECORD_STATE_SLOT_0_PREFIX 0xe2u
+#define FIDO_RESIDENT_RECORD_STATE_SLOT_1_PREFIX 0xe3u
 #define FIDO_RESIDENT_CONTAINER_MARKER_SIZE 8u
 #define FIDO_RESIDENT_CONTAINER_MARKER_VERSION_OFFSET 4u
 #define FIDO_RESIDENT_CONTAINER_MARKER_SLOT_OFFSET 5u
@@ -53,9 +57,27 @@ static uint16_t resident_record_fid(uint8_t slot, uint8_t manifest_slot, uint16_
         prefix = manifest_slot == 0 ? 0xdbu : 0xdcu;
         return (uint16_t)((prefix << 8) | slot);
     }
+    else if (object_type == FIDO_RESIDENT_OBJECT_PRIVATE_KEY) {
+        prefix = manifest_slot == 0 ? FIDO_RESIDENT_RECORD_PRIVATE_SLOT_0_PREFIX : FIDO_RESIDENT_RECORD_PRIVATE_SLOT_1_PREFIX;
+        return (uint16_t)((prefix << 8) | slot);
+    }
+    else if (object_type == FIDO_RESIDENT_OBJECT_STATE) {
+        prefix = manifest_slot == 0 ? FIDO_RESIDENT_RECORD_STATE_SLOT_0_PREFIX : FIDO_RESIDENT_RECORD_STATE_SLOT_1_PREFIX;
+        return (uint16_t)((prefix << 8) | slot);
+    }
     else {
         prefix = manifest_slot == 0 ? FIDO_RESIDENT_RECORD_SLOT_0_PREFIX : FIDO_RESIDENT_RECORD_SLOT_1_PREFIX;
     }
+    return (uint16_t)(((prefix + object_type - 1u) << 8) | slot);
+}
+
+static uint16_t resident_record_fid_legacy(uint8_t slot, uint8_t manifest_slot, uint16_t object_type) {
+    uint8_t prefix;
+    if (object_type == FIDO_RESIDENT_OBJECT_METADATA) {
+        prefix = manifest_slot == 0 ? 0xdbu : 0xdcu;
+        return (uint16_t)((prefix << 8) | slot);
+    }
+    prefix = manifest_slot == 0 ? FIDO_RESIDENT_RECORD_SLOT_0_PREFIX : FIDO_RESIDENT_RECORD_SLOT_1_PREFIX;
     return (uint16_t)(((prefix + object_type - 1u) << 8) | slot);
 }
 
@@ -68,7 +90,13 @@ static bool resident_record_id_valid(uint8_t slot, const file_object_descriptor_
         return false;
     }
     uint16_t record_fid = (uint16_t)object->record_id;
-    return record_fid == resident_record_fid(slot, 0, object->object_type) || record_fid == resident_record_fid(slot, 1, object->object_type);
+    if (record_fid == resident_record_fid(slot, 0, object->object_type) || record_fid == resident_record_fid(slot, 1, object->object_type)) {
+        return true;
+    }
+    if (object->object_type == FIDO_RESIDENT_OBJECT_PRIVATE_KEY || object->object_type == FIDO_RESIDENT_OBJECT_STATE) {
+        return record_fid == resident_record_fid_legacy(slot, 0, object->object_type) || record_fid == resident_record_fid_legacy(slot, 1, object->object_type);
+    }
+    return false;
 }
 
 static int resident_replace_file(uint16_t fid, const uint8_t *data, uint32_t data_size) {

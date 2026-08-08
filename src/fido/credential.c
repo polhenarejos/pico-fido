@@ -990,6 +990,7 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
     if (!file_has_data(ef) || !rp_id_hash || !cred) {
         return CTAP1_ERR_INVALID_PARAMETER;
     }
+    cred->imported = false;
     if (resident_container_is_marker(ef)) {
         if (!credential_resident_usable(ef)) {
             return CTAP2_ERR_NO_CREDENTIALS;
@@ -1017,6 +1018,7 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
             fido_resident_metadata_t resident_metadata;
             ret = resident_container_read_metadata((uint8_t)ef->fid, &resident_metadata);
             if (ret == PICOKEYS_OK && resident_metadata.properties == FIDO_RESIDENT_PROPERTY_IMPORTED) {
+                cred->imported = true;
                 ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_METADATA, &metadata, &metadata_len);
                 if (ret == PICOKEYS_OK) ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_PRIVATE_KEY, &private_key, &private_key_len);
                 if (ret == PICOKEYS_OK) ret = credential_parse_metadata(metadata, metadata_len, cred);

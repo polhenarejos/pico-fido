@@ -54,6 +54,7 @@ typedef struct Credential {
     CborByteString residentId;
     CborByteString privateKey;
     CredOptions opts;
+    bool imported;
     bool present;
     uint64_t rtc_creation;
 } Credential;
