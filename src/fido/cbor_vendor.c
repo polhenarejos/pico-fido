@@ -25,9 +25,15 @@
 #include "credential.h"
 #include "apdu.h"
 #include "random.h"
+#include "button.h"
+#include "led/led.h"
+#include "compat/board.h"
+#include "crypto_utils.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
+#include "mbedtls/gcm.h"
 #include "mbedtls/hkdf.h"
+#include "mbedtls/md.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/constant_time.h"
 #include "mbedtls/x509_csr.h"
@@ -42,6 +48,29 @@ mse_t mse = { .init = false };
 #define VAULT_CHANNEL_KEY_BYTES 32
 #define VAULT_CHANNEL_INFO "pico-fido-vault-v1"
 #define VAULT_CREDENTIAL_METADATA_MAX 512
+#define VAULT_KEY_BYTES 32
+#define VAULT_ID_BYTES 32
+#define VAULT_ENROLL_CHALLENGE_BYTES 32
+#define VAULT_ENROLL_CERT_MAX 1900
+#define VAULT_ENROLL_MIN_PACKET_LEN (2 + 12 + VAULT_KEY_BYTES + 16)
+#define VAULT_LABEL_MAX 64
+#define VAULT_ENROLL_PLAIN_MAX (VAULT_KEY_BYTES + 1 + VAULT_LABEL_MAX)
+#define VAULT_STORE_LEN (1 + 12 + VAULT_KEY_BYTES + 16)
+#define VAULT_BLOB_HEADER_LEN 68
+#define VAULT_BLOB_MAX (VAULT_BLOB_HEADER_LEN + 12 + MAX_CRED_ID_LENGTH + VAULT_CREDENTIAL_METADATA_MAX + 128)
+#define VAULT_ENROLL_WINDOW_MS 60000u
+#define VAULT_ENROLL_HOLD_MS 10000u
+
+static const uint8_t vault_id_domain[] = "PicoKeys Vault ID v1";
+static const uint8_t vault_enroll_info[] = "PicoKeys Vault enrollment v1";
+static const uint8_t vault_blob_magic[] = { 'P', 'K', 'V', 1 };
+static uint8_t vault_enroll_private[VAULT_X448_BYTES];
+static uint8_t vault_enroll_public[VAULT_X448_BYTES];
+static uint8_t vault_enroll_challenge[VAULT_ENROLL_CHALLENGE_BYTES];
+static bool vault_enroll_active = false;
+static bool vault_enrollment_button_accepted = false;
+
+static int vault_encode_credential_metadata(const Credential *credential, const uint8_t rp_id_hash[RP_ID_HASH_LEN], uint8_t *buffer, size_t buffer_len, size_t *metadata_len);
 
 static const uint8_t picokeys_vault_ca_der[] = {
     0x30, 0x82, 0x01, 0xEB, 0x30, 0x82, 0x01, 0x6B, 0xA0, 0x03, 0x02, 0x01,
@@ -120,24 +149,22 @@ static int vault_pin_auth(uint8_t protocol, const CborByteString *auth, const ui
 }
 
 static int vault_x448_generate(uint8_t private_key[VAULT_X448_BYTES], uint8_t public_key[VAULT_X448_BYTES]) {
-    mbedtls_ecdh_context hkey;
+    mbedtls_ecp_keypair key;
+    size_t private_len = 0;
     size_t public_len = 0;
-    mbedtls_ecdh_init(&hkey);
-    int ret = mbedtls_ecdh_setup(&hkey, MBEDTLS_ECP_DP_CURVE448);
+    mbedtls_ecp_keypair_init(&key);
+    int ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_CURVE448, &key, random_fill_iterator, NULL);
     if (ret == 0) {
-        ret = mbedtls_ecdh_gen_public(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.d, &hkey.ctx.mbed_ecdh.Q, random_fill_iterator, NULL);
+        ret = mbedtls_ecp_write_key_ext(&key, &private_len, private_key, VAULT_X448_BYTES);
     }
     if (ret == 0) {
-        ret = mbedtls_mpi_write_binary_le(&hkey.ctx.mbed_ecdh.d, private_key, VAULT_X448_BYTES);
+        ret = mbedtls_ecp_point_write_binary(&key.grp, &key.Q, MBEDTLS_ECP_PF_UNCOMPRESSED, &public_len, public_key, VAULT_X448_BYTES);
     }
-    if (ret == 0) {
-        ret = mbedtls_ecp_point_write_binary(&hkey.ctx.mbed_ecdh.grp, &hkey.ctx.mbed_ecdh.Q, MBEDTLS_ECP_PF_UNCOMPRESSED, &public_len, public_key, VAULT_X448_BYTES);
-    }
-    mbedtls_ecdh_free(&hkey);
+    mbedtls_ecp_keypair_free(&key);
     if (ret != 0) {
         return PICOKEYS_EXEC_ERROR;
     }
-    return public_len == VAULT_X448_BYTES ? PICOKEYS_OK : PICOKEYS_WRONG_LENGTH;
+    return private_len == VAULT_X448_BYTES && public_len == VAULT_X448_BYTES ? PICOKEYS_OK : PICOKEYS_WRONG_LENGTH;
 }
 
 static int vault_x448_shared(const uint8_t private_key[VAULT_X448_BYTES], const uint8_t peer_public[VAULT_X448_BYTES], uint8_t shared[VAULT_X448_BYTES]) {
@@ -194,6 +221,36 @@ static int vault_validate_certificate(mbedtls_x509_crt *certificate) {
     return ret != 0 ? PICOKEYS_EXEC_ERROR : (flags == 0 ? PICOKEYS_OK : PICOKEYS_VERIFICATION_FAILED);
 }
 
+static int vault_validate_certificate_serial(mbedtls_x509_crt *certificate) {
+    if (!certificate || !certificate->subject_alt_names.next) {
+        return PICOKEYS_VERIFICATION_FAILED;
+    }
+    size_t serial_len = strlen(pico_serial_str);
+    for (mbedtls_x509_sequence *entry = certificate->subject_alt_names.next; entry; entry = entry->next) {
+        mbedtls_x509_subject_alternative_name san = {0};
+        int ret = mbedtls_x509_parse_subject_alt_name(&entry->buf, &san);
+        if (ret == 0 && (san.type == MBEDTLS_X509_SAN_DNS_NAME || san.type == MBEDTLS_X509_SAN_UNIFORM_RESOURCE_IDENTIFIER) && san.san.unstructured_name.len == serial_len && memcmp(san.san.unstructured_name.p, pico_serial_str, serial_len) == 0) {
+            mbedtls_x509_free_subject_alt_name(&san);
+            return PICOKEYS_OK;
+        }
+        mbedtls_x509_free_subject_alt_name(&san);
+    }
+    return PICOKEYS_VERIFICATION_FAILED;
+}
+
+static int vault_certificate_x448_public(mbedtls_x509_crt *certificate, uint8_t public_key[VAULT_X448_BYTES]) {
+    if (!certificate || !public_key || (mbedtls_pk_get_type(&certificate->pk) != MBEDTLS_PK_ECKEY && mbedtls_pk_get_type(&certificate->pk) != MBEDTLS_PK_ECKEY_DH)) {
+        return PICOKEYS_WRONG_DATA;
+    }
+    mbedtls_ecp_keypair *key = mbedtls_pk_ec(certificate->pk);
+    if (!key || key->grp.id != MBEDTLS_ECP_DP_CURVE448) {
+        return PICOKEYS_WRONG_DATA;
+    }
+    size_t public_len = 0;
+    int ret = mbedtls_ecp_point_write_binary(&key->grp, &key->Q, MBEDTLS_ECP_PF_UNCOMPRESSED, &public_len, public_key, VAULT_X448_BYTES);
+    return ret == 0 && public_len == VAULT_X448_BYTES ? PICOKEYS_OK : PICOKEYS_WRONG_DATA;
+}
+
 int mse_decrypt_ct(uint8_t *data, size_t len) {
     if (data == NULL || len < 16) {
         return PICOKEYS_ERR_NULL_PARAM;
@@ -204,6 +261,433 @@ int mse_decrypt_ct(uint8_t *data, size_t len) {
     int ret = mbedtls_chachapoly_auth_decrypt(&chatx, len - 16, mse.key_enc, mse.Qpt, 65, data + len - 16, data, data);
     mbedtls_chachapoly_free(&chatx);
     return ret == 0 ? PICOKEYS_OK : PICOKEYS_VERIFICATION_FAILED;
+}
+
+static int vault_hash_key(const uint8_t key[VAULT_KEY_BYTES], uint8_t digest[VAULT_ID_BYTES]) {
+    uint8_t input[sizeof(vault_id_domain) - 1 + VAULT_KEY_BYTES];
+    memcpy(input, vault_id_domain, sizeof(vault_id_domain) - 1);
+    memcpy(input + sizeof(vault_id_domain) - 1, key, VAULT_KEY_BYTES);
+    int ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), input, sizeof(input), digest);
+    mbedtls_platform_zeroize(input, sizeof(input));
+    return ret == 0 ? PICOKEYS_OK : PICOKEYS_EXEC_ERROR;
+}
+
+static int vault_gcm_key(const uint8_t key[VAULT_KEY_BYTES], const uint8_t vault_id[VAULT_ID_BYTES], const uint8_t credential_hash[VAULT_ID_BYTES], uint8_t out[VAULT_KEY_BYTES]) {
+    uint8_t info[sizeof(vault_enroll_info) - 1 + VAULT_ID_BYTES];
+    memcpy(info, vault_enroll_info, sizeof(vault_enroll_info) - 1);
+    memcpy(info + sizeof(vault_enroll_info) - 1, credential_hash, VAULT_ID_BYTES);
+    int ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), vault_id, VAULT_ID_BYTES, key, VAULT_KEY_BYTES, info, sizeof(info), out, VAULT_KEY_BYTES);
+    mbedtls_platform_zeroize(info, sizeof(info));
+    return ret == 0 ? PICOKEYS_OK : PICOKEYS_EXEC_ERROR;
+}
+
+static int vault_load_key(uint8_t key[VAULT_KEY_BYTES]) {
+    if (!key || !ef_vault_key || !file_has_data(ef_vault_key) || file_get_size(ef_vault_key) != VAULT_STORE_LEN) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    uint8_t keydev[32] = {0};
+    int ret = load_keydev(keydev);
+    if (ret != PICOKEYS_OK) {
+        mbedtls_platform_zeroize(keydev, sizeof(keydev));
+        return ret;
+    }
+    const uint8_t *record = file_get_data(ef_vault_key);
+    if (record[0] != PIN_KDF_V2) {
+        mbedtls_platform_zeroize(keydev, sizeof(keydev));
+        return PICOKEYS_WRONG_DATA;
+    }
+    ret = decrypt_with_aad(keydev, CONST_BYTE_ARRAY(record + 1, VAULT_STORE_LEN - 1), PIN_KDF_V2, key);
+    mbedtls_platform_zeroize(keydev, sizeof(keydev));
+    return ret == PICOKEYS_OK ? PICOKEYS_OK : PICOKEYS_VERIFICATION_FAILED;
+}
+
+static int vault_store_key(const uint8_t key[VAULT_KEY_BYTES]) {
+    if (!key || !ef_vault_key) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    uint8_t keydev[32] = {0};
+    uint8_t record[VAULT_STORE_LEN] = {0};
+    record[0] = PIN_KDF_V2;
+    int ret = load_keydev(keydev);
+    if (ret == PICOKEYS_OK) {
+        ret = encrypt_with_aad(keydev, CONST_BYTE_ARRAY(key, VAULT_KEY_BYTES), PIN_KDF_V2, record + 1);
+    }
+    mbedtls_platform_zeroize(keydev, sizeof(keydev));
+    if (ret != 0) {
+        mbedtls_platform_zeroize(record, sizeof(record));
+        return ret == PICOKEYS_OK ? PICOKEYS_EXEC_ERROR : ret;
+    }
+    ret = file_put_data(ef_vault_key, CONST_BYTE_ARRAY(record, sizeof(record)));
+    mbedtls_platform_zeroize(record, sizeof(record));
+    if (ret != PICOKEYS_OK) {
+        return ret;
+    }
+    return flash_commit_sync(5000) ? PICOKEYS_OK : PICOKEYS_ERR_MEMORY_FATAL;
+}
+
+static bool vault_enrollment_window_open(void) {
+    return board_millis() < (uint32_t)VAULT_ENROLL_WINDOW_MS;
+}
+
+static bool vault_enrollment_button_ready(void) {
+    if (!vault_enrollment_window_open() && !vault_enroll_active) {
+        vault_enrollment_button_accepted = false;
+        button_pressed_duration = 0;
+        led_set_mode(MODE_MOUNTED);
+        return false;
+    }
+    if (button_pressed_duration >= VAULT_ENROLL_HOLD_MS) {
+        if (!vault_enrollment_button_accepted) {
+            led_set_mode(MODE_BUTTON);
+        }
+        vault_enrollment_button_accepted = true;
+    }
+    return vault_enrollment_button_accepted;
+}
+
+static void vault_enrollment_clear(void) {
+    mbedtls_platform_zeroize(vault_enroll_private, sizeof(vault_enroll_private));
+    mbedtls_platform_zeroize(vault_enroll_public, sizeof(vault_enroll_public));
+    mbedtls_platform_zeroize(vault_enroll_challenge, sizeof(vault_enroll_challenge));
+    vault_enroll_active = false;
+}
+
+static void vault_enrollment_reset(void) {
+    vault_enrollment_clear();
+    vault_enrollment_button_accepted = false;
+    button_pressed_duration = 0;
+    led_set_mode(MODE_MOUNTED);
+}
+
+static int vault_unenroll(void) {
+    int ret = PICOKEYS_OK;
+    vault_enrollment_reset();
+    mbedtls_platform_zeroize(vault_channel_key, sizeof(vault_channel_key));
+    vault_channel_init = false;
+    if (ef_vault_cert && file_has_data(ef_vault_cert)) {
+        ret = file_delete(ef_vault_cert);
+    }
+    if (ret == PICOKEYS_OK && ef_vault_key && file_has_data(ef_vault_key)) {
+        ret = file_delete(ef_vault_key);
+    }
+    if (ret == PICOKEYS_OK && ef_vault_label && file_has_data(ef_vault_label)) {
+        ret = file_delete(ef_vault_label);
+    }
+    return ret;
+}
+
+static int vault_enrollment_finish(const uint8_t *packet, size_t packet_len) {
+    if (!vault_enroll_active || !packet || packet_len < VAULT_ENROLL_MIN_PACKET_LEN) {
+        vault_enrollment_reset();
+        return PICOKEYS_WRONG_LENGTH;
+    }
+    uint16_t certificate_len = ((uint16_t)packet[0] << 8) | packet[1];
+    size_t encrypted_len = packet_len - 2 - certificate_len - 12;
+    if (certificate_len == 0 || certificate_len > VAULT_ENROLL_CERT_MAX || encrypted_len < VAULT_KEY_BYTES + 16 || encrypted_len > VAULT_ENROLL_PLAIN_MAX + 16) {
+        vault_enrollment_reset();
+        return PICOKEYS_WRONG_LENGTH;
+    }
+    mbedtls_x509_crt certificate;
+    mbedtls_x509_crt_init(&certificate);
+    int ret = mbedtls_x509_crt_parse(&certificate, packet + 2, certificate_len);
+    if (ret == 0) {
+        ret = vault_validate_certificate(&certificate);
+    }
+    if (ret == PICOKEYS_OK) {
+        ret = vault_validate_certificate_serial(&certificate);
+    }
+    uint8_t certificate_public[VAULT_X448_BYTES] = {0};
+    if (ret == PICOKEYS_OK) {
+        ret = vault_certificate_x448_public(&certificate, certificate_public);
+    }
+    mbedtls_x509_crt_free(&certificate);
+    if (ret != PICOKEYS_OK) {
+        mbedtls_platform_zeroize(certificate_public, sizeof(certificate_public));
+        vault_enrollment_reset();
+        return PICOKEYS_VERIFICATION_FAILED;
+    }
+    uint8_t shared[VAULT_X448_BYTES] = {0};
+    uint8_t session_key[VAULT_KEY_BYTES] = {0};
+    uint8_t info[sizeof(vault_enroll_info) - 1 + VAULT_ENROLL_CHALLENGE_BYTES + VAULT_X448_BYTES * 2] = {0};
+    memcpy(info, vault_enroll_info, sizeof(vault_enroll_info) - 1);
+    memcpy(info + sizeof(vault_enroll_info) - 1, vault_enroll_challenge, VAULT_ENROLL_CHALLENGE_BYTES);
+    memcpy(info + sizeof(vault_enroll_info) - 1 + VAULT_ENROLL_CHALLENGE_BYTES, certificate_public, VAULT_X448_BYTES);
+    memcpy(info + sizeof(vault_enroll_info) - 1 + VAULT_ENROLL_CHALLENGE_BYTES + VAULT_X448_BYTES, vault_enroll_public, VAULT_X448_BYTES);
+    ret = vault_x448_shared(vault_enroll_private, certificate_public, shared);
+    if (ret == PICOKEYS_OK) {
+        ret = mbedtls_hkdf(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), NULL, 0, shared, sizeof(shared), info, sizeof(info), session_key, sizeof(session_key));
+    }
+    uint8_t kvault[VAULT_KEY_BYTES] = {0};
+    uint8_t enrollment_plain[VAULT_ENROLL_PLAIN_MAX] = {0};
+    size_t label_len = 0;
+    if (ret == PICOKEYS_OK) {
+        mbedtls_gcm_context gcm;
+        mbedtls_gcm_init(&gcm);
+        ret = mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, session_key, 256);
+        if (ret == 0) {
+            ret = mbedtls_gcm_auth_decrypt(&gcm, encrypted_len - 16, packet + 2 + certificate_len, 12, info, sizeof(info), packet + 2 + certificate_len + encrypted_len - 16, 16, packet + 2 + certificate_len + 12, enrollment_plain);
+        }
+        mbedtls_gcm_free(&gcm);
+    }
+    if (ret == 0 && encrypted_len - 16 == VAULT_KEY_BYTES) {
+        memcpy(kvault, enrollment_plain, VAULT_KEY_BYTES);
+    }
+    else if (ret == 0 && encrypted_len - 16 >= VAULT_KEY_BYTES + 1 && enrollment_plain[VAULT_KEY_BYTES] <= VAULT_LABEL_MAX && encrypted_len - 16 == VAULT_KEY_BYTES + 1 + enrollment_plain[VAULT_KEY_BYTES]) {
+        memcpy(kvault, enrollment_plain, VAULT_KEY_BYTES);
+        label_len = enrollment_plain[VAULT_KEY_BYTES];
+    }
+    else if (ret == 0) {
+        ret = PICOKEYS_WRONG_LENGTH;
+    }
+    if (ret == 0) {
+        ret = vault_store_key(kvault);
+    }
+    if (ret == 0 && ef_vault_label) {
+        if (label_len > 0) {
+            ret = file_put_data(ef_vault_label, CONST_BYTE_ARRAY(enrollment_plain + VAULT_KEY_BYTES + 1, label_len));
+        }
+        else {
+            ret = file_delete(ef_vault_label);
+        }
+        if (ret == PICOKEYS_OK && !flash_commit_sync(5000)) {
+            ret = PICOKEYS_ERR_MEMORY_FATAL;
+        }
+    }
+    mbedtls_platform_zeroize(shared, sizeof(shared));
+    mbedtls_platform_zeroize(session_key, sizeof(session_key));
+    mbedtls_platform_zeroize(info, sizeof(info));
+    mbedtls_platform_zeroize(certificate_public, sizeof(certificate_public));
+    mbedtls_platform_zeroize(kvault, sizeof(kvault));
+    mbedtls_platform_zeroize(enrollment_plain, sizeof(enrollment_plain));
+    vault_enrollment_reset();
+    return ret == 0 ? PICOKEYS_OK : PICOKEYS_VERIFICATION_FAILED;
+}
+
+static int vault_sha256(const uint8_t *data, size_t data_len, uint8_t digest[VAULT_ID_BYTES]) {
+    if (!data || !digest) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    return mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), data, data_len, digest) == 0 ? PICOKEYS_OK : PICOKEYS_EXEC_ERROR;
+}
+
+static int vault_export_blob(const uint8_t *requested_id, size_t requested_id_len, uint8_t *blob, size_t blob_capacity, size_t *blob_len, uint8_t *metadata, size_t metadata_capacity, size_t *metadata_len) {
+    if (!requested_id || requested_id_len == 0 || requested_id_len > MAX_CRED_ID_LENGTH || !blob || !blob_len || !metadata || !metadata_len) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    Credential credential = {0};
+    file_t *found = NULL;
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
+    int ret = PICOKEYS_ERR_FILE_NOT_FOUND;
+    for (uint16_t i = 0; i < MAX_RESIDENT_CREDENTIALS && !found; i++) {
+        file_t *ef = file_search((uint16_t)(EF_CRED + i));
+        if (!file_has_data(ef) || credential_resident_rp_id_hash(ef, rp_id_hash) != PICOKEYS_OK) {
+            continue;
+        }
+        Credential current = {0};
+        if (credential_load_resident(ef, rp_id_hash, &current) == 0) {
+            if ((current.id.len == requested_id_len && mbedtls_ct_memcmp(current.id.data, requested_id, requested_id_len) == 0) || credential_resident_matches_id(ef, requested_id, requested_id_len)) {
+                credential = current;
+                found = ef;
+            }
+            else {
+                credential_free(&current);
+            }
+        }
+    }
+    if (!found) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    const uint8_t *key_seed = credential.id.data;
+    if (credential.residentId.present && credential_resident_id_uses_stable_keys(credential.residentId.data, credential.residentId.len)) {
+        key_seed = credential.residentId.data;
+    }
+    mbedtls_ecp_keypair credential_key;
+    mbedtls_ecp_keypair_init(&credential_key);
+    uint8_t private_key[80] = {0};
+    size_t private_len = 0;
+    ret = PICOKEYS_OK;
+    if (credential.privateKey.present) {
+        private_len = credential.privateKey.len;
+        if (private_len <= sizeof(private_key)) {
+            memcpy(private_key, credential.privateKey.data, private_len);
+        }
+        else ret = PICOKEYS_WRONG_LENGTH;
+    }
+    else {
+        ret = fido_load_key((int)credential.curve, key_seed, &credential_key);
+        if (ret == 0) {
+            ret = mbedtls_ecp_write_key_ext(&credential_key, &private_len, private_key, sizeof(private_key));
+        }
+    }
+    mbedtls_ecp_keypair_free(&credential_key);
+    if (ret != 0 || private_len == 0) {
+        credential_free(&credential);
+        mbedtls_platform_zeroize(private_key, sizeof(private_key));
+        return PICOKEYS_EXEC_ERROR;
+    }
+    uint8_t embedded_metadata[VAULT_CREDENTIAL_METADATA_MAX] = {0};
+    if (vault_encode_credential_metadata(&credential, rp_id_hash, embedded_metadata, sizeof(embedded_metadata), metadata_len) != PICOKEYS_OK || *metadata_len > metadata_capacity) {
+        credential_free(&credential);
+        mbedtls_platform_zeroize(private_key, sizeof(private_key));
+        return PICOKEYS_ERR_NO_MEMORY;
+    }
+    memcpy(metadata, embedded_metadata, *metadata_len);
+    uint8_t plain[MAX_CRED_ID_LENGTH + VAULT_CREDENTIAL_METADATA_MAX + 256] = {0};
+    CborEncoder plain_encoder, plain_map;
+    CborError error = CborNoError;
+    cbor_encoder_init(&plain_encoder, plain, sizeof(plain), 0);
+    if ((error = cbor_encoder_create_map(&plain_encoder, &plain_map, 6)) == CborNoError) {
+        error = cbor_encode_uint(&plain_map, 1);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_uint(&plain_map, 1);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_uint(&plain_map, 2);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_byte_string(&plain_map, credential.id.data, credential.id.len);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_uint(&plain_map, 3);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_byte_string(&plain_map, private_key, private_len);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_uint(&plain_map, 4);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_text_string(&plain_map, credential.rpId.data, credential.rpId.len);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_uint(&plain_map, 5);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_byte_string(&plain_map, embedded_metadata, *metadata_len);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_uint(&plain_map, 6);
+    }
+    if (error == CborNoError) {
+        error = cbor_encode_byte_string(&plain_map, requested_id, requested_id_len);
+    }
+    if (error == CborNoError) {
+        error = cbor_encoder_close_container(&plain_encoder, &plain_map);
+    }
+    size_t plain_len = cbor_encoder_get_buffer_size(&plain_encoder, plain);
+    uint8_t kvault[VAULT_KEY_BYTES] = {0};
+    uint8_t vault_id[VAULT_ID_BYTES] = {0};
+    uint8_t credential_hash[VAULT_ID_BYTES] = {0};
+    uint8_t blob_key[VAULT_KEY_BYTES] = {0};
+    if (error == CborNoError && vault_load_key(kvault) != PICOKEYS_OK) {
+        error = CborErrorImproperValue;
+    }
+    if (error == CborNoError && (vault_hash_key(kvault, vault_id) != PICOKEYS_OK || vault_sha256(requested_id, requested_id_len, credential_hash) != PICOKEYS_OK || vault_gcm_key(kvault, vault_id, credential_hash, blob_key) != PICOKEYS_OK)) {
+        error = CborErrorImproperValue;
+    }
+    size_t total_len = VAULT_BLOB_HEADER_LEN + 12 + plain_len + 16;
+    if (error == CborNoError && (total_len > blob_capacity || plain_len == 0)) {
+        error = CborErrorOutOfMemory;
+    }
+    if (error == CborNoError) {
+        memcpy(blob, vault_blob_magic, sizeof(vault_blob_magic));
+        memcpy(blob + 4, vault_id, VAULT_ID_BYTES);
+        memcpy(blob + 4 + VAULT_ID_BYTES, credential_hash, VAULT_ID_BYTES);
+        random_fill_buffer(BYTE_ARRAY(blob + VAULT_BLOB_HEADER_LEN, 12));
+        mbedtls_gcm_context gcm;
+        mbedtls_gcm_init(&gcm);
+        error = mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, blob_key, 256) == 0 ? CborNoError : CborErrorImproperValue;
+        if (error == CborNoError && mbedtls_gcm_crypt_and_tag(&gcm, MBEDTLS_GCM_ENCRYPT, plain_len, blob + VAULT_BLOB_HEADER_LEN, 12, blob, VAULT_BLOB_HEADER_LEN, plain, blob + VAULT_BLOB_HEADER_LEN + 12, 16, blob + VAULT_BLOB_HEADER_LEN + 12 + plain_len) != 0) {
+            error = CborErrorImproperValue;
+        }
+        mbedtls_gcm_free(&gcm);
+        *blob_len = total_len;
+    }
+    mbedtls_platform_zeroize(kvault, sizeof(kvault));
+    mbedtls_platform_zeroize(blob_key, sizeof(blob_key));
+    mbedtls_platform_zeroize(private_key, sizeof(private_key));
+    mbedtls_platform_zeroize(plain, sizeof(plain));
+    mbedtls_platform_zeroize(embedded_metadata, sizeof(embedded_metadata));
+    credential_free(&credential);
+    return error == CborNoError ? PICOKEYS_OK : PICOKEYS_EXEC_ERROR;
+}
+
+static int vault_import_blob(const uint8_t *blob, size_t blob_len) {
+    if (!blob || blob_len < VAULT_BLOB_HEADER_LEN + 12 + 16 || memcmp(blob, vault_blob_magic, sizeof(vault_blob_magic)) != 0) {
+        return PICOKEYS_WRONG_DATA;
+    }
+    uint8_t kvault[VAULT_KEY_BYTES] = {0};
+    uint8_t vault_id[VAULT_ID_BYTES] = {0};
+    uint8_t blob_key[VAULT_KEY_BYTES] = {0};
+    uint8_t plain[MAX_CRED_ID_LENGTH + VAULT_CREDENTIAL_METADATA_MAX + 256] = {0};
+    int ret = vault_load_key(kvault);
+    if (ret == PICOKEYS_OK) {
+        ret = vault_hash_key(kvault, vault_id);
+    }
+    if (ret == PICOKEYS_OK && mbedtls_ct_memcmp(vault_id, blob + 4, VAULT_ID_BYTES) != 0) {
+        ret = PICOKEYS_VERIFICATION_FAILED;
+    }
+    if (ret == PICOKEYS_OK) {
+        ret = vault_gcm_key(kvault, vault_id, blob + 4 + VAULT_ID_BYTES, blob_key);
+    }
+    size_t plain_len = blob_len - VAULT_BLOB_HEADER_LEN - 12 - 16;
+    if (ret == PICOKEYS_OK && plain_len > sizeof(plain)) {
+        ret = PICOKEYS_WRONG_LENGTH;
+    }
+    if (ret == PICOKEYS_OK) {
+        mbedtls_gcm_context gcm;
+        mbedtls_gcm_init(&gcm);
+        ret = mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, blob_key, 256);
+        if (ret == 0) {
+            ret = mbedtls_gcm_auth_decrypt(&gcm, plain_len, blob + VAULT_BLOB_HEADER_LEN, 12, blob, VAULT_BLOB_HEADER_LEN, blob + blob_len - 16, 16, blob + VAULT_BLOB_HEADER_LEN + 12, plain);
+        }
+        mbedtls_gcm_free(&gcm);
+    }
+    CborByteString credential_id = {0}, private_key = {0}, metadata = {0}, rp_id_hash = {0};
+    CborParser parser, metadata_parser;
+    CborValue map, metadata_map;
+    CborError error = CborNoError;
+    if (ret == PICOKEYS_OK) {
+        CBOR_CHECK(cbor_parser_init(plain, plain_len, 0, &parser, &map));
+        CBOR_PARSE_MAP_START(map, 1)
+        {
+            uint64_t key = 0;
+            CBOR_FIELD_GET_UINT(key, 1);
+            if (key == 0x02) { CBOR_FIELD_GET_BYTES(credential_id, 1); }
+            else if (key == 0x03) { CBOR_FIELD_GET_BYTES(private_key, 1); }
+            else if (key == 0x05) { CBOR_FIELD_GET_BYTES(metadata, 1); }
+            else { CBOR_ADVANCE(1); }
+        }
+        CBOR_PARSE_MAP_END(map, 1);
+        CBOR_CHECK(cbor_parser_init(metadata.data, metadata.len, 0, &metadata_parser, &metadata_map));
+        CBOR_PARSE_MAP_START(metadata_map, 2)
+        {
+            uint64_t key = 0;
+            CBOR_FIELD_GET_UINT(key, 2);
+            if (key == 0x02) { CBOR_FIELD_GET_BYTES(rp_id_hash, 2); }
+            else { CBOR_ADVANCE(2); }
+        }
+        CBOR_PARSE_MAP_END(metadata_map, 2);
+        if (!credential_id.present || !private_key.present || !metadata.present || !rp_id_hash.present || rp_id_hash.len != RP_ID_HASH_LEN) {
+            error = CborErrorImproperValue;
+        }
+    }
+    if (ret == PICOKEYS_OK && error == CborNoError) {
+        ret = credential_import(credential_id.data, credential_id.len, rp_id_hash.data, metadata.data, metadata.len, private_key.data, private_key.len);
+    }
+err:
+    CBOR_FREE_BYTE_STRING(credential_id);
+    CBOR_FREE_BYTE_STRING(private_key);
+    CBOR_FREE_BYTE_STRING(metadata);
+    CBOR_FREE_BYTE_STRING(rp_id_hash);
+    mbedtls_platform_zeroize(kvault, sizeof(kvault));
+    mbedtls_platform_zeroize(blob_key, sizeof(blob_key));
+    mbedtls_platform_zeroize(plain, sizeof(plain));
+    if (error != CborNoError) {
+        return PICOKEYS_WRONG_DATA;
+    }
+    return ret == 0 ? PICOKEYS_OK : ret;
 }
 
 static int vault_encode_credential_metadata(const Credential *credential, const uint8_t rp_id_hash[RP_ID_HASH_LEN], uint8_t *buffer, size_t buffer_len, size_t *metadata_len) {
@@ -346,7 +830,6 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         }
     }
     CBOR_PARSE_MAP_END(map, 1);
-
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
 
     if (cmd == CTAP_VENDOR_BACKUP) {
@@ -503,7 +986,122 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         }
     }
     else if (cmd == CTAP_VENDOR_VAULT) {
-        if (vendorCmd == 0x01) {
+        if (vendorCmd == 0x05) {
+            uint8_t kvault[VAULT_KEY_BYTES] = {0};
+            uint8_t vault_id[VAULT_ID_BYTES] = {0};
+            bool stored = ef_vault_key && file_has_data(ef_vault_key) && file_get_size(ef_vault_key) == VAULT_STORE_LEN && file_get_data(ef_vault_key)[0] == PIN_KDF_V2;
+            bool enrolled = vault_load_key(kvault) == PICOKEYS_OK;
+            if (enrolled && vault_hash_key(kvault, vault_id) != PICOKEYS_OK) {
+                mbedtls_platform_zeroize(kvault, sizeof(kvault));
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            const uint8_t *label_data = NULL;
+            size_t label_len = 0;
+            if (ef_vault_label && file_has_data(ef_vault_label) && file_get_size(ef_vault_label) <= VAULT_LABEL_MAX) {
+                label_data = file_get_data(ef_vault_label);
+                label_len = file_get_size(ef_vault_label);
+            }
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 5));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, vault_id, enrolled ? sizeof(vault_id) : 0));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, vault_enrollment_button_ready()));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, board_millis()));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
+            CBOR_CHECK(cbor_encode_boolean(&mapEncoder, stored));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x05));
+            CBOR_CHECK(cbor_encode_text_string(&mapEncoder, label_data ? (const char *)label_data : "", label_len));
+            mbedtls_platform_zeroize(kvault, sizeof(kvault));
+        }
+        else if (vendorCmd == 0x06) {
+            int auth_ret = vault_pin_auth((uint8_t)pinUvAuthProtocol, &pinUvAuthParam, raw_vendor_params, raw_vendor_params_len, vendorCmd);
+            if (auth_ret != 0) {
+                CBOR_ERROR(auth_ret);
+            }
+            if (!vault_enrollment_button_ready()) {
+                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
+            vault_enrollment_clear();
+            if (vault_x448_generate(vault_enroll_private, vault_enroll_public) != PICOKEYS_OK) {
+                vault_enrollment_reset();
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            random_fill_buffer(BYTE_ARRAY(vault_enroll_challenge, sizeof(vault_enroll_challenge)));
+            vault_enroll_active = true;
+            led_set_mode(MODE_BUTTON);
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 2));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, vault_enroll_public, sizeof(vault_enroll_public)));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, vault_enroll_challenge, sizeof(vault_enroll_challenge)));
+        }
+        else if (vendorCmd == 0x07) {
+            int auth_ret = vault_pin_auth((uint8_t)pinUvAuthProtocol, &pinUvAuthParam, raw_vendor_params, raw_vendor_params_len, vendorCmd);
+            if (auth_ret != 0) {
+                CBOR_ERROR(auth_ret);
+            }
+            if (!vendorParam.present || vault_enrollment_finish(vendorParam.data, vendorParam.len) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
+            }
+            uint8_t kvault[VAULT_KEY_BYTES] = {0};
+            uint8_t vault_id[VAULT_ID_BYTES] = {0};
+            if (vault_load_key(kvault) != PICOKEYS_OK || vault_hash_key(kvault, vault_id) != PICOKEYS_OK) {
+                mbedtls_platform_zeroize(kvault, sizeof(kvault));
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, vault_id, sizeof(vault_id)));
+            mbedtls_platform_zeroize(kvault, sizeof(kvault));
+        }
+        else if (vendorCmd == 0x0A) {
+            int auth_ret = vault_pin_auth((uint8_t)pinUvAuthProtocol, &pinUvAuthParam, raw_vendor_params, raw_vendor_params_len, vendorCmd);
+            if (auth_ret != 0) {
+                CBOR_ERROR(auth_ret);
+            }
+            if (vault_unenroll() != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            goto err;
+        }
+        else if (vendorCmd == 0x08) {
+            if (!vendorParam.present || vendorParam.len == 0) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            int auth_ret = vault_pin_auth((uint8_t)pinUvAuthProtocol, &pinUvAuthParam, raw_vendor_params, raw_vendor_params_len, vendorCmd);
+            if (auth_ret != 0) {
+                CBOR_ERROR(auth_ret);
+            }
+            uint8_t blob[VAULT_BLOB_MAX] = {0};
+            uint8_t metadata[VAULT_CREDENTIAL_METADATA_MAX] = {0};
+            size_t blob_len = 0;
+            size_t metadata_len = 0;
+            if (vault_export_blob(vendorParam.data, vendorParam.len, blob, sizeof(blob), &blob_len, metadata, sizeof(metadata), &metadata_len) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+            }
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 2));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, blob, blob_len));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x02));
+            CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, metadata, metadata_len));
+            mbedtls_platform_zeroize(blob, sizeof(blob));
+            mbedtls_platform_zeroize(metadata, sizeof(metadata));
+        }
+        else if (vendorCmd == 0x09) {
+            if (!vendorParam.present || vendorParam.len == 0) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            int auth_ret = vault_pin_auth((uint8_t)pinUvAuthProtocol, &pinUvAuthParam, raw_vendor_params, raw_vendor_params_len, vendorCmd);
+            if (auth_ret != 0) {
+                CBOR_ERROR(auth_ret);
+            }
+            if (vault_import_blob(vendorParam.data, vendorParam.len) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
+            }
+            CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 0));
+        }
+        else if (vendorCmd == 0x01) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, 1));
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
             if (ef_vault_cert && file_has_data(ef_vault_cert)) {
@@ -749,7 +1347,6 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
     printf("CBOR vendor response size: %zu\n", resp_size);
-
 err:
     CBOR_FREE_BYTE_STRING(requested_id);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

@@ -661,7 +661,13 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_ecp_keypair_init(&ekey);
     size_t olen = 0;
     if (selcred) {
-        ret = fido_load_key((int)selcred->curve, key_seed, &ekey);
+        if (selcred->privateKey.present) {
+            ret = mbedtls_ecp_read_key(fido_curve_to_mbedtls((int)selcred->curve), &ekey, selcred->privateKey.data, selcred->privateKey.len);
+            if (ret == 0) ret = mbedtls_ecp_keypair_calc_public(&ekey, random_fill_iterator, NULL);
+        }
+        else {
+            ret = fido_load_key((int)selcred->curve, key_seed, &ekey);
+        }
         if (ret != 0) {
             if (derive_key(rp_id_hash, false, (uint8_t *)key_seed, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
                 mbedtls_ecp_keypair_free(&ekey);

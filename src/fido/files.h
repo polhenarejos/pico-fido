@@ -25,6 +25,8 @@
 #define EF_EE_DEV       0xCE00
 #define EF_EE_DEV_EA    0xCE01
 #define EF_VAULT_CERT   0xCE02
+#define EF_VAULT_KEY    0xCE03
+#define EF_VAULT_LABEL  0xCE04
 #define EF_COUNTER      0xC000
 #define EF_OPTS         0xC001
 #define EF_PIN          0x1080
@@ -55,5 +57,7 @@ extern file_t *ef_authtoken;
 extern file_t *ef_keydev_enc;
 extern file_t *ef_largeblob;
 extern file_t *ef_vault_cert;
+extern file_t *ef_vault_key;
+extern file_t *ef_vault_label;
 
 #endif //_FILES_H_

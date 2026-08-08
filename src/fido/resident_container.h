@@ -27,6 +27,8 @@
 #define FIDO_RESIDENT_OBJECT_CREDENTIAL 0x0003u
 #define FIDO_RESIDENT_OBJECT_PUBLIC_KEY 0x0004u
 #define FIDO_RESIDENT_OBJECT_METADATA 0x0005u
+#define FIDO_RESIDENT_OBJECT_PRIVATE_KEY 0x0006u
+#define FIDO_RESIDENT_OBJECT_STATE 0x0007u
 
 #define FIDO_RESIDENT_METADATA_SIZE 6u
 
@@ -52,7 +54,9 @@ int resident_container_object_size(uint8_t slot, uint16_t object_type, uint32_t 
 int resident_container_read(uint8_t slot, uint16_t object_type, byte_buffer_t *data);
 int resident_container_read_metadata(uint8_t slot, fido_resident_metadata_t *metadata);
 int resident_container_update_metadata(uint8_t slot, const fido_resident_metadata_t *metadata);
+int resident_container_update_metadata_blob(uint8_t slot, const uint8_t *metadata, size_t metadata_size);
 int resident_container_update_credential(uint8_t slot, const uint8_t *credential, size_t credential_size);
+int resident_container_update_private_key(uint8_t slot, const uint8_t *private_key, size_t private_key_size);
 int resident_container_delete(uint8_t slot);
 
 #endif // _RESIDENT_CONTAINER_H_

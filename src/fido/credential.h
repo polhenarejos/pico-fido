@@ -52,6 +52,7 @@ typedef struct Credential {
     int64_t curve;
     CborByteString id;
     CborByteString residentId;
+    CborByteString privateKey;
     CredOptions opts;
     bool present;
     uint64_t rtc_creation;
@@ -115,6 +116,7 @@ extern int credential_create(CborCharString *rpId,
                              uint16_t *cred_id_len);
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, const uint8_t *public_key, size_t public_key_len);
+extern int credential_import(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, const uint8_t *metadata, size_t metadata_len, const uint8_t *private_key, size_t private_key_len);
 extern int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred);
 extern int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
 extern int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);

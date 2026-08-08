@@ -81,8 +81,10 @@ static uint8_t fido_get_version_minor(void) {
 }
 
 static int fido_select(app_t *a, uint8_t force) {
-    (void) force;
     if (cap_supported(CAP_FIDO2)) {
+        if (force) {
+            init_fido();
+        }
         a->process_apdu = fido_process_apdu;
         a->unload = fido_unload;
         return PICOKEYS_OK;
@@ -391,6 +393,7 @@ int encrypt_keydev_f1(const uint8_t keydev[32]) {
 int scan_files_fido(void) {
     ef_keydev = file_search_by_fid(EF_KEY_DEV, NULL, SPECIFY_EF);
     ef_keydev_enc = file_search_by_fid(EF_KEY_DEV_ENC, NULL, SPECIFY_EF);
+    ef_vault_key = file_search_by_fid(EF_VAULT_KEY, NULL, SPECIFY_EF);
     if (ef_keydev) {
         if (!file_has_data(ef_keydev) && !file_has_data(ef_keydev_enc)) {
             printf("KEY DEVICE is empty. Generating SECP256R1 curve...");
@@ -457,6 +460,7 @@ int scan_files_fido(void) {
         printf("FATAL ERROR: CERT DEV not found in memory!\r\n");
     }
     ef_vault_cert = file_search_by_fid(EF_VAULT_CERT, NULL, SPECIFY_EF);
+    ef_vault_label = file_search_by_fid(EF_VAULT_LABEL, NULL, SPECIFY_EF);
     ef_counter = file_search_by_fid(EF_COUNTER, NULL, SPECIFY_EF);
     if (ef_counter) {
         if (!file_has_data(ef_counter)) {

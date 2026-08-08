@@ -60,7 +60,7 @@ static uint16_t resident_record_fid(uint8_t slot, uint8_t manifest_slot, uint16_
 }
 
 static bool resident_object_type_valid(uint16_t object_type) {
-    return object_type >= FIDO_RESIDENT_OBJECT_RP_ID_HASH && object_type <= FIDO_RESIDENT_OBJECT_METADATA;
+    return object_type >= FIDO_RESIDENT_OBJECT_RP_ID_HASH && object_type <= FIDO_RESIDENT_OBJECT_STATE;
 }
 
 static bool resident_record_id_valid(uint8_t slot, const file_object_descriptor_t *object) {
@@ -173,7 +173,7 @@ static int resident_layout_retire(void *ctx, uint32_t container_id, const file_o
                 file_delete_no_commit(manifest);
             }
         }
-        for (uint16_t object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH; object_type <= FIDO_RESIDENT_OBJECT_METADATA; object_type++) {
+        for (uint16_t object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH; object_type <= FIDO_RESIDENT_OBJECT_STATE; object_type++) {
             uint16_t record_fid = resident_record_fid(slot, manifest_slot, object_type);
             if (!file_object_container_references(next, record_fid)) {
                 file_t *record = file_search(record_fid);
@@ -191,7 +191,7 @@ static int resident_layout_deactivate(void *ctx, uint32_t container_id) {
     (void)ctx;
     uint8_t slot = (uint8_t)container_id;
     for (uint8_t manifest_slot = 0; manifest_slot < 2; manifest_slot++) {
-        for (uint16_t object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH; object_type <= FIDO_RESIDENT_OBJECT_METADATA; object_type++) {
+        for (uint16_t object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH; object_type <= FIDO_RESIDENT_OBJECT_STATE; object_type++) {
             file_t *record = file_search(resident_record_fid(slot, manifest_slot, object_type));
             if (record) {
                 file_delete_no_commit(record);
@@ -264,7 +264,7 @@ bool resident_container_can_create(uint8_t slot) {
     }
     static const uint8_t record_magic[4] = { 'P', 'K', 'O', 'R' };
     for (uint8_t manifest_slot = 0; manifest_slot < 2; manifest_slot++) {
-        for (uint16_t object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH; object_type <= FIDO_RESIDENT_OBJECT_METADATA; object_type++) {
+        for (uint16_t object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH; object_type <= FIDO_RESIDENT_OBJECT_STATE; object_type++) {
             file_t *record = file_search(resident_record_fid(slot, manifest_slot, object_type));
             if (record && (!file_has_data(record) || file_get_size(record) < sizeof(record_magic) || memcmp(file_get_data(record), record_magic, sizeof(record_magic)) != 0)) {
                 return false;
@@ -323,6 +323,13 @@ int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_
             .policy_id = FIDO_RESIDENT_POLICY_ID,
             .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
             .flags = FILE_OBJECT_FLAG_MUTABLE
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_STATE,
+            .data = CONST_BYTE_ARRAY(metadata, sizeof(metadata)),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
+            .flags = FILE_OBJECT_FLAG_MUTABLE
         }
     };
     return resident_container_update(slot, writes, sizeof(writes) / sizeof(writes[0]));
@@ -358,7 +365,7 @@ int resident_container_read_metadata(uint8_t slot, fido_resident_metadata_t *met
     }
     uint8_t data[FIDO_RESIDENT_METADATA_SIZE];
     byte_buffer_t output = BYTE_BUFFER(data, sizeof(data));
-    int r = resident_container_read(slot, FIDO_RESIDENT_OBJECT_METADATA, &output);
+    int r = resident_container_read(slot, FIDO_RESIDENT_OBJECT_STATE, &output);
     if (r == PICOKEYS_ERR_FILE_NOT_FOUND) {
         *metadata = (fido_resident_metadata_t) {
             .status = FIDO_RESIDENT_STATUS_ACTIVE,
@@ -391,8 +398,22 @@ int resident_container_update_metadata(uint8_t slot, const fido_resident_metadat
     uint8_t data[FIDO_RESIDENT_METADATA_SIZE];
     resident_metadata_encode(metadata, data);
     file_object_container_write_t write = {
-        .object_type = FIDO_RESIDENT_OBJECT_METADATA,
+        .object_type = FIDO_RESIDENT_OBJECT_STATE,
         .data = CONST_BYTE_ARRAY(data, sizeof(data)),
+        .policy_id = FIDO_RESIDENT_POLICY_ID,
+        .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
+        .flags = FILE_OBJECT_FLAG_MUTABLE
+    };
+    return resident_container_update(slot, &write, 1);
+}
+
+int resident_container_update_metadata_blob(uint8_t slot, const uint8_t *metadata, size_t metadata_size) {
+    if ((!metadata && metadata_size > 0) || metadata_size == 0 || metadata_size > UINT32_MAX) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    file_object_container_write_t write = {
+        .object_type = FIDO_RESIDENT_OBJECT_METADATA,
+        .data = CONST_BYTE_ARRAY(metadata, metadata_size),
         .policy_id = FIDO_RESIDENT_POLICY_ID,
         .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
         .flags = FILE_OBJECT_FLAG_MUTABLE
@@ -407,6 +428,20 @@ int resident_container_update_credential(uint8_t slot, const uint8_t *credential
     file_object_container_write_t write = {
         .object_type = FIDO_RESIDENT_OBJECT_CREDENTIAL,
         .data = CONST_BYTE_ARRAY(credential, credential_size),
+        .policy_id = FIDO_RESIDENT_POLICY_ID,
+        .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
+        .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE
+    };
+    return resident_container_update(slot, &write, 1);
+}
+
+int resident_container_update_private_key(uint8_t slot, const uint8_t *private_key, size_t private_key_size) {
+    if ((!private_key && private_key_size > 0) || private_key_size > UINT32_MAX) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    file_object_container_write_t write = {
+        .object_type = FIDO_RESIDENT_OBJECT_PRIVATE_KEY,
+        .data = CONST_BYTE_ARRAY(private_key, private_key_size),
         .policy_id = FIDO_RESIDENT_POLICY_ID,
         .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
         .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE
