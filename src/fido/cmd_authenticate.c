@@ -34,6 +34,12 @@ int cmd_authenticate(void) {
     if (req->keyHandleLen < KEY_HANDLE_LEN) {
         return SW_INCORRECT_PARAMS();
     }
+    if (P1(apdu) != CTAP_AUTH_ENFORCE && P1(apdu) != CTAP_AUTH_CHECK_ONLY) {
+        return SW_INCORRECT_P1P2();
+    }
+    if ((get_opts() & FIDO2_OPT_AUV) || (file_has_data(ef_pin) && !keydev_unlocked)) {
+        return SW_CONDITIONS_NOT_SATISFIED();
+    }
     if (P1(apdu) == CTAP_AUTH_ENFORCE && wait_button_pressed() > 0) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
