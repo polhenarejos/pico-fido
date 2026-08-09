@@ -445,6 +445,20 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 if (credential_resident_matches_id(ef_cred, excludeList[e].id.data, excludeList[e].id.len)) {
                     if (credential_load_resident(ef_cred, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || (flags & FIDO2_AUT_FLAG_UV))) {
                         credential_free(&ecred);
+                        if (options.up == ptrue || options.present == false || options.up == NULL) {
+                            if (pinUvAuthParam.present == true) {
+                                if (getUserPresentFlagValue() == false && check_user_presence() == false) {
+                                    CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                                }
+                            }
+                            else if (!(flags & FIDO2_AUT_FLAG_UP) && check_user_presence() == false) {
+                                CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                            }
+                            flags |= FIDO2_AUT_FLAG_UP;
+                            clearUserPresentFlag();
+                            clearUserVerifiedFlag();
+                            clearPinUvAuthTokenPermissionsExceptLbw();
+                        }
                         CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
                     }
                 }
@@ -453,6 +467,20 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         else {
             if (credential_load(excludeList[e].id.data, excludeList[e].id.len, rp_id_hash, &ecred) == 0 && (ecred.extensions.credProtect != CRED_PROT_UV_REQUIRED || (flags & FIDO2_AUT_FLAG_UV))) {
                 credential_free(&ecred);
+                if (options.up == ptrue || options.present == false || options.up == NULL) {
+                    if (pinUvAuthParam.present == true) {
+                        if (getUserPresentFlagValue() == false && check_user_presence() == false) {
+                            CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                        }
+                    }
+                    else if (!(flags & FIDO2_AUT_FLAG_UP) && check_user_presence() == false) {
+                        CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                    }
+                    flags |= FIDO2_AUT_FLAG_UP;
+                    clearUserPresentFlag();
+                    clearUserVerifiedFlag();
+                    clearPinUvAuthTokenPermissionsExceptLbw();
+                }
                 CBOR_ERROR(CTAP2_ERR_CREDENTIAL_EXCLUDED);
             }
         }
@@ -475,11 +503,9 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
         }
         flags |= FIDO2_AUT_FLAG_UP;
-        if (options.up == ptrue) {
-            clearUserPresentFlag();
-            clearUserVerifiedFlag();
-            clearPinUvAuthTokenPermissionsExceptLbw();
-        }
+        clearUserPresentFlag();
+        clearUserVerifiedFlag();
+        clearPinUvAuthTokenPermissionsExceptLbw();
     }
 
     const known_app_t *ka = find_app_by_rp_id_hash(rp_id_hash);
