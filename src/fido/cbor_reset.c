@@ -36,8 +36,12 @@ int cbor_reset(void) {
         return CTAP2_ERR_NOT_ALLOWED;
     }
 #endif
-    if (wait_button_pressed() > 0) {
+    int ret = wait_button_pressed();
+    if (ret == 1) {
         return CTAP2_ERR_USER_ACTION_TIMEOUT;
+    }
+    else if (ret == 2) {
+        return CTAP2_ERR_OPERATION_DENIED;
     }
 #endif
     file_initialize_flash(true);
