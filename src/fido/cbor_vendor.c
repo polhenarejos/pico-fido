@@ -34,8 +34,15 @@ extern bool has_keydev_dec;
 
 mse_t mse = { .init = false };
 
+static void mse_clear(void) {
+    mbedtls_platform_zeroize(mse.Qpt, sizeof(mse.Qpt));
+    mbedtls_platform_zeroize(mse.key_enc, sizeof(mse.key_enc));
+    mse.init = false;
+}
+
 int mse_decrypt_ct(uint8_t *data, size_t len) {
     if (data == NULL || len < 16) {
+        mse_clear();
         return -1;
     }
     mbedtls_chachapoly_context chatx;
@@ -43,6 +50,7 @@ int mse_decrypt_ct(uint8_t *data, size_t len) {
     mbedtls_chachapoly_setkey(&chatx, mse.key_enc + 12);
     int ret = mbedtls_chachapoly_auth_decrypt(&chatx, len - 16, mse.key_enc, mse.Qpt, 65, data + len - 16, data, data);
     mbedtls_chachapoly_free(&chatx);
+    mse_clear();
     return ret;
 }
 
@@ -132,6 +140,10 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     }
     else if (cmd == CTAP_VENDOR_MSE) {
         if (vendorCmd == 0x01) { // KeyAgreement
+            if (mse.init) {
+                mse_clear();
+                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
             if (kax.present == false || kay.present == false || alg == 0) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
             }
