@@ -1322,7 +1322,7 @@ static int cmd_verify_hotp(void) {
         oath_credential_close(&credential);
         return SW_INCORRECT_PARAMS();
     }
-    if (tlv_find_tag(&ctxe, TAG_PROPERTY, &prop) == true && prop.len > 0 && (prop.data[0] & PROP_TOUCH)) {
+    if (tlv_find_tag(&ctxe, TAG_PROPERTY, &prop) == true && prop.len > 0 && (prop.data[0] & PROP_TOUCH) && !check_user_presence()) {
         mbedtls_platform_zeroize(plain_key, plain_key_len);
         free(plain_key);
         oath_credential_close(&credential);
