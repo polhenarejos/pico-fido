@@ -311,6 +311,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
 
         bool silent = (up == false && uv == false);
 
+        if (options.up == pfalse && extensions.hmac_secret == ptrue) {
+            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+        }
+
         if (allowList_len > 0) {
             for (size_t e = 0; e < allowList_len; e++) {
                 if (allowList[e].type.present == false || allowList[e].id.present == false) {
@@ -441,6 +445,20 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
             }
             if (numberOfCredentials == 0) {
+                if (options.up == ptrue || options.present == false || options.up == NULL) {
+                    if (pinUvAuthParam.present == true) {
+                        if (getUserPresentFlagValue() == false && check_user_presence() == false) {
+                            CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                        }
+                    }
+                    else if (!(flags & FIDO2_AUT_FLAG_UP) && check_user_presence() == false) {
+                        CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
+                    }
+                    flags |= FIDO2_AUT_FLAG_UP;
+                    clearUserPresentFlag();
+                    clearUserVerifiedFlag();
+                    clearPinUvAuthTokenPermissionsExceptLbw();
+                }
                 CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
             }
         }

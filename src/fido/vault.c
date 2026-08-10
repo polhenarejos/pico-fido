@@ -232,18 +232,6 @@ static int vault_certificate_x448_public(mbedtls_x509_crt *certificate, uint8_t 
     return ret == 0 && public_len == VAULT_X448_BYTES ? PICOKEYS_OK : PICOKEYS_WRONG_DATA;
 }
 
-int mse_decrypt_ct(uint8_t *data, size_t len) {
-    if (data == NULL || len < 16) {
-        return PICOKEYS_ERR_NULL_PARAM;
-    }
-    mbedtls_chachapoly_context chatx;
-    mbedtls_chachapoly_init(&chatx);
-    mbedtls_chachapoly_setkey(&chatx, mse.key_enc + 12);
-    int ret = mbedtls_chachapoly_auth_decrypt(&chatx, len - 16, mse.key_enc, mse.Qpt, 65, data + len - 16, data, data);
-    mbedtls_chachapoly_free(&chatx);
-    return ret == 0 ? PICOKEYS_OK : PICOKEYS_VERIFICATION_FAILED;
-}
-
 int vault_hash_key(const uint8_t key[VAULT_KEY_BYTES], uint8_t digest[VAULT_ID_BYTES]) {
     uint8_t input[sizeof(vault_id_domain) - 1 + VAULT_KEY_BYTES];
     memcpy(input, vault_id_domain, sizeof(vault_id_domain) - 1);

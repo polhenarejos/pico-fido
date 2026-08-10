@@ -93,6 +93,8 @@ extern int ecdh(uint8_t protocol, const mbedtls_ecp_point *Q, uint8_t *sharedSec
 #ifndef MAX_PIN_RETRIES
 #define MAX_PIN_RETRIES 8
 #endif
+#define PIN_RETRY_COUNT_MASK 0x7f // Retry counts are limited to 0..MAX_PIN_RETRIES.
+#define PIN_RETRY_POWER_CYCLE 0x80 // Persistent soft-lock marker in the existing PIN EF.
 extern bool getUserPresentFlagValue(void);
 extern bool getUserVerifiedFlagValue(void);
 extern void clearUserPresentFlag(void);
