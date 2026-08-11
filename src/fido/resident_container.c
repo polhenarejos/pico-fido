@@ -363,6 +363,62 @@ int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_
     return resident_container_update(slot, writes, sizeof(writes) / sizeof(writes[0]));
 }
 
+int resident_container_create_imported(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_LEN], const uint8_t *client_id, size_t client_id_size, const uint8_t *credential, size_t credential_size, const uint8_t *public_key, size_t public_key_size, const uint8_t *private_key, size_t private_key_size, const uint8_t *metadata, size_t metadata_size) {
+    if (!rp_id_hash || !client_id || !credential || !public_key || !private_key || !metadata || client_id_size == 0 || credential_size == 0 || public_key_size == 0 || private_key_size == 0 || metadata_size == 0 || client_id_size > UINT32_MAX || credential_size > UINT32_MAX || public_key_size > UINT32_MAX || private_key_size > UINT32_MAX || metadata_size > UINT32_MAX) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    const uint8_t state[] = { FIDO_RESIDENT_STATUS_ACTIVE, FIDO_RESIDENT_PROPERTY_IMPORTED, 0, 0, 0, 0 };
+    file_object_container_write_t writes[] = {
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_RP_ID_HASH,
+            .data = CONST_BYTE_ARRAY(rp_id_hash, RP_ID_HASH_LEN),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_CLIENT_ID,
+            .data = CONST_BYTE_ARRAY(client_id, client_id_size),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_CREDENTIAL,
+            .data = CONST_BYTE_ARRAY(credential, credential_size),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
+            .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_PUBLIC_KEY,
+            .data = CONST_BYTE_ARRAY(public_key, public_key_size),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_METADATA,
+            .data = CONST_BYTE_ARRAY(metadata, metadata_size),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
+            .flags = FILE_OBJECT_FLAG_MUTABLE
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_PRIVATE_KEY,
+            .data = CONST_BYTE_ARRAY(private_key, private_key_size),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AEAD_SECRET,
+            .flags = FILE_OBJECT_FLAG_MUTABLE | FILE_OBJECT_FLAG_NON_EXPORTABLE
+        },
+        {
+            .object_type = FIDO_RESIDENT_OBJECT_STATE,
+            .data = CONST_BYTE_ARRAY(state, sizeof(state)),
+            .policy_id = FIDO_RESIDENT_POLICY_ID,
+            .protection = FILE_OBJECT_PROTECTION_AUTHENTICATED_PUBLIC,
+            .flags = FILE_OBJECT_FLAG_MUTABLE
+        }
+    };
+    return resident_container_update(slot, writes, sizeof(writes) / sizeof(writes[0]));
+}
+
 int resident_container_object_size(uint8_t slot, uint16_t object_type, uint32_t *object_size) {
     if (!object_size || !resident_object_type_valid(object_type)) {
         return PICOKEYS_ERR_NULL_PARAM;

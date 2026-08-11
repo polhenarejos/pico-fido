@@ -42,6 +42,7 @@ typedef struct CredExtensions {
 
 typedef struct Credential {
     CborCharString rpId;
+    CborByteString rpIdHash;
     CborByteString userId;
     CborCharString userName;
     CborCharString userDisplayName;
@@ -58,6 +59,20 @@ typedef struct Credential {
     bool present;
     uint64_t rtc_creation;
 } Credential;
+
+typedef struct credential_import_record {
+    const uint8_t *credential_id;
+    size_t credential_id_len;
+    const uint8_t *private_key;
+    size_t private_key_len;
+    const uint8_t *rp_id;
+    size_t rp_id_len;
+    const uint8_t *metadata;
+    size_t metadata_len;
+    const uint8_t *requested_id;
+    size_t requested_id_len;
+    const uint8_t *credential_hash;
+} credential_import_record_t;
 
 typedef struct CredentialRp {
     uint8_t id_hash[RP_ID_HASH_LEN];
@@ -95,6 +110,7 @@ typedef struct CredentialRp {
 #define CRED_RESIDENT_SILENT_VERSION_OFFSET CRED_RESIDENT_LEN
 #define CRED_RESIDENT_SILENT_TAG_OFFSET     (CRED_RESIDENT_SILENT_VERSION_OFFSET + 1u)
 #define CRED_RESIDENT_RECORD_LEN            (CRED_RESIDENT_SILENT_TAG_OFFSET + CRED_SILENT_TAG_LEN)
+#define CREDENTIAL_PRIVATE_KEY_MAX          80u
 
 typedef enum
 {
@@ -117,7 +133,7 @@ extern int credential_create(CborCharString *rpId,
                              uint16_t *cred_id_len);
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, const uint8_t *public_key, size_t public_key_len);
-extern int credential_import(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, const uint8_t *metadata, size_t metadata_len, const uint8_t *private_key, size_t private_key_len);
+extern int credential_import(const credential_import_record_t *record);
 extern int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred);
 extern int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
 extern int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);

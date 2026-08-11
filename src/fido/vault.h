@@ -13,8 +13,6 @@
 #include "serial.h"
 
 #define VAULT_X448_BYTES       56
-#define VAULT_CHANNEL_KEY_BYTES 32
-#define VAULT_CHANNEL_INFO "pico-fido-vault-v1"
 #define VAULT_CREDENTIAL_METADATA_MAX 512
 #define VAULT_KEY_BYTES 32
 #define VAULT_ID_BYTES 32
@@ -46,8 +44,6 @@ extern uint8_t vault_enroll_public[VAULT_X448_BYTES];
 extern uint8_t vault_enroll_challenge[VAULT_ENROLL_CHALLENGE_BYTES];
 extern bool vault_enroll_active;
 extern bool vault_enrollment_button_accepted;
-extern uint8_t vault_channel_key[VAULT_CHANNEL_KEY_BYTES];
-extern bool vault_channel_init;
 
 int vault_pin_auth(uint8_t protocol, const CborByteString *auth, const uint8_t *raw_params, size_t raw_params_len, uint64_t subcommand);
 int vault_x448_generate(uint8_t private_key[VAULT_X448_BYTES], uint8_t public_key[VAULT_X448_BYTES]);
@@ -64,6 +60,6 @@ int vault_enrollment_finish(const uint8_t *packet, size_t packet_len);
 int vault_export_blob(const uint8_t *requested_id, size_t requested_id_len, uint8_t algorithm, uint8_t *blob, size_t blob_capacity, size_t *blob_len, uint8_t *metadata, size_t metadata_capacity, size_t *metadata_len);
 int vault_import_blob(const uint8_t *blob, size_t blob_len);
 int vault_encode_credential_metadata(const Credential *credential, const uint8_t rp_id_hash[RP_ID_HASH_LEN], uint8_t *buffer, size_t buffer_len, size_t *metadata_len);
-CborError vault_vendor_command(uint64_t vendorCmd, CborByteString vendorParam, CborByteString pinUvAuthParam, uint64_t pinUvAuthProtocol, const uint8_t *raw_vendor_params, size_t raw_vendor_params_len, uint64_t vault_algorithm, bool vault_algorithm_present, CborByteString *requested_id, CborEncoder encoder, size_t *resp_size, bool *response_handled, int *ctap_error);
+CborError vault_vendor_command(uint64_t vendorCmd, CborByteString vendorParam, CborByteString pinUvAuthParam, uint64_t pinUvAuthProtocol, const uint8_t *raw_vendor_params, size_t raw_vendor_params_len, uint64_t vault_algorithm, bool vault_algorithm_present, CborEncoder encoder, size_t *resp_size, bool *response_handled, int *ctap_error);
 
 #endif

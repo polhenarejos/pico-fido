@@ -70,7 +70,7 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
-    CborByteString pinUvAuthParam = { 0 }, vendorParam = { 0 }, kax = { 0 }, kay = { 0 }, requested_id = { 0 };
+    CborByteString pinUvAuthParam = { 0 }, vendorParam = { 0 }, kax = { 0 }, kay = { 0 };
     size_t resp_size = 0;
     uint64_t vendorCmd = 0, pinUvAuthProtocol = 0;
     uint64_t vault_algorithm = 0;
@@ -289,7 +289,7 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     }
     else if (cmd == CTAP_VENDOR_VAULT) {
         int vault_ctap_error = 0;
-        CborError vault_error = vault_vendor_command(vendorCmd, vendorParam, pinUvAuthParam, pinUvAuthProtocol, raw_vendor_params, raw_vendor_params_len, vault_algorithm, vault_algorithm_present, &requested_id, encoder, &resp_size, &vault_response_handled, &vault_ctap_error);
+        CborError vault_error = vault_vendor_command(vendorCmd, vendorParam, pinUvAuthParam, pinUvAuthProtocol, raw_vendor_params, raw_vendor_params_len, vault_algorithm, vault_algorithm_present, encoder, &resp_size, &vault_response_handled, &vault_ctap_error);
         if (vault_ctap_error != 0) {
             CBOR_ERROR(vault_ctap_error);
         }
@@ -307,7 +307,6 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
     }
     printf("CBOR vendor response size: %zu\n", resp_size);
 err:
-    CBOR_FREE_BYTE_STRING(requested_id);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(vendorParam);
 

@@ -557,6 +557,7 @@ err:
 void credential_free(Credential *cred) {
     if (cred) {
         CBOR_FREE_BYTE_STRING(cred->rpId);
+        CBOR_FREE_BYTE_STRING(cred->rpIdHash);
         CBOR_FREE_BYTE_STRING(cred->userId);
         CBOR_FREE_BYTE_STRING(cred->userName);
         CBOR_FREE_BYTE_STRING(cred->userDisplayName);
@@ -586,11 +587,21 @@ static int credential_parse_metadata(const uint8_t *data, size_t data_len, Crede
     cred->curve = FIDO2_CURVE_P256;
     cred->alg = FIDO2_ALG_ES256;
     CBOR_CHECK(cbor_parser_init(data, data_len, 0, &parser, &map));
+    uint16_t seen = 0;
     CBOR_PARSE_MAP_START(map, 1)
     {
         uint64_t val_u = 0;
         CBOR_FIELD_GET_UINT(val_u, 1);
+        if (val_u >= 1 && val_u <= 13) {
+            uint16_t field = (uint16_t)(1u << (val_u - 1u));
+            if ((seen & field) != 0) {
+                error = CborErrorImproperValue;
+                goto err;
+            }
+            seen |= field;
+        }
         if (val_u == 0x01) { CBOR_FIELD_GET_TEXT(cred->rpId, 1); }
+        else if (val_u == 0x02) { CBOR_FIELD_GET_BYTES(cred->rpIdHash, 1); }
         else if (val_u == 0x03) { CBOR_FIELD_GET_BYTES(cred->userId, 1); }
         else if (val_u == 0x04) { CBOR_FIELD_GET_TEXT(cred->userName, 1); }
         else if (val_u == 0x05) { CBOR_FIELD_GET_TEXT(cred->userDisplayName, 1); }
@@ -627,6 +638,10 @@ static int credential_parse_metadata(const uint8_t *data, size_t data_len, Crede
         else { CBOR_ADVANCE(1); }
     }
     CBOR_PARSE_MAP_END(map, 1);
+    if (!cbor_value_at_end(&map)) {
+        error = CborErrorImproperValue;
+        goto err;
+    }
     cred->present = true;
 err:
     if (error != CborNoError) {
@@ -723,32 +738,78 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     return 0;
 }
 
-int credential_import(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, const uint8_t *metadata, size_t metadata_len, const uint8_t *private_key, size_t private_key_len) {
-    if (!cred_id || !rp_id_hash || !metadata || !private_key || cred_id_len == 0 || cred_id_len > MAX_CRED_ID_LENGTH || private_key_len == 0) {
+static bool credential_algorithm_matches_curve(int64_t algorithm, int64_t curve) {
+    if (curve == FIDO2_CURVE_P256) {
+        return algorithm == FIDO2_ALG_ES256 || algorithm == FIDO2_ALG_ESP256;
+    }
+    if (curve == FIDO2_CURVE_P384) {
+        return algorithm == FIDO2_ALG_ES384 || algorithm == FIDO2_ALG_ESP384;
+    }
+    if (curve == FIDO2_CURVE_P521) {
+        return algorithm == FIDO2_ALG_ES512 || algorithm == FIDO2_ALG_ESP512;
+    }
+    if (curve == FIDO2_CURVE_P256K1) {
+        return algorithm == FIDO2_ALG_ES256K;
+    }
+    if (curve == FIDO2_CURVE_BP256R1) {
+        return algorithm == FIDO2_ALG_ESB256;
+    }
+    if (curve == FIDO2_CURVE_BP384R1) {
+        return algorithm == FIDO2_ALG_ESB384;
+    }
+    if (curve == FIDO2_CURVE_BP512R1) {
+        return algorithm == FIDO2_ALG_ESB512;
+    }
+    if (curve == FIDO2_CURVE_ED25519) {
+        return algorithm == FIDO2_ALG_EDDSA || algorithm == FIDO2_ALG_ED25519;
+    }
+    if (curve == FIDO2_CURVE_ED448) {
+        return algorithm == FIDO2_ALG_ED448;
+    }
+    if (curve == FIDO2_CURVE_X25519) {
+        return algorithm == FIDO2_ALG_ECDH_ES_HKDF_256;
+    }
+    return false;
+}
+
+int credential_import(const credential_import_record_t *record) {
+    if (!record || !record->credential_id || !record->private_key || !record->rp_id || !record->metadata || !record->requested_id || !record->credential_hash || record->credential_id_len == 0 || record->credential_id_len > MAX_CRED_ID_LENGTH || record->private_key_len == 0 || record->private_key_len > CREDENTIAL_PRIVATE_KEY_MAX || record->rp_id_len == 0 || record->metadata_len == 0 || record->requested_id_len == 0 || record->requested_id_len > MAX_CRED_ID_LENGTH) {
         return PICOKEYS_ERR_NULL_PARAM;
     }
     Credential parsed = {0};
-    int ret = credential_parse_metadata(metadata, metadata_len, &parsed);
+    int ret = credential_parse_metadata(record->metadata, record->metadata_len, &parsed);
     mbedtls_ecp_group_id curve = fido_curve_to_mbedtls((int)parsed.curve);
-    if (ret != PICOKEYS_OK || curve == MBEDTLS_ECP_DP_NONE) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
+    uint8_t credential_hash[RP_ID_HASH_LEN] = {0};
+    if (ret != PICOKEYS_OK || !parsed.rpId.present || !parsed.rpIdHash.present || parsed.rpIdHash.len != RP_ID_HASH_LEN || parsed.rpId.len != record->rp_id_len || mbedtls_ct_memcmp(parsed.rpId.data, record->rp_id, record->rp_id_len) != 0 || !credential_algorithm_matches_curve(parsed.alg, parsed.curve) || curve == MBEDTLS_ECP_DP_NONE) {
+        credential_free(&parsed);
+        return PICOKEYS_WRONG_DATA;
+    }
+    if (mbedtls_sha256(record->rp_id, record->rp_id_len, rp_id_hash, 0) != 0 || mbedtls_sha256(record->requested_id, record->requested_id_len, credential_hash, 0) != 0 || mbedtls_ct_memcmp(parsed.rpIdHash.data, rp_id_hash, sizeof(rp_id_hash)) != 0 || mbedtls_ct_memcmp(record->credential_hash, credential_hash, sizeof(credential_hash)) != 0) {
         credential_free(&parsed);
         return PICOKEYS_WRONG_DATA;
     }
     mbedtls_ecp_keypair key;
     mbedtls_ecp_keypair_init(&key);
-    ret = mbedtls_ecp_read_key(curve, &key, private_key, private_key_len);
-    if (ret == 0) ret = mbedtls_ecp_keypair_calc_public(&key, random_fill_iterator, NULL);
+    ret = mbedtls_ecp_read_key(curve, &key, record->private_key, record->private_key_len);
+    if (ret == 0) {
+        ret = mbedtls_ecp_keypair_calc_public(&key, random_fill_iterator, NULL);
+    }
     uint8_t public_key[192] = {0};
     CborEncoder encoder, cose;
     CborError error = CborNoError;
+    size_t public_key_len = 0;
     if (ret == 0) {
         cbor_encoder_init(&encoder, public_key, sizeof(public_key), 0);
         error = COSE_key(&key, &encoder, &cose);
+        public_key_len = cbor_encoder_get_buffer_size(&encoder, public_key);
     }
-    size_t public_key_len = cbor_encoder_get_buffer_size(&encoder, public_key);
+    if (ret == 0 && error != CborNoError) {
+        ret = PICOKEYS_EXEC_ERROR;
+    }
     uint8_t client_id[CRED_RESIDENT_LEN] = {0};
     if (ret == 0 && error == CborNoError) {
-        ret = credential_derive_resident(cred_id, cred_id_len, client_id);
+        ret = credential_derive_resident(record->credential_id, record->credential_id_len, client_id);
     }
     int slot = -1;
     if (ret == 0) {
@@ -758,27 +819,21 @@ int credential_import(const uint8_t *cred_id, size_t cred_id_len, const uint8_t 
                 break;
             }
         }
-        if (slot < 0) ret = PICOKEYS_ERR_MEMORY_FATAL;
+        if (slot < 0) {
+            ret = PICOKEYS_ERR_MEMORY_FATAL;
+        }
     }
     if (ret == PICOKEYS_OK) {
-        ret = resident_container_create((uint8_t)slot, rp_id_hash, client_id, sizeof(client_id), cred_id, cred_id_len, public_key, public_key_len);
-    }
-    if (ret == PICOKEYS_OK) {
-        ret = resident_container_update_private_key((uint8_t)slot, private_key, private_key_len);
-    }
-    if (ret == PICOKEYS_OK) {
-        ret = resident_container_update_metadata_blob((uint8_t)slot, metadata, metadata_len);
-    }
-    if (ret == PICOKEYS_OK) {
-        fido_resident_metadata_t resident_metadata = { .status = FIDO_RESIDENT_STATUS_ACTIVE, .properties = FIDO_RESIDENT_PROPERTY_IMPORTED, .expiration = 0 };
-        ret = resident_container_update_metadata((uint8_t)slot, &resident_metadata);
+        ret = resident_container_create_imported((uint8_t)slot, rp_id_hash, client_id, sizeof(client_id), record->credential_id, record->credential_id_len, public_key, public_key_len, record->private_key, record->private_key_len, record->metadata, record->metadata_len);
     }
     if (ret == PICOKEYS_OK) {
         dev_state_update(DEV_STATE_CRED_STATE);
         flash_commit();
     }
-    if (ret != PICOKEYS_OK && slot >= 0) resident_container_delete((uint8_t)slot);
     mbedtls_platform_zeroize(public_key, sizeof(public_key));
+    mbedtls_platform_zeroize(client_id, sizeof(client_id));
+    mbedtls_platform_zeroize(rp_id_hash, sizeof(rp_id_hash));
+    mbedtls_platform_zeroize(credential_hash, sizeof(credential_hash));
     mbedtls_ecp_keypair_free(&key);
     credential_free(&parsed);
     return ret == 0 ? PICOKEYS_OK : ret;
