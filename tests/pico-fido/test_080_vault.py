@@ -323,11 +323,12 @@ def test_live_export_import_roundtrip(request):
     ctap2 = Ctap2(device.dev)
     credential_management = CredentialManagement(ctap2, pin[0], pin[1])
     descriptor = {"id": credential_id, "type": "public-key"}
-    credential_management.delete_cred(descriptor)
-    code, _ = _vendor_call(device, 0x09, {1: blobs[1]}, pin)
-    assert code == 0
-    credentials = credential_management.enumerate_creds(hashlib.sha256(rp_id.encode()).digest())
-    assert any((entry.get(CredentialManagement.RESULT.CREDENTIAL_ID) or {}).get("id") == credential_id for entry in credentials)
+    for algorithm in sorted(ALGORITHMS):
+        credential_management.delete_cred(descriptor)
+        code, _ = _vendor_call(device, 0x09, {1: blobs[algorithm]}, pin)
+        assert code == 0
+        credentials = credential_management.enumerate_creds(hashlib.sha256(rp_id.encode()).digest())
+        assert any((entry.get(CredentialManagement.RESULT.CREDENTIAL_ID) or {}).get("id") == credential_id for entry in credentials)
     credential_management.delete_cred(descriptor)
 
 
