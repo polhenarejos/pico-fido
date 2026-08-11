@@ -262,7 +262,7 @@ static void test_create_update_reboot_delete(void) {
     assert(resident_container_can_create(TEST_SLOT));
     assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
     assert(resident_container_is_marker(file_search((uint16_t)(EF_CRED + TEST_SLOT))));
-    assert(test_allocated_files() == 7);
+    assert(test_allocated_files() == 8);
     test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
     test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
     test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
@@ -285,7 +285,7 @@ static void test_create_update_reboot_delete(void) {
     assert(!test_contains(file_get_data(secret_record), file_get_size(secret_record), credential, sizeof(credential)));
 
     assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);
-    assert(test_allocated_files() == 7);
+    assert(test_allocated_files() == 8);
     test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
     test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
     metadata = (fido_resident_metadata_t) {
@@ -516,6 +516,41 @@ static void test_power_loss_create_event(size_t failed_event) {
     test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
 }
 
+static void test_power_loss_imported_create_event(size_t failed_event) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0x91 };
+    uint8_t client_id[42] = { 0x92 };
+    static const uint8_t credential[] = { 0x93, 0x94 };
+    static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
+    static const uint8_t private_key[] = { 0x95, 0x96, 0x97 };
+    static const uint8_t metadata[] = { 0xa0 };
+
+    test_reset();
+    if (setjmp(power_loss_env) == 0) {
+        power_loss_event = 0;
+        power_loss_at = failed_event;
+        power_loss_armed = true;
+        (void)resident_container_create_imported(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key), private_key, sizeof(private_key), metadata, sizeof(metadata));
+        assert(false);
+    }
+    test_reboot();
+
+    if (resident_container_is_marker(file_search((uint16_t)(EF_CRED + TEST_SLOT)))) {
+        test_read_object(FIDO_RESIDENT_OBJECT_RP_ID_HASH, rp_id_hash, sizeof(rp_id_hash));
+        test_read_object(FIDO_RESIDENT_OBJECT_CLIENT_ID, client_id, sizeof(client_id));
+        test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
+        test_read_object(FIDO_RESIDENT_OBJECT_PUBLIC_KEY, public_key, sizeof(public_key));
+        test_read_object(FIDO_RESIDENT_OBJECT_PRIVATE_KEY, private_key, sizeof(private_key));
+        test_read_object(FIDO_RESIDENT_OBJECT_METADATA, metadata, sizeof(metadata));
+        fido_resident_metadata_t state;
+        assert(resident_container_read_metadata(TEST_SLOT, &state) == PICOKEYS_OK);
+        assert(state.status == FIDO_RESIDENT_STATUS_ACTIVE);
+        assert(state.properties == FIDO_RESIDENT_PROPERTY_IMPORTED);
+    }
+    else {
+        assert(resident_container_can_create(TEST_SLOT));
+    }
+}
+
 static void test_power_loss_update_event(size_t failed_event) {
     uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0xb1 };
     uint8_t client_id[42] = { 0xb2 };
@@ -572,6 +607,22 @@ static void test_power_loss_boundaries(void) {
     size_t create_events = power_loss_event;
     assert(create_events > 0);
 
+    test_reset();
+    static const uint8_t private_key[] = { 0xf1 };
+    static const uint8_t metadata[] = { 0xa0 };
+    assert(resident_container_create_imported(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key), private_key, sizeof(private_key), metadata, sizeof(metadata)) == PICOKEYS_OK);
+    size_t imported_create_events = power_loss_event;
+    assert(imported_create_events > 0);
+    assert(test_allocated_files() == 9);
+    test_read_object(FIDO_RESIDENT_OBJECT_PRIVATE_KEY, private_key, sizeof(private_key));
+    test_read_object(FIDO_RESIDENT_OBJECT_METADATA, metadata, sizeof(metadata));
+    fido_resident_metadata_t state;
+    assert(resident_container_read_metadata(TEST_SLOT, &state) == PICOKEYS_OK);
+    assert(state.status == FIDO_RESIDENT_STATUS_ACTIVE);
+    assert(state.properties == FIDO_RESIDENT_PROPERTY_IMPORTED);
+
+    test_reset();
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
     power_loss_event = 0;
     assert(resident_container_update_credential(TEST_SLOT, replacement, sizeof(replacement)) == PICOKEYS_OK);
     size_t update_events = power_loss_event;
@@ -584,6 +635,9 @@ static void test_power_loss_boundaries(void) {
 
     for (size_t failed_event = 1; failed_event <= create_events; failed_event++) {
         test_power_loss_create_event(failed_event);
+    }
+    for (size_t failed_event = 1; failed_event <= imported_create_events; failed_event++) {
+        test_power_loss_imported_create_event(failed_event);
     }
     for (size_t failed_event = 1; failed_event <= update_events; failed_event++) {
         test_power_loss_update_event(failed_event);
