@@ -31,6 +31,12 @@ HEADER_LEN = ALGORITHM_OFFSET + 1
 NONCE_BYTES = 12
 LABEL_MAX = 64
 ALGORITHMS = {1: "chachapoly", 2: "aesgcm", 3: "chachapoly+aesgcm", 4: "aesgcm+chachapoly"}
+VAULT_STATUS = 0x01
+VAULT_ENROLL_BEGIN = 0x02
+VAULT_ENROLL_FINISH = 0x03
+VAULT_EXPORT = 0x04
+VAULT_IMPORT = 0x05
+VAULT_UNENROLL = 0x06
 
 
 def _vault_id(kvault):
@@ -96,7 +102,9 @@ def _export_blob(kvault, credential_id, algorithm, serial=b"0123456789ABCDEF"):
     vault_id = _vault_id(kvault)
     credential_hash = hashlib.sha256(credential_id).digest()
     header = VAULT_MAGIC + vault_id + credential_hash + bytes([len(serial)]) + serial.ljust(SERIAL_MAX, b"\0") + bytes([algorithm])
-    plain = cbor.encode({1: credential_id, 2: b"private-key", 3: "example.com", 4: b"metadata"})
+    rp_id = "example.com"
+    metadata = cbor.encode({1: rp_id, 2: hashlib.sha256(rp_id.encode()).digest(), 6: 0, 8: False})
+    plain = cbor.encode({1: 1, 2: credential_id, 3: (1).to_bytes(32, "big"), 4: rp_id, 5: metadata, 6: credential_id})
     layers = 2 if algorithm >= 3 else 1
     nonces = b"".join(bytes([algorithm, layer]) + b"\0" * (NONCE_BYTES - 2) for layer in range(layers))
     encrypted = plain
@@ -219,7 +227,13 @@ def test_export_import_roundtrip_for_every_algorithm(algorithm):
     assert blob[ALGORITHM_OFFSET] == algorithm
     assert blob[SERIAL_LEN_OFFSET] == SERIAL_MAX
     assert blob[SERIAL_OFFSET:SERIAL_OFFSET + SERIAL_MAX] == b"0123456789ABCDEF"
-    assert _import_blob(kvault, blob)[1] == credential_id
+    plain = _import_blob(kvault, blob)
+    assert plain[1] == 1
+    assert plain[2] == credential_id
+    assert hashlib.sha256(plain[6]).digest() == blob[4 + VAULT_ID_BYTES:4 + 2 * VAULT_ID_BYTES]
+    metadata = cbor.decode(plain[5])
+    assert metadata[1] == plain[4]
+    assert metadata[2] == hashlib.sha256(plain[4].encode()).digest()
 
 
 def test_blob_header_is_authenticated():
@@ -258,20 +272,17 @@ def test_blob_algorithm_is_bounded():
         _export_blob(bytes(32), b"credential-id", 0)
 
 
-def test_live_vault_status_and_certificate_contract(request):
+def test_live_vault_status_contract(request):
     device = _live_device(request)
-    code, status = _vendor_call(device, 0x05)
+    code, status = _vendor_call(device, VAULT_STATUS)
     assert code == 0
     assert isinstance(status.get(1, b""), bytes)
     assert len(status.get(1, b"")) in (0, VAULT_ID_BYTES)
-    code, certificate = _vendor_call(device, 0x01)
-    assert code == 0
-    assert isinstance(certificate.get(1, b""), bytes)
 
 
 def test_live_vault_commands_require_pin(request):
     device = _live_device(request)
-    for subcommand, params in ((0x06, None), (0x08, {1: b"credential-id"}), (0x09, {1: b"blob"}), (0x0A, None)):
+    for subcommand, params in ((VAULT_ENROLL_BEGIN, None), (VAULT_EXPORT, {1: b"credential-id"}), (VAULT_IMPORT, {1: b"blob"}), (VAULT_UNENROLL, None)):
         code, _ = _vendor_call(device, subcommand, params)
         assert code != 0
 
@@ -279,26 +290,26 @@ def test_live_vault_commands_require_pin(request):
 def test_live_enrollment_begin_is_available_without_hardware_button(request):
     device = _live_device(request)
     pin = _live_pin(device)
-    code, response = _vendor_call(device, 0x06, pin=pin)
+    code, response = _vendor_call(device, VAULT_ENROLL_BEGIN, pin=pin)
     assert code == 0
     assert len(response.get(1, b"")) == 56
     assert len(response.get(2, b"")) == VAULT_ENROLL_CHALLENGE_BYTES
-    code, _ = _vendor_call(device, 0x07, {1: b"\0"}, pin)
+    code, _ = _vendor_call(device, VAULT_ENROLL_FINISH, {1: b"\0"}, pin)
     assert code != 0
 
 
 def test_live_enrollment_finish_rejects_malformed_packet(request):
     device = _live_device(request)
     pin = _live_pin(device)
-    code, _ = _vendor_call(device, 0x06, pin=pin)
+    code, _ = _vendor_call(device, VAULT_ENROLL_BEGIN, pin=pin)
     assert code == 0
-    code, _ = _vendor_call(device, 0x07, {1: b"\0"}, pin)
+    code, _ = _vendor_call(device, VAULT_ENROLL_FINISH, {1: b"\0"}, pin)
     assert code != 0
 
 
-def test_live_certificate_upload_rejects_invalid_certificate(request):
+def test_live_unknown_vault_subcommand_is_rejected(request):
     device = _live_device(request)
-    code, _ = _vendor_call(device, 0x02, {1: b"not-a-certificate"})
+    code, _ = _vendor_call(device, 0x07)
     assert code != 0
 
 
@@ -306,7 +317,7 @@ def test_live_certificate_upload_rejects_invalid_certificate(request):
 def test_live_export_import_roundtrip(request):
     device = _live_device(request)
     pin = _live_pin(device)
-    code, status = _vendor_call(device, 0x05)
+    code, status = _vendor_call(device, VAULT_STATUS)
     assert code == 0
     if len(status.get(1, b"")) != VAULT_ID_BYTES:
         pytest.skip("device is not enrolled")
@@ -315,7 +326,7 @@ def test_live_export_import_roundtrip(request):
     credential_id = result["res"].attestation_object.auth_data.credential_data.credential_id
     blobs = {}
     for algorithm in sorted(ALGORITHMS):
-        code, response = _vendor_call(device, 0x08, {1: credential_id, 3: algorithm}, pin)
+        code, response = _vendor_call(device, VAULT_EXPORT, {1: credential_id, 3: algorithm}, pin)
         assert code == 0
         blob = response[1]
         assert blob[ALGORITHM_OFFSET] == algorithm
@@ -325,7 +336,7 @@ def test_live_export_import_roundtrip(request):
     descriptor = {"id": credential_id, "type": "public-key"}
     for algorithm in sorted(ALGORITHMS):
         credential_management.delete_cred(descriptor)
-        code, _ = _vendor_call(device, 0x09, {1: blobs[algorithm]}, pin)
+        code, _ = _vendor_call(device, VAULT_IMPORT, {1: blobs[algorithm]}, pin)
         assert code == 0
         credentials = credential_management.enumerate_creds(hashlib.sha256(rp_id.encode()).digest())
         assert any((entry.get(CredentialManagement.RESULT.CREDENTIAL_ID) or {}).get("id") == credential_id for entry in credentials)
@@ -338,8 +349,8 @@ def test_live_unenroll_requires_explicit_opt_in(request):
         pytest.skip("set PICO_FIDO_VAULT_DESTRUCTIVE_TESTS=1 to erase the device vault")
     device = _live_device(request)
     pin = _live_pin(device)
-    code, _ = _vendor_call(device, 0x0A, pin=pin)
+    code, _ = _vendor_call(device, VAULT_UNENROLL, pin=pin)
     assert code == 0
-    code, status = _vendor_call(device, 0x05)
+    code, status = _vendor_call(device, VAULT_STATUS)
     assert code == 0
     assert status.get(1, b"") == b""

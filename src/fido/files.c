@@ -23,7 +23,6 @@ file_entry_t file_entries[] = {
     { .fid = EF_KEY_DEV_ENC, .parent = 0, .name = NULL,.type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = ACL_NONE }, // Device Key Enc
     { .fid = EF_EE_DEV,  .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = ACL_NONE }, // End Entity Certificate Device
     { .fid = EF_EE_DEV_EA,  .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = ACL_NONE }, // End Entity Enterprise Attestation Certificate
-    { .fid = EF_VAULT_CERT, .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = ACL_NONE }, // Vault trust certificate
     { .fid = EF_VAULT_KEY, .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = ACL_NONE }, // Vault key protected by the device key
     { .fid = EF_VAULT_LABEL, .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = ACL_NONE }, // Vault label
     { .fid = EF_COUNTER,  .parent = 0, .name = NULL, .type = FILE_TYPE_INTERNAL_EF | FILE_DATA_FLASH, .data = NULL, .ef_structure = FILE_EF_TRANSPARENT, .acl = ACL_NONE }, // Global counter
@@ -50,6 +49,5 @@ file_t *ef_pin_admin = NULL;
 file_t *ef_authtoken = NULL;
 file_t *ef_keydev_enc = NULL;
 file_t *ef_largeblob = NULL;
-file_t *ef_vault_cert = NULL;
 file_t *ef_vault_key = NULL;
 file_t *ef_vault_label = NULL;
