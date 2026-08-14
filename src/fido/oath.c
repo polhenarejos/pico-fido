@@ -82,6 +82,7 @@ static int oath_unload(void);
 static int oath_migrate_secrets(void);
 
 static bool validated = true;
+static bool otp_pin_verified = false;
 static bool oath_migration_done = false;
 static uint8_t challenge[CHALLENGE_LEN] = { 0 };
 static const uint8_t oath_secure_key_magic[] = { 'O', 'A', 'T', 'H' };
@@ -127,6 +128,7 @@ static int oath_select(app_t *a, uint8_t force) {
     (void) force;
     if (cap_supported(CAP_OATH)) {
         validated = !file_has_data(file_search(EF_OATH_CODE)) && !file_has_data(file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF));
+        otp_pin_verified = false;
         int migration_ret = oath_migrate_secrets();
         if (migration_ret != PICOKEYS_OK) {
             return migration_ret;
@@ -176,7 +178,16 @@ INITIALIZER ( oath_ctor ) {
 }
 
 static int oath_unload(void) {
+    validated = false;
+    otp_pin_verified = false;
     return PICOKEYS_OK;
+}
+
+static int oath_require_otp_pin(void) {
+    if (file_has_data(file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF)) && !otp_pin_verified) {
+        return SW_SECURITY_STATUS_NOT_SATISFIED();
+    }
+    return SW_OK();
 }
 
 static bool oath_key_is_secure(const uint8_t *data, size_t len) {
@@ -785,6 +796,7 @@ static int cmd_reset(void) {
     flash_clear_file(file_search_by_fid(EF_OTP_PIN, NULL, SPECIFY_EF));
     flash_commit();
     validated = true;
+    otp_pin_verified = false;
     return SW_OK();
 }
 
@@ -1207,6 +1219,7 @@ static int cmd_set_otp_pin(void) {
         return SW_MEMORY_FAILURE();
     }
     flash_commit();
+    otp_pin_verified = false;
     return SW_OK();
 }
 
@@ -1227,9 +1240,11 @@ static int cmd_change_otp_pin(void) {
     }
     otp_pin_match_result_t match = oath_check_pin(ef_otp_pin, record_len, pw.data, pw.len);
     if (match == OTP_PIN_STORAGE_ERROR) {
+        otp_pin_verified = false;
         return SW_MEMORY_FAILURE();
     }
     if (match != OTP_PIN_MATCH) {
+        otp_pin_verified = false;
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
     otp_pin_record_v1(new_pw.data, new_pw.len, record);
@@ -1239,6 +1254,7 @@ static int cmd_change_otp_pin(void) {
         return SW_MEMORY_FAILURE();
     }
     flash_commit();
+    otp_pin_verified = false;
     return SW_OK();
 }
 
@@ -1249,6 +1265,7 @@ static int cmd_verify_otp_pin(void) {
     if (!file_has_data(ef_otp_pin) || (record_len != OTP_PIN_LEGACY_SIZE && record_len != OTP_PIN_V1_SIZE)) {
         return SW_CONDITIONS_NOT_SATISFIED();
     }
+    otp_pin_verified = false;
     tlv_ctx_t ctxi, pw = { 0 };
     tlv_ctx_init(BYTE_ARRAY(apdu.data, apdu.nc), &ctxi);
     if (tlv_find_tag(&ctxi, TAG_PASSWORD, &pw) == false) {
@@ -1270,12 +1287,17 @@ static int cmd_verify_otp_pin(void) {
     }
     flash_commit();
     validated = true;
+    otp_pin_verified = true;
     return SW_OK();
 }
 
 static int cmd_verify_hotp(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
+    }
+    int pin_status = oath_require_otp_pin();
+    if (pin_status != SW_OK()) {
+        return pin_status;
     }
     tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, code = { 0 }, prop = { 0 };
     tlv_ctx_init(BYTE_ARRAY(apdu.data, apdu.nc), &ctxi);
@@ -1420,6 +1442,10 @@ static int cmd_get_credential(void) {
     tlv_ctx_t ctxi, name = { 0 };
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
+    }
+    int pin_status = oath_require_otp_pin();
+    if (pin_status != SW_OK()) {
+        return pin_status;
     }
     if (apdu.nc < 3) {
         return SW_INCORRECT_PARAMS();
