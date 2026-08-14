@@ -113,6 +113,7 @@ extern void set_opts(uint8_t);
 #define MAX_FRAGMENT_LENGTH       (MAX_MSG_SIZE - 64)
 #define MAX_LARGE_BLOB_SIZE       2048
 #define MAX_RPIDS_MINPIN_LENGTH   120
+#define STATEFUL_WALK_IDLE_MS     (30 * 1000)
 typedef struct known_app {
     const uint8_t *rp_id_hash;
     const char *label;

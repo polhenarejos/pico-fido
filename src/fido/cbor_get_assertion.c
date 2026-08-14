@@ -72,7 +72,7 @@ int cbor_get_next_assertion(const uint8_t *data, size_t len) {
     if (credentialCounter >= numberOfCredentialsx) {
         CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
     }
-    if (timerx + 30 * 1000 < board_millis()) {
+    if (board_millis() - timerx >= STATEFUL_WALK_IDLE_MS) {
         CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
     }
     CBOR_CHECK(cbor_get_assertion(datax, lenx, true));

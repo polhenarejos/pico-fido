@@ -33,6 +33,7 @@ extern void pin_uv_auth_token_tick(void);
 extern int cbor_selection(void);
 extern int cbor_get_next_assertion(const uint8_t *data, size_t len);
 extern int cbor_cred_mgmt(const uint8_t *data, size_t len);
+extern void cbor_cred_mgmt_tick(void);
 extern int cbor_config(const uint8_t *data, size_t len);
 extern int cbor_large_blobs(const uint8_t *data, size_t len);
 extern int cbor_vendor(const uint8_t *data, size_t len);
