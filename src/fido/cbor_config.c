@@ -116,6 +116,13 @@ int cbor_config(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
+    if (subcommand == 0) {
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+    if (subcommand != 0x01 && subcommand != 0x02 && subcommand != 0x03 && subcommand != 0xFF) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
+
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
 
     if (pinUvAuthParam.present == false) {
@@ -295,7 +302,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         goto err;
     }
     else {
-        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
     //CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     //resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);

@@ -464,6 +464,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         CBOR_ERROR(paut.has_rp_id && is_preview == false ? CTAP2_ERR_PIN_AUTH_INVALID : CTAP2_ERR_NO_CREDENTIALS);
     }
+    else {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 err:
