@@ -158,6 +158,7 @@ extern pinUvAuthToken_t paut;
 extern persistentPinUvAuthToken_t ppaut;
 
 extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *sign);
+extern int verify_hmac_secret(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, const uint8_t *sign, uint16_t sign_len);
 
 extern uint8_t session_pin[32];
 extern bool keydev_unlocked;

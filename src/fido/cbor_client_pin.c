@@ -268,6 +268,28 @@ int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t l
     return -1;
 }
 
+int verify_hmac_secret(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, const uint8_t *sign, uint16_t sign_len) {
+    uint8_t hmac[32];
+    uint16_t expected_len;
+    if (protocol == 1) {
+        expected_len = 16;
+    }
+    else if (protocol == 2) {
+        expected_len = 32;
+    }
+    else {
+        return -1;
+    }
+    if (sign_len != expected_len) {
+        return -1;
+    }
+    int ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, hmac);
+    if (ret != 0) {
+        return ret;
+    }
+    return mbedtls_ct_memcmp(sign, hmac, expected_len);
+}
+
 static int initialize(void) {
     regenerate();
     return resetPinUvAuthToken();
