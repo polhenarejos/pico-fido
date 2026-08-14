@@ -683,7 +683,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint32_t ctr = get_sign_counter();
     uint8_t cbor_buf[1024] = {0};
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
-    CBOR_CHECK(COSE_key(&ekey, &encoder, &mapEncoder));
+    CBOR_CHECK(COSE_key(&ekey, alg, &encoder, &mapEncoder));
     size_t rs = cbor_encoder_get_buffer_size(&encoder, cbor_buf);
 
     size_t aut_data_len = RP_ID_HASH_LEN + 1 + 4 + (16 + 2 + (options.rk == ptrue ? CRED_RESIDENT_LEN : cred_id_len) + rs) + ext_len;

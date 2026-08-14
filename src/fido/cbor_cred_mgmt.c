@@ -382,7 +382,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_CHECK(COSE_cached_key(cached_public_key, cached_public_key_len, &mapEncoder, &mapEncoder2));
         }
         else {
-            CBOR_CHECK(COSE_key(&key, &mapEncoder, &mapEncoder2));
+            CBOR_CHECK(COSE_key(&key, (int)cred.alg, &mapEncoder, &mapEncoder2));
         }
 
         if (subcommand == 0x04) {

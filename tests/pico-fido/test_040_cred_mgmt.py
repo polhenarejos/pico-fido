@@ -185,6 +185,13 @@ def test_enumarate_creds(MC_RK_Res, device):
     res = credMgmt.enumerate_creds(sha256(b"missing.com"))
     assert not res
 
+def test_enumerate_preserves_curve_explicit_algorithm(device, client_pin_set):
+    rp = {"id": "curve-alias.example", "name": "Curve Alias"}
+    device.doMC(rp=rp, rk=True, key_params=[{"alg": -9, "type": "public-key"}])
+    credentials = CredMgmt(device).enumerate_creds(sha256(rp["id"].encode()))
+    assert len(credentials) == 1
+    assert dict(credentials[0][CredentialManagement.RESULT.PUBLIC_KEY])[3] == -9
+
 def test_get_metadata_wrong_pinauth(device, MC_RK_Res):
     cmd = lambda credMgmt: credMgmt.get_metadata()
     _test_wrong_pinauth(device, cmd)
