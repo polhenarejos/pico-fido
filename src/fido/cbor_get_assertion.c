@@ -104,7 +104,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     Credential creds[MAX_CREDENTIAL_COUNT_IN_LIST] = { 0 };
     size_t allowList_len = 0, creds_len = 0;
     uint8_t *aut_data = NULL;
-    bool asserted = false, up = false, uv = false;
+    bool asserted = false, up = false, uv = false, pinUvAuthProtocol_present = false;
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
     const bool *credBlob = NULL;
@@ -211,12 +211,16 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
         else if (val_u == 0x07) { // pinUvAuthProtocol
             CBOR_FIELD_GET_UINT(pinUvAuthProtocol, 1);
+            pinUvAuthProtocol_present = true;
         }
     }
     CBOR_PARSE_MAP_END(map, 1);
 
     if (rpId.present == false || clientDataHash.present == false) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+    if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
     rp_id = rpId.data;
     user_name = NULL;
@@ -249,11 +253,8 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
             }
             else {
-                if (pinUvAuthProtocol == 0) {
+                if (pinUvAuthProtocol_present == false) {
                     CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-                }
-                if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
-                    CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
                 }
             }
         }

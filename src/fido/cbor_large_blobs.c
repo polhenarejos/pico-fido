@@ -86,6 +86,10 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
+    if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
+
     if (offset == UINT64_MAX) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
@@ -144,11 +148,8 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
             if (pinUvAuthParam.present == false) {
                 CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
             }
-            if (pinUvAuthProtocol == 0) {
+            if (pinUvAuthProtocol_present == false) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            }
-            if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
             size_t expected_auth_len = pinUvAuthProtocol == 1 ? 16u : 32u;
             if (pinUvAuthParam.len != expected_auth_len) {

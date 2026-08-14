@@ -68,7 +68,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     uint8_t *raw_subpara = NULL;
     size_t raw_subpara_len = 0;
-    bool asserted = false, is_preview = *(data - 1) == 0x41; // Backwards compatibility
+    bool asserted = false, is_preview = *(data - 1) == 0x41, pinUvAuthProtocol_present = false; // Backwards compatibility
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -132,6 +132,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         else if (val_u == 0x03) {
             CBOR_FIELD_GET_UINT(pinUvAuthProtocol, 1);
+            pinUvAuthProtocol_present = true;
         }
         else if (val_u == 0x04) { // pubKeyCredParams
             CBOR_FIELD_GET_BYTES(pinUvAuthParam, 1);
@@ -143,12 +144,15 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
 
+    if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
     if (subcommand != 0x03 && subcommand != 0x05) {
         if (pinUvAuthParam.present == false) {
             CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
         }
-        if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
-            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        if (pinUvAuthProtocol_present == false) {
+            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         }
     }
 

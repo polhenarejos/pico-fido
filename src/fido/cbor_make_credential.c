@@ -66,7 +66,7 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     uint64_t pinUvAuthProtocol = 0, enterpriseAttestation = 0, hmacSecretPinUvAuthProtocol = 1;
     int64_t kty = 2, hmac_alg = 0, crv = 0;
     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
-    bool hmac_secret_mc = false, has_credprot = false;
+    bool hmac_secret_mc = false, has_credprot = false, pinUvAuthProtocol_present = false, enterpriseAttestation_present = false;
     const bool *pin_complexity_policy = NULL, *uvm = NULL;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
@@ -223,12 +223,26 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
         else if (val_u == 0x09) { // pinUvAuthProtocol
             CBOR_FIELD_GET_UINT(pinUvAuthProtocol, 1);
+            pinUvAuthProtocol_present = true;
         }
         else if (val_u == 0x0A) { // enterpriseAttestation
             CBOR_FIELD_GET_UINT(enterpriseAttestation, 1);
+            enterpriseAttestation_present = true;
         }
     }
     CBOR_PARSE_MAP_END(map, 1);
+    if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
+    if (enterpriseAttestation_present) {
+        file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
+        if (!(get_opts() & FIDO2_OPT_EA) || !file_has_data(ef_ee_ea)) {
+            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
+        if (enterpriseAttestation != 1 && enterpriseAttestation != 2) {
+            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+        }
+    }
     if (hmac_secret_mc && extensions.hmac_secret != ptrue) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
     }
@@ -272,11 +286,8 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             }
         }
         else {
-            if (pinUvAuthProtocol == 0) {
+            if (pinUvAuthProtocol_present == false) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-            }
-            if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
-                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
         }
     }
@@ -396,16 +407,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     if (has_credprot == true && (extensions.credProtect < CRED_PROT_UV_OPTIONAL || extensions.credProtect > CRED_PROT_UV_REQUIRED)) {
         CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
-    }
-    if (enterpriseAttestation > 0) {
-        file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
-        if (!(get_opts() & FIDO2_OPT_EA) || !file_has_data(ef_ee_ea)) {
-            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
-        }
-        if (enterpriseAttestation != 1 && enterpriseAttestation != 2) { //9.2.1
-            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
-        }
-        //Unfinished. See 6.1.2.9
     }
     if (!((get_opts() & FIDO2_OPT_MCUV_NOTRQD) && options.rk != ptrue && options.uv != ptrue && pinUvAuthParam.present == false)) { //10.1
         if (pinUvAuthParam.present == true) { //11.1
