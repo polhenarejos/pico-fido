@@ -36,6 +36,7 @@ extern int cbor_cred_mgmt(const uint8_t *data, size_t len);
 extern void cbor_cred_mgmt_tick(void);
 extern int cbor_config(const uint8_t *data, size_t len);
 extern int cbor_large_blobs(const uint8_t *data, size_t len);
+extern void cbor_large_blobs_tick(void);
 extern int cbor_vendor(const uint8_t *data, size_t len);
 extern void reset_gna_state(void);
 extern int cbor_process(uint8_t, const uint8_t *data, size_t len);

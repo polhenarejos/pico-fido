@@ -19,13 +19,26 @@
 #include "ctap2_cbor.h"
 #include "fido.h"
 #include "ctap.h"
+#if defined(PICO_PLATFORM)
+#include "bsp/board.h"
+#endif
 #include "hid/ctap_hid.h"
 #include "files.h"
 #include "apdu.h"
 #include "mbedtls/sha256.h"
 
 static uint64_t expectedLength = 0, expectedNextOffset = 0;
+static uint32_t large_blob_timer = 0;
+static bool large_blob_active = false;
 uint8_t temp_lba[MAX_LARGE_BLOB_SIZE];
+
+void cbor_large_blobs_tick(void) {
+    if (large_blob_active && board_millis() - large_blob_timer >= STATEFUL_WALK_IDLE_MS) {
+        expectedLength = 0;
+        expectedNextOffset = 0;
+        large_blob_active = false;
+    }
+}
 
 int cbor_large_blobs(const uint8_t *data, size_t len) {
     CborParser parser;
@@ -115,6 +128,8 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
             }
             expectedLength = length;
             expectedNextOffset = 0;
+            large_blob_timer = board_millis();
+            large_blob_active = true;
         }
         else {
             if (length != 0) {
@@ -159,6 +174,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
         }
         memcpy(temp_lba + expectedNextOffset, set.data, set.len);
         expectedNextOffset += set.len;
+        large_blob_timer = board_millis();
         if (expectedNextOffset == expectedLength) {
             uint8_t sha[32];
             mbedtls_sha256(temp_lba, expectedLength - 16, sha, 0);
@@ -169,6 +185,7 @@ int cbor_large_blobs(const uint8_t *data, size_t len) {
             flash_commit();
             expectedLength = 0;
             expectedNextOffset = 0;
+            large_blob_active = false;
         }
         goto err;
     }

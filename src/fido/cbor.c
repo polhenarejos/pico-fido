@@ -41,6 +41,7 @@ static volatile uint8_t cbor_cmd = 0;
 int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     pin_uv_auth_token_tick();
     cbor_cred_mgmt_tick();
+    cbor_large_blobs_tick();
     if (len == 0 && cmd == CTAPHID_CBOR) {
         return CTAP1_ERR_INVALID_LEN;
     }
