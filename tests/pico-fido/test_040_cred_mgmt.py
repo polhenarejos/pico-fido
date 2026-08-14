@@ -204,12 +204,38 @@ def test_rpnext_without_rpbegin(device, MC_RK_Res):
         credMgmt.enumerate_rps_next()
     assert e.value.code == CtapError.ERR.NOT_ALLOWED
 
+def test_rpnext_rejects_a_different_channel(device, MC_RK_Res):
+    credMgmt = CredMgmt(device)
+    credMgmt.enumerate_rps_begin()
+    old_cid = device.cid()
+    other_cid = (old_cid + 1) & 0xffffffff
+    device.set_cid(other_cid.to_bytes(4, "big"))
+    try:
+        with pytest.raises(CtapError) as e:
+            credMgmt.enumerate_rps_next()
+        assert e.value.code == CtapError.ERR.NOT_ALLOWED
+    finally:
+        device.set_cid(old_cid.to_bytes(4, "big"))
+
 def test_rknext_without_rkbegin(device, MC_RK_Res):
     credMgmt = CredMgmt(device)
     credMgmt.enumerate_rps_begin()
     with pytest.raises(CtapError) as e:
         credMgmt.enumerate_creds_next()
     assert e.value.code == CtapError.ERR.NOT_ALLOWED
+
+def test_rknext_rejects_a_different_channel(device, MC_RK_Res):
+    credMgmt = CredMgmt(device)
+    credMgmt.enumerate_creds_begin(sha256(b"ssh:"))
+    old_cid = device.cid()
+    other_cid = (old_cid + 1) & 0xffffffff
+    device.set_cid(other_cid.to_bytes(4, "big"))
+    try:
+        with pytest.raises(CtapError) as e:
+            credMgmt.enumerate_creds_next()
+        assert e.value.code == CtapError.ERR.NOT_ALLOWED
+    finally:
+        device.set_cid(old_cid.to_bytes(4, "big"))
 
 def test_rpnext_after_enumeration_exhausted(device, MC_RK_Res):
     credMgmt = CredMgmt(device)

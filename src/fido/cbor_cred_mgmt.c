@@ -30,6 +30,8 @@ uint16_t rp_counter = 1;
 uint16_t rp_total = 0;
 uint16_t cred_counter = 1;
 uint16_t cred_total = 0;
+uint32_t rp_channel = 0;
+uint32_t cred_channel = 0;
 CborByteString rpIdHashx = { 0 };
 
 int cbor_cred_mgmt(const uint8_t *data, size_t len) {
@@ -173,12 +175,14 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                 }
             }
             rp_counter = 0;
+            rp_channel = ctap_req ? ctap_req->cid : 0;
             if (credential_rp_count(&rp_total) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
         }
         else {
-            if (rp_counter >= rp_total) {
+            uint32_t channel = ctap_req ? ctap_req->cid : 0;
+            if (rp_channel != channel || rp_counter >= rp_total) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
         }
@@ -228,9 +232,11 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             }
             cred_counter = 1;
             cred_total = 0;
+            cred_channel = ctap_req ? ctap_req->cid : 0;
         }
         else {
-            if (cred_counter > cred_total) {
+            uint32_t channel = ctap_req ? ctap_req->cid : 0;
+            if (cred_channel != channel || cred_counter > cred_total) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
             rpIdHash = rpIdHashx;
