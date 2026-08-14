@@ -625,6 +625,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
 
         if (mbedtls_ct_memcmp(dhash, pin_data + off, 32) != 0) {
             regenerate();
+            resetPinUvAuthToken();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
@@ -814,6 +815,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         if (mbedtls_ct_memcmp(dhash, pin_data + off, 32) != 0) {
             regenerate();
+            resetPinUvAuthToken();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             mbedtls_platform_zeroize(dhash, sizeof(dhash));
             if (retries == 0) {
