@@ -225,13 +225,15 @@ int cbor_get_info(void) {
     if (phy_data.vid != 0x1050) {
 #endif
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x15));
-        CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 6));
+        CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 8));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_DISABLE));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_EA_UPLOAD));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_MCUV_NOTRQD));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_AUT_ENABLE));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_NORK));
         CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_PIN_POLICY));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_CREDENTIAL_REVOKE));
+        CBOR_CHECK(cbor_encode_uint(&arrayEncoder, CTAP_CONFIG_CREDENTIAL_EXPIRE));
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 #ifndef ENABLE_EMULATION
     }

@@ -112,12 +112,14 @@ typedef struct {
 #define CTAP_LARGE_BLOBS         0x0C
 #define CTAP_CONFIG              0x0D
 
-#define CTAP_CONFIG_AUT_DISABLE     0x0001a40f04a25ed9
-#define CTAP_CONFIG_EA_UPLOAD       0x0002a674c29a8dcf
-#define CTAP_CONFIG_MCUV_NOTRQD     0x000377913e17951f
-#define CTAP_CONFIG_AUT_ENABLE      0x00043f56b34285e2
-#define CTAP_CONFIG_NORK            0x00052b41f53590d3
-#define CTAP_CONFIG_PIN_POLICY      0x0007d70fe96c3897
+#define CTAP_CONFIG_AUT_DISABLE         0x0001a40f04a25ed9
+#define CTAP_CONFIG_EA_UPLOAD           0x0002a674c29a8dcf
+#define CTAP_CONFIG_MCUV_NOTRQD         0x000377913e17951f
+#define CTAP_CONFIG_AUT_ENABLE          0x00043f56b34285e2
+#define CTAP_CONFIG_CREDENTIAL_EXPIRE   0x0004e532e1feb2fd
+#define CTAP_CONFIG_NORK                0x00052b41f53590d3
+#define CTAP_CONFIG_CREDENTIAL_REVOKE   0x0005961ecba040f9
+#define CTAP_CONFIG_PIN_POLICY          0x0007d70fe96c3897
 
 #define CTAP_VENDOR_CBOR            (CTAPHID_VENDOR_FIRST + 1)
 
@@ -125,6 +127,7 @@ typedef struct {
 #define CTAP_VENDOR_MSE                 0x02
 #define CTAP_VENDOR_UNLOCK              0x03
 #define CTAP_VENDOR_EA                  0x04
+#define CTAP_VENDOR_VAULT               0x05
 #define CTAP_VENDOR_ADMIN_PIN           0x08
 
 #define CTAP_PERMISSION_MC              0x01  // MakeCredential

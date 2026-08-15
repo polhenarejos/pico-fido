@@ -675,7 +675,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         }
     }
 
-    uint32_t ctr = get_sign_counter();
+    uint32_t ctr = selcred && selcred->imported ? 0 : get_sign_counter();
 
     size_t aut_data_len = RP_ID_HASH_LEN + 1 + 4 + ext_len;
     aut_data = (uint8_t *) calloc(1, aut_data_len + clientDataHash.len);
@@ -695,7 +695,13 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_ecp_keypair_init(&ekey);
     size_t olen = 0;
     if (selcred) {
-        ret = fido_load_key((int)selcred->curve, key_seed, &ekey);
+        if (selcred->privateKey.present) {
+            ret = mbedtls_ecp_read_key(fido_curve_to_mbedtls((int)selcred->curve), &ekey, selcred->privateKey.data, selcred->privateKey.len);
+            if (ret == 0) ret = mbedtls_ecp_keypair_calc_public(&ekey, random_fill_iterator, NULL);
+        }
+        else {
+            ret = fido_load_key((int)selcred->curve, key_seed, &ekey);
+        }
         if (ret != 0) {
             if (derive_key(rp_id_hash, false, (uint8_t *)key_seed, MBEDTLS_ECP_DP_SECP256R1, &ekey) != 0) {
                 mbedtls_ecp_keypair_free(&ekey);
@@ -813,9 +819,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
-    ctr++;
-    file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
-    flash_commit();
+    if (!selcred || !selcred->imported) {
+        ctr++;
+        file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
+        flash_commit();
+    }
 err:
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);

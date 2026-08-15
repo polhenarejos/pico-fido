@@ -21,6 +21,7 @@
 #include "ctap2_cbor.h"
 #include "file.h"
 #include "fido.h"
+#include "resident_container.h"
 
 typedef struct CredOptions {
     const bool *rk;
@@ -41,6 +42,7 @@ typedef struct CredExtensions {
 
 typedef struct Credential {
     CborCharString rpId;
+    CborByteString rpIdHash;
     CborByteString userId;
     CborCharString userName;
     CborCharString userDisplayName;
@@ -51,10 +53,26 @@ typedef struct Credential {
     int64_t curve;
     CborByteString id;
     CborByteString residentId;
+    CborByteString privateKey;
     CredOptions opts;
+    bool imported;
     bool present;
     uint64_t rtc_creation;
 } Credential;
+
+typedef struct credential_import_record {
+    const uint8_t *credential_id;
+    size_t credential_id_len;
+    const uint8_t *private_key;
+    size_t private_key_len;
+    const uint8_t *rp_id;
+    size_t rp_id_len;
+    const uint8_t *metadata;
+    size_t metadata_len;
+    const uint8_t *requested_id;
+    size_t requested_id_len;
+    const uint8_t *credential_hash;
+} credential_import_record_t;
 
 typedef struct CredentialRp {
     uint8_t id_hash[RP_ID_HASH_LEN];
@@ -92,6 +110,7 @@ typedef struct CredentialRp {
 #define CRED_RESIDENT_SILENT_VERSION_OFFSET CRED_RESIDENT_LEN
 #define CRED_RESIDENT_SILENT_TAG_OFFSET     (CRED_RESIDENT_SILENT_VERSION_OFFSET + 1u)
 #define CRED_RESIDENT_RECORD_LEN            (CRED_RESIDENT_SILENT_TAG_OFFSET + CRED_SILENT_TAG_LEN)
+#define CREDENTIAL_PRIVATE_KEY_MAX          80u
 
 typedef enum
 {
@@ -114,6 +133,7 @@ extern int credential_create(CborCharString *rpId,
                              uint16_t *cred_id_len);
 extern void credential_free(Credential *cred);
 extern int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, const uint8_t *public_key, size_t public_key_len);
+extern int credential_import(const credential_import_record_t *record);
 extern int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, Credential *cred);
 extern int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
 extern int credential_derive_large_blob_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk);
@@ -125,6 +145,8 @@ extern bool credential_resident_matches_rp(const file_t *ef, const uint8_t rp_id
 extern bool credential_resident_matches_id(const file_t *ef, const uint8_t *resident_id, size_t resident_id_len);
 extern int credential_resident_rp_id_hash(const file_t *ef, uint8_t rp_id_hash[RP_ID_HASH_LEN]);
 extern int credential_resident_public_key(const file_t *ef, uint8_t **public_key, size_t *public_key_len);
+extern int credential_resident_read_metadata(const file_t *ef, fido_resident_metadata_t *metadata);
+extern int credential_resident_update_metadata(const file_t *ef, const fido_resident_metadata_t *metadata);
 extern int credential_resident_update(const file_t *ef, const uint8_t *credential, size_t credential_len);
 extern int credential_resident_delete(const file_t *ef);
 extern int credential_resident_verify(const file_t *ef, const uint8_t rp_id_hash[RP_ID_HASH_LEN], bool silent);

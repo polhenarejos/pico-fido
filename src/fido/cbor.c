@@ -118,7 +118,7 @@ void *cbor_thread(void *arg) {
         if (apdu.sw == 0) {
             DEBUG_DATA(res_APDU, res_APDU_size);
         }
-        else {
+        if (apdu.sw != 0) {
             if (cmd == CTAPHID_CBOR && len > 0) {
                 res_APDU[-1] = (uint8_t)apdu.sw;
                 res_APDU_size = 0;

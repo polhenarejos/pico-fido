@@ -557,11 +557,16 @@ err:
 void credential_free(Credential *cred) {
     if (cred) {
         CBOR_FREE_BYTE_STRING(cred->rpId);
+        CBOR_FREE_BYTE_STRING(cred->rpIdHash);
         CBOR_FREE_BYTE_STRING(cred->userId);
         CBOR_FREE_BYTE_STRING(cred->userName);
         CBOR_FREE_BYTE_STRING(cred->userDisplayName);
         CBOR_FREE_BYTE_STRING(cred->id);
         CBOR_FREE_BYTE_STRING(cred->residentId);
+        if (cred->privateKey.present) {
+            mbedtls_platform_zeroize(cred->privateKey.data, cred->privateKey.len);
+        }
+        CBOR_FREE_BYTE_STRING(cred->privateKey);
         if (cred->extensions.present) {
             CBOR_FREE_BYTE_STRING(cred->extensions.credBlob);
         }
@@ -569,6 +574,81 @@ void credential_free(Credential *cred) {
         cred->extensions.present = false;
         cred->opts.present = false;
     }
+}
+
+static int credential_parse_metadata(const uint8_t *data, size_t data_len, Credential *cred) {
+    if (!data || !cred) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    CborParser parser;
+    CborValue map;
+    CborError error = CborNoError;
+    memset(cred, 0, sizeof(Credential));
+    cred->curve = FIDO2_CURVE_P256;
+    cred->alg = FIDO2_ALG_ES256;
+    CBOR_CHECK(cbor_parser_init(data, data_len, 0, &parser, &map));
+    uint16_t seen = 0;
+    CBOR_PARSE_MAP_START(map, 1)
+    {
+        uint64_t val_u = 0;
+        CBOR_FIELD_GET_UINT(val_u, 1);
+        if (val_u >= 1 && val_u <= 13) {
+            uint16_t field = (uint16_t)(1u << (val_u - 1u));
+            if ((seen & field) != 0) {
+                error = CborErrorImproperValue;
+                goto err;
+            }
+            seen |= field;
+        }
+        if (val_u == 0x01) { CBOR_FIELD_GET_TEXT(cred->rpId, 1); }
+        else if (val_u == 0x02) { CBOR_FIELD_GET_BYTES(cred->rpIdHash, 1); }
+        else if (val_u == 0x03) { CBOR_FIELD_GET_BYTES(cred->userId, 1); }
+        else if (val_u == 0x04) { CBOR_FIELD_GET_TEXT(cred->userName, 1); }
+        else if (val_u == 0x05) { CBOR_FIELD_GET_TEXT(cred->userDisplayName, 1); }
+        else if (val_u == 0x06) { CBOR_FIELD_GET_UINT(cred->board_creation, 1); }
+        else if (val_u == 0x07) {
+            cred->extensions.present = true;
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
+                CBOR_FIELD_GET_KEY_TEXT(2);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", cred->extensions.hmac_secret);
+                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "credProtect", cred->extensions.credProtect);
+                CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", cred->extensions.largeBlobKey);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", cred->extensions.thirdPartyPayment);
+                CBOR_ADVANCE(2);
+            }
+            CBOR_PARSE_MAP_END(_f1, 2);
+        }
+        else if (val_u == 0x08) { CBOR_FIELD_GET_BOOL(cred->use_sign_count, 1); }
+        else if (val_u == 0x09) { CBOR_FIELD_GET_INT(cred->alg, 1); }
+        else if (val_u == 0x0A) { CBOR_FIELD_GET_INT(cred->curve, 1); }
+        else if (val_u == 0x0B) {
+            cred->opts.present = true;
+            CBOR_PARSE_MAP_START(_f1, 2)
+            {
+                CBOR_FIELD_GET_KEY_TEXT(2);
+                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "rk", cred->opts.rk);
+                CBOR_ADVANCE(2);
+            }
+            CBOR_PARSE_MAP_END(_f1, 2);
+        }
+        else if (val_u == 0x0C) { CBOR_FIELD_GET_UINT(cred->rtc_creation, 1); }
+        else if (val_u == 0x0D) { CBOR_ADVANCE(1); }
+        else { CBOR_ADVANCE(1); }
+    }
+    CBOR_PARSE_MAP_END(map, 1);
+    if (!cbor_value_at_end(&map)) {
+        error = CborErrorImproperValue;
+        goto err;
+    }
+    cred->present = true;
+err:
+    if (error != CborNoError) {
+        credential_free(cred);
+        return error == CborErrorImproperValue ? CTAP2_ERR_CBOR_UNEXPECTED_TYPE : error;
+    }
+    return PICOKEYS_OK;
 }
 
 int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id_hash, const uint8_t *public_key, size_t public_key_len) {
@@ -656,6 +736,107 @@ int credential_store(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *
     credential_free(&cred);
     flash_commit();
     return 0;
+}
+
+static bool credential_algorithm_matches_curve(int64_t algorithm, int64_t curve) {
+    if (curve == FIDO2_CURVE_P256) {
+        return algorithm == FIDO2_ALG_ES256 || algorithm == FIDO2_ALG_ESP256;
+    }
+    if (curve == FIDO2_CURVE_P384) {
+        return algorithm == FIDO2_ALG_ES384 || algorithm == FIDO2_ALG_ESP384;
+    }
+    if (curve == FIDO2_CURVE_P521) {
+        return algorithm == FIDO2_ALG_ES512 || algorithm == FIDO2_ALG_ESP512;
+    }
+    if (curve == FIDO2_CURVE_P256K1) {
+        return algorithm == FIDO2_ALG_ES256K;
+    }
+    if (curve == FIDO2_CURVE_BP256R1) {
+        return algorithm == FIDO2_ALG_ESB256;
+    }
+    if (curve == FIDO2_CURVE_BP384R1) {
+        return algorithm == FIDO2_ALG_ESB384;
+    }
+    if (curve == FIDO2_CURVE_BP512R1) {
+        return algorithm == FIDO2_ALG_ESB512;
+    }
+    if (curve == FIDO2_CURVE_ED25519) {
+        return algorithm == FIDO2_ALG_EDDSA || algorithm == FIDO2_ALG_ED25519;
+    }
+    if (curve == FIDO2_CURVE_ED448) {
+        return algorithm == FIDO2_ALG_ED448;
+    }
+    if (curve == FIDO2_CURVE_X25519) {
+        return algorithm == FIDO2_ALG_ECDH_ES_HKDF_256;
+    }
+    return false;
+}
+
+int credential_import(const credential_import_record_t *record) {
+    if (!record || !record->credential_id || !record->private_key || !record->rp_id || !record->metadata || !record->requested_id || !record->credential_hash || record->credential_id_len == 0 || record->credential_id_len > MAX_CRED_ID_LENGTH || record->private_key_len == 0 || record->private_key_len > CREDENTIAL_PRIVATE_KEY_MAX || record->rp_id_len == 0 || record->metadata_len == 0 || record->requested_id_len == 0 || record->requested_id_len > MAX_CRED_ID_LENGTH) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    Credential parsed = {0};
+    int ret = credential_parse_metadata(record->metadata, record->metadata_len, &parsed);
+    mbedtls_ecp_group_id curve = fido_curve_to_mbedtls((int)parsed.curve);
+    uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
+    uint8_t credential_hash[RP_ID_HASH_LEN] = {0};
+    if (ret != PICOKEYS_OK || !parsed.rpId.present || !parsed.rpIdHash.present || parsed.rpIdHash.len != RP_ID_HASH_LEN || parsed.rpId.len != record->rp_id_len || mbedtls_ct_memcmp(parsed.rpId.data, record->rp_id, record->rp_id_len) != 0 || !credential_algorithm_matches_curve(parsed.alg, parsed.curve) || curve == MBEDTLS_ECP_DP_NONE) {
+        credential_free(&parsed);
+        return PICOKEYS_WRONG_DATA;
+    }
+    if (mbedtls_sha256(record->rp_id, record->rp_id_len, rp_id_hash, 0) != 0 || mbedtls_sha256(record->requested_id, record->requested_id_len, credential_hash, 0) != 0 || mbedtls_ct_memcmp(parsed.rpIdHash.data, rp_id_hash, sizeof(rp_id_hash)) != 0 || mbedtls_ct_memcmp(record->credential_hash, credential_hash, sizeof(credential_hash)) != 0) {
+        credential_free(&parsed);
+        return PICOKEYS_WRONG_DATA;
+    }
+    mbedtls_ecp_keypair key;
+    mbedtls_ecp_keypair_init(&key);
+    ret = mbedtls_ecp_read_key(curve, &key, record->private_key, record->private_key_len);
+    if (ret == 0) {
+        ret = mbedtls_ecp_keypair_calc_public(&key, random_fill_iterator, NULL);
+    }
+    uint8_t public_key[192] = {0};
+    CborEncoder encoder, cose;
+    CborError error = CborNoError;
+    size_t public_key_len = 0;
+    if (ret == 0) {
+        cbor_encoder_init(&encoder, public_key, sizeof(public_key), 0);
+        error = COSE_key(&key, (int)parsed.alg, &encoder, &cose);
+        public_key_len = cbor_encoder_get_buffer_size(&encoder, public_key);
+    }
+    if (ret == 0 && error != CborNoError) {
+        ret = PICOKEYS_EXEC_ERROR;
+    }
+    uint8_t client_id[CRED_RESIDENT_LEN] = {0};
+    if (ret == 0 && error == CborNoError) {
+        ret = credential_derive_resident(record->credential_id, record->credential_id_len, client_id);
+    }
+    int slot = -1;
+    if (ret == 0) {
+        for (uint16_t i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+            if (!file_has_data(file_search((uint16_t)(EF_CRED + i))) && resident_container_can_create(i)) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) {
+            ret = PICOKEYS_ERR_MEMORY_FATAL;
+        }
+    }
+    if (ret == PICOKEYS_OK) {
+        ret = resident_container_create_imported((uint8_t)slot, rp_id_hash, client_id, sizeof(client_id), record->credential_id, record->credential_id_len, public_key, public_key_len, record->private_key, record->private_key_len, record->metadata, record->metadata_len);
+    }
+    if (ret == PICOKEYS_OK) {
+        dev_state_update(DEV_STATE_CRED_STATE);
+        flash_commit();
+    }
+    mbedtls_platform_zeroize(public_key, sizeof(public_key));
+    mbedtls_platform_zeroize(client_id, sizeof(client_id));
+    mbedtls_platform_zeroize(rp_id_hash, sizeof(rp_id_hash));
+    mbedtls_platform_zeroize(credential_hash, sizeof(credential_hash));
+    mbedtls_ecp_keypair_free(&key);
+    credential_free(&parsed);
+    return ret == 0 ? PICOKEYS_OK : ret;
 }
 
 int credential_derive_hmac_key(const uint8_t *cred_id, size_t cred_id_len, uint8_t *outk) {
@@ -762,6 +943,43 @@ static int credential_resident_container_read_alloc(const file_t *ef, uint16_t o
     return PICOKEYS_OK;
 }
 
+int credential_resident_read_metadata(const file_t *ef, fido_resident_metadata_t *metadata) {
+    if (!file_has_data(ef) || !metadata) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    if (!resident_container_is_marker(ef)) {
+        *metadata = (fido_resident_metadata_t) {
+            .status = FIDO_RESIDENT_STATUS_ACTIVE,
+            .properties = FIDO_RESIDENT_PROPERTY_NATIVE,
+            .expiration = 0
+        };
+        return PICOKEYS_OK;
+    }
+    int ret = resident_container_read_metadata((uint8_t)ef->fid, metadata);
+    if (ret == PICOKEYS_OK && metadata->status == FIDO_RESIDENT_STATUS_ACTIVE && metadata->expiration != 0 &&
+        has_set_rtc() && (uint64_t)metadata->expiration <= (uint64_t)get_rtc_time()) {
+        metadata->status = FIDO_RESIDENT_STATUS_EXPIRED;
+    }
+    return ret;
+}
+
+int credential_resident_update_metadata(const file_t *ef, const fido_resident_metadata_t *metadata) {
+    if (!file_has_data(ef) || !metadata) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    return resident_container_is_marker(ef) ? resident_container_update_metadata((uint8_t)ef->fid, metadata) : PICOKEYS_ERR_FILE_NOT_FOUND;
+}
+
+static bool credential_resident_usable(const file_t *ef) {
+    fido_resident_metadata_t metadata;
+    if (credential_resident_read_metadata(ef, &metadata) != PICOKEYS_OK ||
+        metadata.status == FIDO_RESIDENT_STATUS_EXPIRED ||
+        metadata.status == FIDO_RESIDENT_STATUS_REVOKED) {
+        return false;
+    }
+    return metadata.expiration == 0 || !has_set_rtc() || (uint64_t)get_rtc_time() < metadata.expiration;
+}
+
 int credential_resident_rp_id_hash(const file_t *ef, uint8_t rp_id_hash[RP_ID_HASH_LEN]) {
     if (!file_has_data(ef) || !rp_id_hash) {
         return PICOKEYS_ERR_NULL_PARAM;
@@ -786,6 +1004,17 @@ bool credential_resident_matches_rp(const file_t *ef, const uint8_t rp_id_hash[R
 bool credential_resident_matches_id(const file_t *ef, const uint8_t *resident_id, size_t resident_id_len) {
     if (!file_has_data(ef) || !resident_id || resident_id_len != CRED_RESIDENT_LEN) {
         return false;
+    }
+    fido_resident_metadata_t imported_metadata;
+    if (resident_container_read_metadata((uint8_t)ef->fid, &imported_metadata) == PICOKEYS_OK && imported_metadata.properties == FIDO_RESIDENT_PROPERTY_IMPORTED) {
+        uint8_t *imported_resident_id = NULL;
+        size_t imported_resident_id_len = 0;
+        if (credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CLIENT_ID, &imported_resident_id, &imported_resident_id_len) != PICOKEYS_OK) {
+            return false;
+        }
+        bool matches = imported_resident_id_len == resident_id_len && mbedtls_ct_memcmp(imported_resident_id, resident_id, resident_id_len) == 0;
+        free(imported_resident_id);
+        return matches;
     }
     uint8_t stored_id[CRED_RESIDENT_LEN];
     if (resident_container_is_marker(ef)) {
@@ -816,15 +1045,23 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
     if (!file_has_data(ef) || !rp_id_hash || !cred) {
         return CTAP1_ERR_INVALID_PARAMETER;
     }
+    cred->imported = false;
     if (resident_container_is_marker(ef)) {
+        if (!credential_resident_usable(ef)) {
+            return CTAP2_ERR_NO_CREDENTIALS;
+        }
         uint8_t stored_hash[RP_ID_HASH_LEN];
         if (credential_resident_rp_id_hash(ef, stored_hash) != PICOKEYS_OK || mbedtls_ct_memcmp(stored_hash, rp_id_hash, sizeof(stored_hash)) != 0) {
             return CTAP2_ERR_NO_CREDENTIALS;
         }
         uint8_t *credential = NULL;
         uint8_t *resident_id = NULL;
+        uint8_t *metadata = NULL;
+        uint8_t *private_key = NULL;
         size_t credential_len = 0;
         size_t resident_id_len = 0;
+        size_t metadata_len = 0;
+        size_t private_key_len = 0;
         int ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CREDENTIAL, &credential, &credential_len);
         if (ret == PICOKEYS_OK) {
             ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CLIENT_ID, &resident_id, &resident_id_len);
@@ -833,7 +1070,33 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
             ret = PICOKEYS_WRONG_LENGTH;
         }
         if (ret == PICOKEYS_OK) {
-            ret = credential_load(credential, credential_len, rp_id_hash, cred);
+            fido_resident_metadata_t resident_metadata;
+            ret = resident_container_read_metadata((uint8_t)ef->fid, &resident_metadata);
+            if (ret == PICOKEYS_OK && resident_metadata.properties == FIDO_RESIDENT_PROPERTY_IMPORTED) {
+                cred->imported = true;
+                ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_METADATA, &metadata, &metadata_len);
+                if (ret == PICOKEYS_OK) ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_PRIVATE_KEY, &private_key, &private_key_len);
+                if (ret == PICOKEYS_OK) ret = credential_parse_metadata(metadata, metadata_len, cred);
+                if (ret == PICOKEYS_OK) {
+                    cred->id.data = (uint8_t *)calloc(1, credential_len);
+                    if (!cred->id.data) ret = PICOKEYS_ERR_NO_MEMORY;
+                    else {
+                        memcpy(cred->id.data, credential, credential_len);
+                        cred->id.len = credential_len;
+                        cred->id.present = true;
+                        cred->privateKey.data = (uint8_t *)calloc(1, private_key_len);
+                        if (!cred->privateKey.data) ret = PICOKEYS_ERR_NO_MEMORY;
+                        else {
+                            memcpy(cred->privateKey.data, private_key, private_key_len);
+                            cred->privateKey.len = private_key_len;
+                            cred->privateKey.present = true;
+                        }
+                    }
+                }
+            }
+            else if (ret == PICOKEYS_OK) {
+                ret = credential_load(credential, credential_len, rp_id_hash, cred);
+            }
         }
         if (ret == 0) {
             cred->residentId.present = true;
@@ -845,6 +1108,11 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
             mbedtls_platform_zeroize(credential, credential_len);
             free(credential);
         }
+        free(metadata);
+        if (private_key) {
+            mbedtls_platform_zeroize(private_key, private_key_len);
+        }
+        free(private_key);
         free(resident_id);
         return ret;
     }
@@ -937,6 +1205,9 @@ int credential_resident_verify(const file_t *ef, const uint8_t rp_id_hash[RP_ID_
         }
         size_t offset = credential_is_resident(file_get_data(ef) + RP_ID_HASH_LEN, file_get_size(ef) - RP_ID_HASH_LEN) ? RP_ID_HASH_LEN + CRED_RESIDENT_LEN : RP_ID_HASH_LEN;
         return credential_verify(file_get_data(ef) + offset, file_get_size(ef) - offset, rp_id_hash, silent);
+    }
+    if (!credential_resident_usable(ef)) {
+        return CTAP2_ERR_NO_CREDENTIALS;
     }
     if (silent) {
         uint8_t *client_record = NULL;
