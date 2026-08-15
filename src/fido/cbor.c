@@ -40,6 +40,8 @@ static volatile uint8_t cbor_cmd = 0;
 
 int cbor_parse(uint8_t cmd, const uint8_t *data, size_t len) {
     pin_uv_auth_token_tick();
+    cbor_cred_mgmt_tick();
+    cbor_large_blobs_tick();
     if (len == 0 && cmd == CTAPHID_CBOR) {
         return CTAP1_ERR_INVALID_LEN;
     }
@@ -192,32 +194,8 @@ static CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedt
 err:
     return error;
 }
-CborError COSE_key(mbedtls_ecp_keypair *key, CborEncoder *mapEncoderParent,
-                   CborEncoder *mapEncoder) {
-    int crv = mbedtls_curve_to_fido(key->grp.id), alg = 0;
-    if (key->grp.id == MBEDTLS_ECP_DP_SECP256R1) {
-        alg = FIDO2_ALG_ES256;
-    }
-    else if (key->grp.id == MBEDTLS_ECP_DP_SECP384R1) {
-        alg = FIDO2_ALG_ES384;
-    }
-    else if (key->grp.id == MBEDTLS_ECP_DP_SECP521R1) {
-        alg = FIDO2_ALG_ES512;
-    }
-    else if (key->grp.id == MBEDTLS_ECP_DP_SECP256K1) {
-        alg = FIDO2_ALG_ES256K;
-    }
-    else if (key->grp.id == MBEDTLS_ECP_DP_CURVE25519) {
-        alg = FIDO2_ALG_ECDH_ES_HKDF_256;
-    }
-#ifdef MBEDTLS_EDDSA_C
-    else if (key->grp.id == MBEDTLS_ECP_DP_ED25519) {
-        alg = FIDO2_ALG_EDDSA;
-    }
-    else if (key->grp.id == MBEDTLS_ECP_DP_ED448) {
-        alg = FIDO2_ALG_ED448;
-    }
-#endif
+CborError COSE_key(mbedtls_ecp_keypair *key, int alg, CborEncoder *mapEncoderParent, CborEncoder *mapEncoder) {
+    int crv = mbedtls_curve_to_fido(key->grp.id);
     return COSE_key_params(crv, alg, &key->grp, &key->Q, mapEncoderParent, mapEncoder);
 }
 

@@ -31,6 +31,11 @@ def test_register(device):
 def test_make_credential():
     pass
 
+def test_curve_explicit_algorithm_is_preserved(device):
+    result = device.doMC(key_params=[{"alg": -9, "type": "public-key"}])
+    public_key = dict(result["res"].attestation_object.auth_data.credential_data.public_key)
+    assert public_key[3] == -9
+
 def test_attestation_format(MCRes):
     assert MCRes['res'].attestation_object.fmt in ["packed", "tpm", "android-key", "adroid-safetynet"]
 

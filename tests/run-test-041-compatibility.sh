@@ -1,7 +1,7 @@
 #!/bin/bash -eu
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LEGACY_FIDO_EMULATOR="${LEGACY_FIDO_EMULATOR:-/tmp/pico-fido-legacy-build/pico_fido}"
+LEGACY_FIDO_EMULATOR="${LEGACY_FIDO_EMULATOR:-${ROOT_DIR}/legacy/build_in_docker/pico_fido}"
 CURRENT_FIDO_EMULATOR="${CURRENT_FIDO_EMULATOR:-${ROOT_DIR}/build_emulation/pico_fido}"
 PYTEST="${PYTEST:-${ROOT_DIR}/tests/venv/bin/pytest}"
 TEST_FILE="${ROOT_DIR}/tests/pico-fido/test_041_object_compatibility.py"

@@ -268,6 +268,28 @@ int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t l
     return -1;
 }
 
+int verify_hmac_secret(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, const uint8_t *sign, uint16_t sign_len) {
+    uint8_t hmac[32];
+    uint16_t expected_len;
+    if (protocol == 1) {
+        expected_len = 16;
+    }
+    else if (protocol == 2) {
+        expected_len = 32;
+    }
+    else {
+        return -1;
+    }
+    if (sign_len != expected_len) {
+        return -1;
+    }
+    int ret = mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 32, data, len, hmac);
+    if (ret != 0) {
+        return ret;
+    }
+    return mbedtls_ct_memcmp(sign, hmac, expected_len);
+}
+
 static int initialize(void) {
     regenerate();
     return resetPinUvAuthToken();
@@ -410,6 +432,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
+    if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
+
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     if (subcommand == 0x0) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
@@ -431,9 +457,6 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
 
             CBOR_CHECK(COSE_key_shared(&hkey, &mapEncoder, &mapEncoder2));
-        }
-        else if (pinUvAuthProtocol == 0) {
-            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         }
         else {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -602,6 +625,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
 
         if (mbedtls_ct_memcmp(dhash, pin_data + off, 32) != 0) {
             regenerate();
+            resetPinUvAuthToken();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             if (retries == 0) {
                 CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
@@ -791,6 +815,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         }
         if (mbedtls_ct_memcmp(dhash, pin_data + off, 32) != 0) {
             regenerate();
+            resetPinUvAuthToken();
             mbedtls_platform_zeroize(sharedSecret, sizeof(sharedSecret));
             mbedtls_platform_zeroize(dhash, sizeof(dhash));
             if (retries == 0) {
@@ -880,7 +905,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         needs_power_cycle = false;
     }
     else {
-        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);

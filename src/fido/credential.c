@@ -801,7 +801,7 @@ int credential_import(const credential_import_record_t *record) {
     size_t public_key_len = 0;
     if (ret == 0) {
         cbor_encoder_init(&encoder, public_key, sizeof(public_key), 0);
-        error = COSE_key(&key, &encoder, &cose);
+        error = COSE_key(&key, (int)parsed.alg, &encoder, &cose);
         public_key_len = cbor_encoder_get_buffer_size(&encoder, public_key);
     }
     if (ret == 0 && error != CborNoError) {

@@ -140,7 +140,7 @@ def test_make_credential_hmac_secret_mc_empty_salt(device):
                 4: 2,
             },
         })
-    assert e.value.code == CtapError.ERR.MISSING_PARAMETER
+    assert e.value.code == CtapError.ERR.INVALID_LENGTH
 
 
 @pytest.mark.parametrize(
@@ -193,7 +193,21 @@ def test_bad_auth(device,  MCHmacSecret):
 
     with pytest.raises(CtapError) as e:
         device.GA(extensions={"hmac-secret": {1: key_agreement, 2: b'\x00'*80, 3: b'\x00'*32, 4: 2}})
-    assert e.value.code == CtapError.ERR.EXTENSION_FIRST
+    assert e.value.code == CtapError.ERR.PIN_AUTH_INVALID
+
+@pytest.mark.parametrize("salt_auth_len", [0, 8, 15, 17, 31, 33])
+def test_bad_salt_auth_length(device, MCHmacSecret, salt_auth_len):
+    key_agreement = {
+            1: 2,
+            3: -25,
+            -1: 1,
+            -2: b'\x00' * 32,
+            -3: b'\x00' * 32,
+        }
+
+    with pytest.raises(CtapError) as e:
+        device.GA(extensions={"hmac-secret": {1: key_agreement, 2: b'\x00' * 80, 3: b'\x00' * salt_auth_len, 4: 2}})
+    assert e.value.code == CtapError.ERR.INVALID_LENGTH
 
 @pytest.mark.parametrize("salts", [(salt4,), (salt4, salt5)])
 def test_invalid_salt_length(device, salts):

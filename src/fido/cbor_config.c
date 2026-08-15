@@ -53,7 +53,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     //CborEncoder mapEncoder;
     uint8_t *raw_subpara = NULL;
     const bool *forceChangePin = NULL, *pinPolicy = NULL;
-    bool vendorCommandIdPresent = false, vendorParamIntPresent = false;
+    bool vendorCommandIdPresent = false, vendorParamIntPresent = false, pinUvAuthProtocol_present = false;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -122,6 +122,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         else if (val_u == 0x03) {
             CBOR_FIELD_GET_UINT(pinUvAuthProtocol, 1);
+            pinUvAuthProtocol_present = true;
         }
         else if (val_u == 0x04) {
             CBOR_FIELD_GET_BYTES(pinUvAuthParam, 1);
@@ -129,16 +130,23 @@ int cbor_config(const uint8_t *data, size_t len) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
+    if (subcommand == 0) {
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+    if (subcommand != 0x01 && subcommand != 0x02 && subcommand != 0x03 && subcommand != 0xFF) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
+
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
 
+    if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
     if (pinUvAuthParam.present == false) {
         CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
     }
-    if (pinUvAuthProtocol == 0) {
+    if (pinUvAuthProtocol_present == false) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
-    }
-    if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
-        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
     size_t expected_auth_len = pinUvAuthProtocol == 1 ? 16u : 32u;
     if (pinUvAuthParam.len != expected_auth_len) {
@@ -346,7 +354,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         goto err;
     }
     else {
-        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
     //CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     //resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);

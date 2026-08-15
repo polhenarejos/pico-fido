@@ -113,6 +113,7 @@ extern void set_opts(uint8_t);
 #define MAX_FRAGMENT_LENGTH       (MAX_MSG_SIZE - 64)
 #define MAX_LARGE_BLOB_SIZE       2048
 #define MAX_RPIDS_MINPIN_LENGTH   120
+#define STATEFUL_WALK_IDLE_MS     (30 * 1000)
 typedef struct known_app {
     const uint8_t *rp_id_hash;
     const char *label;
@@ -158,6 +159,7 @@ extern pinUvAuthToken_t paut;
 extern persistentPinUvAuthToken_t ppaut;
 
 extern int verify(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, uint8_t *sign);
+extern int verify_hmac_secret(uint8_t protocol, const uint8_t *key, const uint8_t *data, uint16_t len, const uint8_t *sign, uint16_t sign_len);
 
 extern uint8_t session_pin[32];
 extern bool keydev_unlocked;

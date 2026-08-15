@@ -18,6 +18,9 @@
 #include "picokeys.h"
 #include "fido.h"
 #include "ctap.h"
+#if defined(PICO_PLATFORM)
+#include "bsp/board.h"
+#endif
 #include "hid/ctap_hid.h"
 #include "cbor_make_credential.h"
 #include "files.h"
@@ -30,7 +33,27 @@ uint16_t rp_counter = 1;
 uint16_t rp_total = 0;
 uint16_t cred_counter = 1;
 uint16_t cred_total = 0;
+uint32_t rp_channel = 0;
+uint32_t cred_channel = 0;
+uint32_t rp_timer = 0;
+uint32_t cred_timer = 0;
+bool rp_walk_active = false;
+bool cred_walk_active = false;
 CborByteString rpIdHashx = { 0 };
+
+void cbor_cred_mgmt_tick(void) {
+    uint32_t now = board_millis();
+    if (rp_walk_active && now - rp_timer >= STATEFUL_WALK_IDLE_MS) {
+        rp_counter = rp_total;
+        rp_channel = 0;
+        rp_walk_active = false;
+    }
+    if (cred_walk_active && now - cred_timer >= STATEFUL_WALK_IDLE_MS) {
+        cred_counter = cred_total + 1;
+        cred_channel = 0;
+        cred_walk_active = false;
+    }
+}
 
 int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     CborParser parser;
@@ -45,7 +68,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
     CborEncoder encoder, mapEncoder, mapEncoder2;
     uint8_t *raw_subpara = NULL;
     size_t raw_subpara_len = 0;
-    bool asserted = false, is_preview = *(data - 1) == 0x41; // Backwards compatibility
+    bool asserted = false, is_preview = *(data - 1) == 0x41, pinUvAuthProtocol_present = false; // Backwards compatibility
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -109,6 +132,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         }
         else if (val_u == 0x03) {
             CBOR_FIELD_GET_UINT(pinUvAuthProtocol, 1);
+            pinUvAuthProtocol_present = true;
         }
         else if (val_u == 0x04) { // pubKeyCredParams
             CBOR_FIELD_GET_BYTES(pinUvAuthParam, 1);
@@ -120,12 +144,15 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
 
+    if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
     if (subcommand != 0x03 && subcommand != 0x05) {
         if (pinUvAuthParam.present == false) {
             CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
         }
-        if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
-            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        if (pinUvAuthProtocol_present == false) {
+            CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         }
     }
 
@@ -173,12 +200,14 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
                 }
             }
             rp_counter = 0;
+            rp_channel = ctap_req ? ctap_req->cid : 0;
             if (credential_rp_count(&rp_total) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
         }
         else {
-            if (rp_counter >= rp_total) {
+            uint32_t channel = ctap_req ? ctap_req->cid : 0;
+            if (rp_channel != channel || rp_counter >= rp_total) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
         }
@@ -187,6 +216,13 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_ERROR(rp_ret == PICOKEYS_ERR_FILE_NOT_FOUND ? CTAP2_ERR_NO_CREDENTIALS : CTAP2_ERR_PROCESSING);
         }
         rp_counter++;
+        if (rp_counter < rp_total) {
+            rp_timer = board_millis();
+            rp_walk_active = true;
+        }
+        else {
+            rp_walk_active = false;
+        }
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, subcommand == 0x02 ? 3 : 2));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
         CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &mapEncoder2, 1));
@@ -228,9 +264,11 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             }
             cred_counter = 1;
             cred_total = 0;
+            cred_channel = ctap_req ? ctap_req->cid : 0;
         }
         else {
-            if (cred_counter > cred_total) {
+            uint32_t channel = ctap_req ? ctap_req->cid : 0;
+            if (cred_channel != channel || cred_counter > cred_total) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
             rpIdHash = rpIdHashx;
@@ -344,7 +382,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             CBOR_CHECK(COSE_cached_key(cached_public_key, cached_public_key_len, &mapEncoder, &mapEncoder2));
         }
         else {
-            CBOR_CHECK(COSE_key(&key, &mapEncoder, &mapEncoder2));
+            CBOR_CHECK(COSE_key(&key, (int)cred.alg, &mapEncoder, &mapEncoder2));
         }
 
         if (subcommand == 0x04) {
@@ -354,6 +392,11 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         if (cred_counter <= cred_total) {
             asserted = true;
             rpIdHashx = rpIdHash;
+            cred_timer = board_millis();
+            cred_walk_active = true;
+        }
+        else {
+            cred_walk_active = false;
         }
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, cred.extensions.credProtect > 0 ? cred.extensions.credProtect : CRED_PROT_UV_OPTIONAL));
@@ -463,6 +506,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             }
         }
         CBOR_ERROR(paut.has_rp_id && is_preview == false ? CTAP2_ERR_PIN_AUTH_INVALID : CTAP2_ERR_NO_CREDENTIALS);
+    }
+    else {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);

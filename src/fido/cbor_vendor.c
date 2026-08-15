@@ -299,7 +299,7 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
         }
     }
     else {
-        CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_OPTION);
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
     if (!vault_response_handled) {
         CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
