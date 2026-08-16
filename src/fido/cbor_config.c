@@ -261,7 +261,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_REVOKE) {
             // Keep the legacy slot form (0x03) and accept a resident credential ID in 0x02.
-            bool by_id = vendorParamByteString.present && !vendorParamIntPresent;
+            bool by_id = vendorParamByteString.present && vendorParamByteString.len == CRED_RESIDENT_LEN && !vendorParamIntPresent;
             bool by_slot = vendorParamIntPresent && !vendorParamByteString.present;
             if (!vendorCommandIdPresent || (!by_id && !by_slot)) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
@@ -278,7 +278,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         }
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_EXPIRE) {
             // Slot form: 0x03=slot, 0x02=4-byte timestamp. ID form: 0x02=ID, 0x03=timestamp.
-            bool by_id = vendorParamByteString.present && vendorParamByteString.len != sizeof(uint32_t) && vendorParamIntPresent && vendorParamInt <= UINT32_MAX;
+            bool by_id = vendorParamByteString.present && vendorParamByteString.len == CRED_RESIDENT_LEN && vendorParamIntPresent && vendorParamInt <= UINT32_MAX;
             bool by_slot = vendorParamIntPresent && vendorParamByteString.present && vendorParamByteString.len == sizeof(uint32_t);
             if (!vendorCommandIdPresent || (!by_id && !by_slot)) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);

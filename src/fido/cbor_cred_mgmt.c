@@ -278,6 +278,15 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
         for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *tef = file_search((uint16_t)(EF_CRED + i));
             if (file_has_data(tef) && credential_resident_matches_rp(tef, rpIdHash.data)) {
+                Credential candidate = { 0 };
+                int candidate_ret = credential_load_resident(tef, rpIdHash.data, &candidate);
+                credential_free(&candidate);
+                if (candidate_ret == CTAP2_ERR_NO_CREDENTIALS) {
+                    continue;
+                }
+                if (candidate_ret != 0) {
+                    CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+                }
                 if (++skip == cred_counter) {
                     if (cred_ef == NULL) {
                         cred_ef = tef;

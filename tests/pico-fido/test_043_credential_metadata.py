@@ -2,7 +2,7 @@
 
 import pytest
 from fido2.ctap import CtapError
-from fido2.ctap2 import Config
+from fido2.ctap2 import Config, CredentialManagement
 from fido2.ctap2.pin import ClientPin, PinProtocolV2
 
 
@@ -23,6 +23,12 @@ def _vendor_config(device, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG):
 def _set_pin_and_reset(device):
     device.reset()
     ClientPin(device.client()._backend.ctap2).set_pin(PIN)
+
+
+def _credential_management(device):
+    ctap = device.client()._backend.ctap2
+    token = ClientPin(ctap).get_pin_token(PIN, permissions=ClientPin.PERMISSION.CREDENTIAL_MGMT)
+    return CredentialManagement(ctap, PinProtocolV2(), token)
 
 
 def test_get_info_advertises_credential_metadata_commands(info):
@@ -122,3 +128,34 @@ def test_revoke_resident_credential_blocks_assertion(device):
     with pytest.raises(CtapError) as error:
         device.doGA(rp_id=rp["id"])
     assert error.value.code == CtapError.ERR.NO_CREDENTIALS
+
+
+def test_revoke_does_not_hide_other_credentials(device):
+    _set_pin_and_reset(device)
+    rp = {"id": "credential-metadata-multiple.example", "name": "Credential Metadata"}
+    first = device.doMC(rp=rp, rk=True, user={"id": b"first", "name": "first"})["res"].attestation_object
+    second = device.doMC(rp=rp, rk=True, user={"id": b"second", "name": "second"})["res"].attestation_object
+
+    management = _credential_management(device)
+    credentials = management.enumerate_creds(first.auth_data.rp_id_hash)
+    assert len(credentials) == 2
+    target = next(
+        credential for credential in credentials
+        if credential[CredentialManagement.RESULT.USER]["id"] == b"first"
+    )
+    target_id = target[CredentialManagement.RESULT.CREDENTIAL_ID]["id"]
+
+    _vendor_config(device)._call(
+        Config.CMD.VENDOR_PROTOTYPE,
+        {0x01: CONFIG_CREDENTIAL_REVOKE, 0x02: target_id},
+    )
+
+    management = _credential_management(device)
+    remaining = management.enumerate_creds(first.auth_data.rp_id_hash)
+    assert len(remaining) == 1
+    assert remaining[0][CredentialManagement.RESULT.USER]["id"] == b"second"
+    assert remaining[0][CredentialManagement.RESULT.CREDENTIAL_ID]["id"] != target_id
+    device.doGA(
+        rp_id=rp["id"],
+        allow_list=[{"id": second.auth_data.credential_data.credential_id, "type": "public-key"}],
+    )
