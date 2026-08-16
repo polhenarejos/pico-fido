@@ -41,6 +41,19 @@ static file_t *config_resident_credential(uint64_t slot) {
     return resident_container_is_marker(ef) ? ef : NULL;
 }
 
+static file_t *config_resident_credential_by_id(const uint8_t *credential_id, size_t credential_id_len) {
+    if (!credential_id || credential_id_len == 0) {
+        return NULL;
+    }
+    for (uint16_t slot = 0; slot < MAX_RESIDENT_CREDENTIALS; slot++) {
+        file_t *ef = file_search((uint16_t)(EF_CRED + slot));
+        if (resident_container_is_marker(ef) && credential_resident_matches_id(ef, credential_id, credential_id_len)) {
+            return ef;
+        }
+    }
+    return NULL;
+}
+
 int cbor_config(const uint8_t *data, size_t len) {
     CborParser parser;
     CborValue map;
@@ -247,10 +260,13 @@ int cbor_config(const uint8_t *data, size_t len) {
             set_opts(get_opts() ^ FIDO2_OPT_MCUV_NOTRQD);
         }
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_REVOKE) {
-            if (!vendorCommandIdPresent || !vendorParamIntPresent || vendorParamByteString.present) {
+            // Keep the legacy slot form (0x03) and accept a resident credential ID in 0x02.
+            bool by_id = vendorParamByteString.present && !vendorParamIntPresent;
+            bool by_slot = vendorParamIntPresent && !vendorParamByteString.present;
+            if (!vendorCommandIdPresent || (!by_id && !by_slot)) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
-            file_t *ef = config_resident_credential(vendorParamInt);
+            file_t *ef = by_id ? config_resident_credential_by_id(vendorParamByteString.data, vendorParamByteString.len) : config_resident_credential(vendorParamInt);
             fido_resident_metadata_t metadata;
             if (!ef || credential_resident_read_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
@@ -261,13 +277,16 @@ int cbor_config(const uint8_t *data, size_t len) {
             }
         }
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_EXPIRE) {
-            if (!vendorCommandIdPresent || !vendorParamIntPresent || !vendorParamByteString.present || vendorParamByteString.len != sizeof(uint32_t)) {
+            // Slot form: 0x03=slot, 0x02=4-byte timestamp. ID form: 0x02=ID, 0x03=timestamp.
+            bool by_id = vendorParamByteString.present && vendorParamByteString.len != sizeof(uint32_t) && vendorParamIntPresent && vendorParamInt <= UINT32_MAX;
+            bool by_slot = vendorParamIntPresent && vendorParamByteString.present && vendorParamByteString.len == sizeof(uint32_t);
+            if (!vendorCommandIdPresent || (!by_id && !by_slot)) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
             if (!has_set_rtc()) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
-            file_t *ef = config_resident_credential(vendorParamInt);
+            file_t *ef = by_id ? config_resident_credential_by_id(vendorParamByteString.data, vendorParamByteString.len) : config_resident_credential(vendorParamInt);
             fido_resident_metadata_t metadata;
             if (!ef || credential_resident_read_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
@@ -276,7 +295,7 @@ int cbor_config(const uint8_t *data, size_t len) {
                 (metadata.expiration != 0 && (uint64_t)metadata.expiration <= (uint64_t)get_rtc_time())) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
-            metadata.expiration = get_uint32_be(vendorParamByteString.data);
+            metadata.expiration = by_id ? (uint32_t)vendorParamInt : get_uint32_be(vendorParamByteString.data);
             if (metadata.expiration != 0 && (uint64_t)metadata.expiration <= (uint64_t)get_rtc_time()) {
                 metadata.status = FIDO_RESIDENT_STATUS_EXPIRED;
             }
