@@ -24,7 +24,7 @@
 #include "bsp/board.h"
 #endif
 #ifdef ESP_PLATFORM
-#include "esp_compat.h"
+#include "compat/esp_compat.h"
 #endif
 #include "fs/phy.h"
 #include "files.h"

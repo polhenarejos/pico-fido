@@ -27,7 +27,11 @@
 #include "random.h"
 #include "button.h"
 #include "led/led.h"
+#if defined(ESP_PLATFORM)
+#include "compat/esp_compat.h"
+#else
 #include "compat/board.h"
+#endif
 #include "crypto_utils.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/chachapoly.h"
