@@ -48,6 +48,12 @@ Pico FIDO includes the following features:
 - Rescue interface to allow recovery of the device if it becomes unresponsive or undetectable.
 - LED customization with PicoKey App.
 
+The authenticated credential export and import design is described in Pol
+Henarejos, [*Vaulted Passkeys: A Device-Bound Proposal for Authenticated
+Credential Export and Import*](https://arxiv.org/abs/2608.13806). The proposal
+and implementation notes are also available in
+[`docs/vault`](docs/vault/vaulted_passkeys_proposal.md).
+
 All features comply with the specifications. If you encounter unexpected behavior or deviations from the specifications, please open an issue.
 
 ## Security Considerations

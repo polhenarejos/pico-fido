@@ -541,6 +541,20 @@ Pytest markers should distinguish deterministic tests from tests requiring a liv
 
 ![Separate enrollment and credential-mobility lifecycles](assets/figure-4-lifecycles-illustrated.png)
 
+## How to cite this proposal
+
+```bibtex
+@misc{henarejos2026vaultedpasskeysdeviceboundproposal,
+      title={Vaulted Passkeys: A Device-Bound Proposal for Authenticated Credential Export and Import},
+      author={Pol Henarejos},
+      year={2026},
+      eprint={2608.13806},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2608.13806},
+}
+```
+
 ## References
 
 <a id="ref-1"></a>[1] World Wide Web Consortium (W3C), “Web Authentication: An API for Accessing Public Key Credentials—Level 3.” <https://www.w3.org/TR/webauthn-3/>
