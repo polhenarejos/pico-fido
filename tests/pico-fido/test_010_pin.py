@@ -138,6 +138,9 @@ def test_get_pin_token_but_no_pin_set(resetdevice, client_pin):
         client_pin.get_pin_token("TestPin")
     assert e.value.code == CtapError.ERR.PIN_NOT_SET
 
+def test_get_pin_retries_but_no_pin_set(resetdevice, client_pin):
+    assert client_pin.get_pin_retries() == (8, None)
+
 def test_change_pin_but_no_pin_set(device, client_pin):
     with pytest.raises(CtapError) as e:
         client_pin.change_pin("TestPin", "1234")
