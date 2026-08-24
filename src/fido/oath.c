@@ -967,7 +967,7 @@ static int cmd_calculate(void) {
     if (validated == false) {
         return SW_SECURITY_STATUS_NOT_SATISFIED();
     }
-    tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 };
+    tlv_ctx_t ctxi, key = { 0 }, chal = { 0 }, name = { 0 }, prop = { 0 };
     tlv_ctx_init(BYTE_ARRAY(apdu.data, apdu.nc), &ctxi);
     if (tlv_find_tag(&ctxi, TAG_CHALLENGE, &chal) == false) {
         return SW_INCORRECT_PARAMS();
@@ -1009,6 +1009,13 @@ static int cmd_calculate(void) {
             oath_credential_close(&credential);
             return SW_INCORRECT_PARAMS();
         }
+    }
+
+    if (tlv_find_tag(&ctxe, TAG_PROPERTY, &prop) == true && prop.len > 0 && (prop.data[0] & PROP_TOUCH) && !check_user_presence()) {
+        mbedtls_platform_zeroize(plain_key, plain_key_len);
+        free(plain_key);
+        oath_credential_close(&credential);
+        return SW_CONDITIONS_NOT_SATISFIED();
     }
 
     if (!oath_response_has_room(1)) {
