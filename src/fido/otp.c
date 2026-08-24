@@ -906,7 +906,7 @@ static int cmd_otp(void) {
                 status_byte = 0x20;
                 otp_status(_is_otp);
 #ifndef ENABLE_EMULATION
-                if (button_wait()) {
+                if (wait_button_pressed()) {
                     status_byte = 0x00;
                     otp_status(_is_otp);
                     mbedtls_platform_zeroize(data, sizeof(data));
