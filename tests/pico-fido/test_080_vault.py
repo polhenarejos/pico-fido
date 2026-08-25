@@ -3,8 +3,10 @@ import hashlib
 import json
 import os
 import struct
+from pathlib import Path
 
 import pytest
+from cryptography import x509
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import x448
@@ -31,6 +33,7 @@ HEADER_LEN = ALGORITHM_OFFSET + 1
 NONCE_BYTES = 12
 LABEL_MAX = 64
 ALGORITHMS = {1: "chachapoly", 2: "aesgcm", 3: "chachapoly+aesgcm", 4: "aesgcm+chachapoly"}
+DEFAULT_ENROLLMENT = Path.home() / ".config" / "PicoKeys" / "vault" / "enrollment-35d3ddbcebc9-Test.json"
 VAULT_STATUS = 0x01
 VAULT_ENROLL_BEGIN = 0x02
 VAULT_ENROLL_FINISH = 0x03
@@ -72,7 +75,7 @@ def _enrollment_packet(certificate, private_key, device_public, challenge, kvaul
     if len(label_bytes) > LABEL_MAX:
         raise ValueError("vault label is too long")
     plain = kvault + bytes([len(label_bytes)]) + label_bytes
-    nonce = bytes(range(12))
+    nonce = os.urandom(12)
     return struct.pack(">H", len(certificate)) + certificate + nonce + AESGCM(session_key).encrypt(nonce, plain, info)
 
 
@@ -148,13 +151,64 @@ def _live_device(request):
 
 
 def _live_pin(device):
-    pin = os.environ.get("PICO_FIDO_VAULT_PIN", "12345678")
+    pin = os.environ.get("PICO_FIDO_VAULT_PIN") or "12345678"
     protocol = PinProtocolV2()
+    client_pin = ClientPin(Ctap2(device.dev), protocol)
     try:
-        token = ClientPin(Ctap2(device.dev), protocol).get_pin_token(pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG | ClientPin.PERMISSION.CREDENTIAL_MGMT)
+        token = client_pin.get_pin_token(pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG | ClientPin.PERMISSION.CREDENTIAL_MGMT)
     except Exception as error:
-        pytest.skip(f"live PIN unavailable: {error}")
+        if not isinstance(error, CtapError) or error.code != CtapError.ERR.PIN_NOT_SET:
+            pytest.fail(f"live PIN unavailable: {error}")
+        try:
+            client_pin.set_pin(pin)
+            token = client_pin.get_pin_token(pin, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG | ClientPin.PERMISSION.CREDENTIAL_MGMT)
+        except Exception as setup_error:
+            pytest.fail(f"could not initialize live PIN: {setup_error}")
     return protocol, token
+
+
+def _live_enrollment(device):
+    enrollment_json = os.environ.get("PICO_FIDO_VAULT_ENROLLMENT_JSON")
+    if enrollment_json:
+        try:
+            value = json.loads(enrollment_json)
+        except json.JSONDecodeError as error:
+            pytest.fail(f"invalid PICO_FIDO_VAULT_ENROLLMENT_JSON: {error}")
+    else:
+        path = Path(os.environ.get("PICO_FIDO_VAULT_ENROLLMENT", str(DEFAULT_ENROLLMENT)))
+        if not path.is_file():
+            pytest.fail(f"enrollment JSON does not exist: {path}")
+        value = json.loads(path.read_text(encoding="utf-8"))
+    passphrase = os.environ.get("PICO_FIDO_VAULT_PASSPHRASE") or "test"
+    plain = _open_enrollment(value, passphrase)
+    kvault = base64.b64decode(plain["kvault"])
+    private_key = x448.X448PrivateKey.from_private_bytes(base64.b64decode(plain["x448_private"]))
+    certificate = base64.b64decode(plain["certificate"])
+    certificate_object = x509.load_der_x509_certificate(certificate)
+    certificate_public = certificate_object.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    private_public = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    assert certificate_public == private_public
+    assert _vault_id(kvault).hex() == plain["vault_id"]
+
+    pin = _live_pin(device)
+    code, response = _vendor_call(device, VAULT_ENROLL_BEGIN, pin=pin)
+    assert code == 0, f"Vault enrollment begin failed: 0x{code:02x} {response!r}"
+    device_public = response.get(1, b"")
+    challenge = response.get(2, b"")
+    assert len(device_public) == 56
+    assert len(challenge) == VAULT_ENROLL_CHALLENGE_BYTES
+    packet = _enrollment_packet(certificate, private_key, device_public, challenge, kvault, plain.get("label", ""))
+    code, response = _vendor_call(device, VAULT_ENROLL_FINISH, {1: packet}, pin)
+    if code != 0:
+        try:
+            san = certificate_object.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+            certificate_sans = [name.value for name in san]
+        except x509.ExtensionNotFound:
+            certificate_sans = []
+        device_serial = getattr(getattr(device.dev, "descriptor", None), "serial_number", None)
+        pytest.fail(f"Vault enrollment finish failed: 0x{code:02x} {response!r}; device_serial={device_serial!r}; certificate_sans={certificate_sans!r}")
+    assert response.get(1) == _vault_id(kvault)
+    return pin
 
 
 def test_vault_id_is_deterministic_and_256_bit():
@@ -272,6 +326,7 @@ def test_blob_algorithm_is_bounded():
         _export_blob(bytes(32), b"credential-id", 0)
 
 
+@pytest.mark.vault_live
 def test_live_vault_status_contract(request):
     device = _live_device(request)
     code, status = _vendor_call(device, VAULT_STATUS)
@@ -280,6 +335,7 @@ def test_live_vault_status_contract(request):
     assert len(status.get(1, b"")) in (0, VAULT_ID_BYTES)
 
 
+@pytest.mark.vault_live
 def test_live_vault_commands_require_pin(request):
     device = _live_device(request)
     for subcommand, params in ((VAULT_ENROLL_BEGIN, None), (VAULT_EXPORT, {1: b"credential-id"}), (VAULT_IMPORT, {1: b"blob"}), (VAULT_UNENROLL, None)):
@@ -287,6 +343,7 @@ def test_live_vault_commands_require_pin(request):
         assert code != 0
 
 
+@pytest.mark.vault_live
 def test_live_enrollment_begin_is_available_without_hardware_button(request):
     device = _live_device(request)
     pin = _live_pin(device)
@@ -298,6 +355,7 @@ def test_live_enrollment_begin_is_available_without_hardware_button(request):
     assert code != 0
 
 
+@pytest.mark.vault_live
 def test_live_enrollment_finish_rejects_malformed_packet(request):
     device = _live_device(request)
     pin = _live_pin(device)
@@ -307,6 +365,7 @@ def test_live_enrollment_finish_rejects_malformed_packet(request):
     assert code != 0
 
 
+@pytest.mark.vault_live
 def test_live_unknown_vault_subcommand_is_rejected(request):
     device = _live_device(request)
     code, _ = _vendor_call(device, 0x07)
@@ -316,18 +375,15 @@ def test_live_unknown_vault_subcommand_is_rejected(request):
 @pytest.mark.vault_live
 def test_live_export_import_roundtrip(request):
     device = _live_device(request)
-    pin = _live_pin(device)
-    code, status = _vendor_call(device, VAULT_STATUS)
-    assert code == 0
-    if len(status.get(1, b"")) != VAULT_ID_BYTES:
-        pytest.skip("device is not enrolled")
+    pin = _live_enrollment(device)
     rp_id = "vault-test-" + os.urandom(6).hex() + ".example"
     result = device.doMC(rp={"id": rp_id, "name": rp_id}, user={"id": os.urandom(16), "name": "vault-test", "displayName": "Vault Test"}, rk=True)
     credential_id = result["res"].attestation_object.auth_data.credential_data.credential_id
+    pin = _live_pin(device)
     blobs = {}
     for algorithm in sorted(ALGORITHMS):
         code, response = _vendor_call(device, VAULT_EXPORT, {1: credential_id, 3: algorithm}, pin)
-        assert code == 0
+        assert code == 0, f"Vault export failed for algorithm {algorithm}: 0x{code:02x} {response!r}"
         blob = response[1]
         assert blob[ALGORITHM_OFFSET] == algorithm
         blobs[algorithm] = blob
@@ -337,17 +393,19 @@ def test_live_export_import_roundtrip(request):
     for algorithm in sorted(ALGORITHMS):
         credential_management.delete_cred(descriptor)
         code, _ = _vendor_call(device, VAULT_IMPORT, {1: blobs[algorithm]}, pin)
-        assert code == 0
+        assert code == 0, f"Vault import failed for algorithm {algorithm}: 0x{code:02x}"
         credentials = credential_management.enumerate_creds(hashlib.sha256(rp_id.encode()).digest())
         assert any((entry.get(CredentialManagement.RESULT.CREDENTIAL_ID) or {}).get("id") == credential_id for entry in credentials)
     credential_management.delete_cred(descriptor)
 
 
+@pytest.mark.vault_live
 @pytest.mark.vault_destructive
 def test_live_unenroll_requires_explicit_opt_in(request):
-    if os.environ.get("PICO_FIDO_VAULT_DESTRUCTIVE_TESTS") != "1":
-        pytest.skip("set PICO_FIDO_VAULT_DESTRUCTIVE_TESTS=1 to erase the device vault")
     device = _live_device(request)
+    is_emulation = getattr(getattr(device.dev, "descriptor", None), "serial_number", None) == "AAAAAA"
+    if not is_emulation and os.environ.get("PICO_FIDO_VAULT_DESTRUCTIVE_TESTS") != "1":
+        pytest.skip("set PICO_FIDO_VAULT_DESTRUCTIVE_TESTS=1 to erase the device vault")
     pin = _live_pin(device)
     code, _ = _vendor_call(device, VAULT_UNENROLL, pin=pin)
     assert code == 0
