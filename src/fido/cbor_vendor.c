@@ -43,7 +43,7 @@
 #include "mbedtls/x509_csr.h"
 #include "mbedtls/x509_crt.h"
 
-#include "vault.h"
+#include "fido_vault.h"
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;

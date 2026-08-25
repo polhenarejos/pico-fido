@@ -459,7 +459,6 @@ int scan_files_fido(void) {
     else {
         printf("FATAL ERROR: CERT DEV not found in memory!\r\n");
     }
-    ef_vault_label = file_search_by_fid(EF_VAULT_LABEL, NULL, SPECIFY_EF);
     ef_counter = file_search_by_fid(EF_COUNTER, NULL, SPECIFY_EF);
     if (ef_counter) {
         if (!file_has_data(ef_counter)) {

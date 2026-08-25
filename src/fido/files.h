@@ -56,6 +56,5 @@ extern file_t *ef_authtoken;
 extern file_t *ef_keydev_enc;
 extern file_t *ef_largeblob;
 extern file_t *ef_vault_key;
-extern file_t *ef_vault_label;
 
 #endif //_FILES_H_
