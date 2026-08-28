@@ -326,7 +326,6 @@ def test_blob_algorithm_is_bounded():
         _export_blob(bytes(32), b"credential-id", 0)
 
 
-@pytest.mark.vault_live
 def test_live_vault_status_contract(request):
     device = _live_device(request)
     code, status = _vendor_call(device, VAULT_STATUS)
@@ -335,7 +334,6 @@ def test_live_vault_status_contract(request):
     assert len(status.get(1, b"")) in (0, VAULT_ID_BYTES)
 
 
-@pytest.mark.vault_live
 def test_live_vault_commands_require_pin(request):
     device = _live_device(request)
     for subcommand, params in ((VAULT_ENROLL_BEGIN, None), (VAULT_EXPORT, {1: b"credential-id"}), (VAULT_IMPORT, {1: b"blob"}), (VAULT_UNENROLL, None)):
@@ -343,7 +341,6 @@ def test_live_vault_commands_require_pin(request):
         assert code != 0
 
 
-@pytest.mark.vault_live
 def test_live_enrollment_begin_is_available_without_hardware_button(request):
     device = _live_device(request)
     pin = _live_pin(device)
@@ -355,7 +352,6 @@ def test_live_enrollment_begin_is_available_without_hardware_button(request):
     assert code != 0
 
 
-@pytest.mark.vault_live
 def test_live_enrollment_finish_rejects_malformed_packet(request):
     device = _live_device(request)
     pin = _live_pin(device)
@@ -365,14 +361,12 @@ def test_live_enrollment_finish_rejects_malformed_packet(request):
     assert code != 0
 
 
-@pytest.mark.vault_live
 def test_live_unknown_vault_subcommand_is_rejected(request):
     device = _live_device(request)
     code, _ = _vendor_call(device, 0x07)
     assert code != 0
 
 
-@pytest.mark.vault_live
 def test_live_export_import_roundtrip(request):
     device = _live_device(request)
     pin = _live_enrollment(device)
@@ -399,8 +393,6 @@ def test_live_export_import_roundtrip(request):
     credential_management.delete_cred(descriptor)
 
 
-@pytest.mark.vault_live
-@pytest.mark.vault_destructive
 def test_live_unenroll_requires_explicit_opt_in(request):
     device = _live_device(request)
     is_emulation = getattr(getattr(device.dev, "descriptor", None), "serial_number", None) == "AAAAAA"
