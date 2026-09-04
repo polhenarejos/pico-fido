@@ -21,24 +21,7 @@ set(USB_VID 0x2E8A)
 set(USB_PID 0x10FE)
 
 if(ESP_PLATFORM)
-    if(NOT DEFINED ENABLE_POWER_ON_RESET)
-        set(ENABLE_POWER_ON_RESET 0)
-    endif()
-    if(NOT DEFINED ENABLE_PQC)
-        set(ENABLE_PQC 0)
-    endif()
-    set(EXTRA_COMPONENT_DIRS
-        src/fido
-        pico-keys-sdk/config/esp32/components/pico-keys-sdk
-        pico-keys-sdk/config/esp32/components/tinycbor
-    )
-    if(ENABLE_PQC)
-        list(APPEND EXTRA_COMPONENT_DIRS
-            pico-keys-sdk/config/esp32/components/mlkem512
-            pico-keys-sdk/config/esp32/components/mlkem768
-            pico-keys-sdk/config/esp32/components/mlkem1024
-        )
-    endif()
+    set(PICOKEYS_COMPONENTS fido)
     include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 else()
     if(NOT ENABLE_EMULATION)
