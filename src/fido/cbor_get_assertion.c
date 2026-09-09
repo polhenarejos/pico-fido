@@ -284,6 +284,18 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             }
         }
 
+        /* CTAP 2.1 6.2: with alwaysUv set, an assertion requires user verification.
+           makeCredential enforces this (cbor_make_credential.c), getAssertion upstream
+           does not - it only validates pinUvAuthParam when the platform bothers to send
+           one. With AUV advertised in getInfo that is a guarantee we would not keep:
+           registration would ask for the PIN and every subsequent login would not.
+           Same condition and same error as the makeCredential path. */
+        if (get_opts() & FIDO2_OPT_AUV) {
+            if (!file_has_data(ef_pin) || (pinUvAuthParam.present == false && options.uv != ptrue)) {
+                CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+            }
+        }
+
         if (pinUvAuthParam.present == true) { //6.1
             int ret = verify((uint8_t)pinUvAuthProtocol, paut.data, clientDataHash.data, (uint16_t)clientDataHash.len, pinUvAuthParam.data);
             if (ret != CborNoError) {
