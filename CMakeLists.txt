@@ -17,8 +17,15 @@
 
 cmake_minimum_required(VERSION 3.13)
 
-set(USB_VID 0x2E8A)
-set(USB_PID 0x10FE)
+# Allow overriding from the command line: idf.py -DUSB_VID=... -DUSB_PID=...
+# The upstream CONFIG_TINYUSB_DESC_CUSTOM_VID path cannot work here: CONFIG_* only
+# exist after project(), while these lines run before it.
+if(NOT DEFINED USB_VID)
+    set(USB_VID 0x2E8A)
+endif()
+if(NOT DEFINED USB_PID)
+    set(USB_PID 0x10FE)
+endif()
 
 if(ESP_PLATFORM)
     set(ENABLE_EDDSA 1)
