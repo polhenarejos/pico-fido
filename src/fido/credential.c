@@ -571,6 +571,7 @@ void credential_free(Credential *cred) {
             CBOR_FREE_BYTE_STRING(cred->extensions.credBlob);
         }
         cred->present = false;
+        cred->require_button = false;
         cred->extensions.present = false;
         cred->opts.present = false;
     }
@@ -1017,7 +1018,7 @@ bool credential_resident_matches_id(const file_t *ef, const uint8_t *resident_id
         return false;
     }
     fido_resident_metadata_t imported_metadata;
-    if (resident_container_read_metadata((uint8_t)ef->fid, &imported_metadata) == PICOKEYS_OK && imported_metadata.properties == FIDO_RESIDENT_PROPERTY_IMPORTED) {
+    if (resident_container_read_metadata((uint8_t)ef->fid, &imported_metadata) == PICOKEYS_OK && (imported_metadata.properties & FIDO_RESIDENT_PROPERTY_IMPORTED) != 0) {
         uint8_t *imported_resident_id = NULL;
         size_t imported_resident_id_len = 0;
         if (credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CLIENT_ID, &imported_resident_id, &imported_resident_id_len) != PICOKEYS_OK) {
@@ -1057,6 +1058,7 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
         return CTAP1_ERR_INVALID_PARAMETER;
     }
     cred->imported = false;
+    cred->require_button = false;
     if (resident_container_is_marker(ef)) {
         if (!credential_resident_usable(ef)) {
             return CTAP2_ERR_NO_CREDENTIALS;
@@ -1073,6 +1075,7 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
         size_t resident_id_len = 0;
         size_t metadata_len = 0;
         size_t private_key_len = 0;
+        bool require_button = false;
         int ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CREDENTIAL, &credential, &credential_len);
         if (ret == PICOKEYS_OK) {
             ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CLIENT_ID, &resident_id, &resident_id_len);
@@ -1083,7 +1086,10 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
         if (ret == PICOKEYS_OK) {
             fido_resident_metadata_t resident_metadata;
             ret = resident_container_read_metadata((uint8_t)ef->fid, &resident_metadata);
-            if (ret == PICOKEYS_OK && resident_metadata.properties == FIDO_RESIDENT_PROPERTY_IMPORTED) {
+            if (ret == PICOKEYS_OK) {
+                require_button = (resident_metadata.properties & FIDO_RESIDENT_PROPERTY_BUTTON) != 0;
+            }
+            if (ret == PICOKEYS_OK && (resident_metadata.properties & FIDO_RESIDENT_PROPERTY_IMPORTED) != 0) {
                 cred->imported = true;
                 ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_METADATA, &metadata, &metadata_len);
                 if (ret == PICOKEYS_OK) ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_PRIVATE_KEY, &private_key, &private_key_len);
@@ -1110,6 +1116,7 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
             }
         }
         if (ret == 0) {
+            cred->require_button = require_button;
             cred->residentId.present = true;
             cred->residentId.len = CRED_RESIDENT_LEN;
             cred->residentId.data = resident_id;

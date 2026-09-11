@@ -9,6 +9,7 @@ from fido2.ctap2.pin import ClientPin, PinProtocolV2
 PIN = "12345678"
 CONFIG_CREDENTIAL_EXPIRE = 0x0004E532E1FEB2FD
 CONFIG_CREDENTIAL_REVOKE = 0x0005961ECBA040F9
+CONFIG_CREDENTIAL_BUTTON = 0x0005abc39033a930
 
 
 def _vendor_config(device, permissions=ClientPin.PERMISSION.AUTHENTICATOR_CFG):
@@ -35,6 +36,7 @@ def test_get_info_advertises_credential_metadata_commands(info):
     commands = info[0x15]
     assert CONFIG_CREDENTIAL_EXPIRE in commands
     assert CONFIG_CREDENTIAL_REVOKE in commands
+    assert CONFIG_CREDENTIAL_BUTTON in commands
 
 
 def test_revoke_requires_a_credential_slot(device):

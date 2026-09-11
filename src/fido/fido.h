@@ -39,6 +39,7 @@ extern int scan_files_fido(void);
 extern int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int, mbedtls_ecp_keypair *key);
 extern int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypair *);
 extern int wait_button_pressed(void);
+extern int wait_button_pressed_timeout(uint32_t timeout_seconds);
 extern void init_fido(void);
 extern void init_otp(void);
 extern void scan_all(void);
@@ -126,6 +127,7 @@ extern const known_app_t *find_app_by_rp_id_hash(const uint8_t *rp_id_hash);
 #define TRANSPORT_TIME_LIMIT (30 * 1000) //USB
 
 bool check_user_presence(void);
+bool check_user_presence_for_credential(bool require_button);
 void fido_led_3_blinks(void);
 int fido_process_apdu(void);
 int cmd_register(void);

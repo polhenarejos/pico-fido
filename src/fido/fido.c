@@ -528,7 +528,11 @@ void init_fido(void) {
 }
 
 int wait_button_pressed(void) {
-    uint32_t val = EV_PRESS_BUTTON;
+    return wait_button_pressed_timeout(button_timeout_seconds());
+}
+
+int wait_button_pressed_timeout(uint32_t timeout_seconds) {
+    uint32_t val = EV_PRESS_BUTTON_WITH_TIMEOUT(timeout_seconds);
 #if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
     queue_try_add(&card_to_usb_q, &val);
     do {
@@ -546,13 +550,16 @@ int wait_button_pressed(void) {
 
 uint32_t user_present_time_limit = 0;
 
-bool check_user_presence(void) {
+static bool check_user_presence_internal(uint32_t timeout_seconds, bool honor_force) {
+    (void) honor_force;
     if (user_present_time_limit == 0 || user_present_time_limit + TRANSPORT_TIME_LIMIT < board_millis()) {
         bool previous_force_button_wait = force_button_wait;
 #ifdef FORCE_BUTTON_WAIT
-        force_button_wait = true;
+        if (honor_force) {
+            force_button_wait = true;
+        }
 #endif
-        int ret = wait_button_pressed();
+        int ret = wait_button_pressed_timeout(timeout_seconds);
         force_button_wait = previous_force_button_wait;
         if (ret > 0) {
             return false;
@@ -560,6 +567,15 @@ bool check_user_presence(void) {
         //user_present_time_limit = board_millis();
     }
     return true;
+}
+
+bool check_user_presence(void) {
+    return check_user_presence_internal(button_timeout_seconds(), true);
+}
+
+bool check_user_presence_for_credential(bool require_button) {
+    uint32_t timeout_seconds = require_button ? button_timeout_seconds() : 0;
+    return check_user_presence_internal(timeout_seconds, false);
 }
 
 void fido_led_3_blinks(void) {

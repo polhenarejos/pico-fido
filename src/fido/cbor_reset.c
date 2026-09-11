@@ -96,7 +96,9 @@ static int fido_reset_storage(void) {
         return context.ret;
     }
 
-    flash_commit();
+    if (!flash_commit_sync(5000u)) {
+        return PICOKEYS_ERR_MEMORY_FATAL;
+    }
     return context.metadata_failed ? PICOKEYS_EXEC_ERROR : PICOKEYS_OK;
 }
 
@@ -130,5 +132,8 @@ int cbor_reset(void) {
         flash_commit();
     }
 #endif
+    if (!flash_commit_sync(5000u)) {
+        return CTAP2_ERR_PROCESSING;
+    }
     return 0;
 }

@@ -56,6 +56,7 @@ typedef struct Credential {
     CborByteString privateKey;
     CredOptions opts;
     bool imported;
+    bool require_button;
     bool present;
     uint64_t rtc_creation;
 } Credential;

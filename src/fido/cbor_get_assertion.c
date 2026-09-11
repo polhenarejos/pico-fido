@@ -30,6 +30,9 @@
 #include "credential.h"
 #include "mbedtls/sha256.h"
 #include "random.h"
+#ifndef ENABLE_EMULATION
+#include "button.h"
+#endif
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
 extern char *rp_id, *user_name, *display_name;
@@ -484,25 +487,26 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
             }
         }
+        bool require_button = numberOfCredentials > 0 && creds[0].require_button;
 
         if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
             if (pinUvAuthParam.present == true) {
                 if (getUserPresentFlagValue() == false) {
-                    if (check_user_presence() == false) {
+                    if (check_user_presence_for_credential(require_button) == false) {
                         CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
 #ifndef ENABLE_EMULATION
-                    button_pressed = phy_data.up_btn != 0;
+                    button_pressed = require_button && button_timeout_seconds() != 0;
 #endif
                 }
             }
             else {
                 if (!(flags & FIDO2_AUT_FLAG_UP)) {
-                    if (check_user_presence() == false) {
+                    if (check_user_presence_for_credential(require_button) == false) {
                         CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
 #ifndef ENABLE_EMULATION
-                    button_pressed = phy_data.up_btn != 0;
+                    button_pressed = require_button && button_timeout_seconds() != 0;
 #endif
                 }
             }

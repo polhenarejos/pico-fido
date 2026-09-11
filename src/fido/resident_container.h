@@ -40,6 +40,7 @@ typedef enum {
 
 #define FIDO_RESIDENT_PROPERTY_NATIVE 0x00u
 #define FIDO_RESIDENT_PROPERTY_IMPORTED 0x01u
+#define FIDO_RESIDENT_PROPERTY_BUTTON 0x02u
 
 typedef struct fido_resident_metadata {
     uint8_t status;
