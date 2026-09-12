@@ -81,12 +81,6 @@ static bool fido_reset_dynamic_file(file_t *file, void *ctx) {
 }
 
 static int fido_reset_storage(void) {
-    for (file_entry_t *entry = file_entries; entry != file_last; entry++) {
-        if (fido_reset_should_clear(entry->file.fid) && flash_clear_file(&entry->file) != PICOKEYS_OK) {
-            return PICOKEYS_EXEC_ERROR;
-        }
-    }
-
     fido_reset_context_t context = {
         .ret = PICOKEYS_OK,
         .metadata_failed = false
@@ -96,9 +90,22 @@ static int fido_reset_storage(void) {
         return context.ret;
     }
 
-    if (!flash_commit_sync(5000u)) {
-        return PICOKEYS_ERR_MEMORY_FATAL;
+    // Delete credentials before clearing the PIN and device keys. A reset can be
+    // interrupted between flash commits when many dynamic records are present.
+    if (context.metadata_failed) {
+        return PICOKEYS_EXEC_ERROR;
     }
+
+    for (file_entry_t *entry = file_entries; entry != file_last; entry++) {
+        if (fido_reset_should_clear(entry->file.fid) && flash_clear_file(&entry->file) != PICOKEYS_OK) {
+            return PICOKEYS_EXEC_ERROR;
+        }
+    }
+
+    //if (!flash_commit_sync(5000u)) {
+    //    return PICOKEYS_ERR_MEMORY_FATAL;
+    //}
+    flash_commit();
     return context.metadata_failed ? PICOKEYS_EXEC_ERROR : PICOKEYS_OK;
 }
 
@@ -132,8 +139,9 @@ int cbor_reset(void) {
         flash_commit();
     }
 #endif
-    if (!flash_commit_sync(5000u)) {
-        return CTAP2_ERR_PROCESSING;
-    }
+    flash_commit();
+    //if (!flash_commit_sync(5000u)) {
+    //    return CTAP2_ERR_PROCESSING;
+    //}
     return 0;
 }
