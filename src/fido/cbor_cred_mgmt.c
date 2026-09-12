@@ -204,6 +204,9 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             if (credential_rp_count(&rp_total) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_PROCESSING);
             }
+            if (rp_total == 0) {
+                CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+            }
         }
         else {
             uint32_t channel = ctap_req ? ctap_req->cid : 0;
