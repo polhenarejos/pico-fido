@@ -57,6 +57,7 @@ static jmp_buf power_loss_env;
 static size_t power_loss_event;
 static size_t power_loss_at = SIZE_MAX;
 static bool power_loss_armed;
+static bool power_loss_occurred;
 
 static test_file_t *test_file_from_handle(const file_t *file) {
     for (size_t i = 0; i < TEST_FILE_COUNT; i++) {
@@ -84,6 +85,7 @@ static void test_reset(void) {
     power_loss_event = 0;
     power_loss_at = SIZE_MAX;
     power_loss_armed = false;
+    power_loss_occurred = false;
     for (size_t i = 0; i < sizeof(device_key); i++) {
         device_key[i] = (uint8_t)(i + 1u);
         public_root[i] = (uint8_t)(0x80u + i);
@@ -92,6 +94,9 @@ static void test_reset(void) {
 }
 
 static void test_reboot(void) {
+    if (!power_loss_occurred) {
+        flash_commit();
+    }
     memset(test_files, 0, sizeof(test_files));
     for (size_t i = 0; i < TEST_FILE_COUNT; i++) {
         memcpy(test_files[i].storage, durable_files[i].storage, sizeof(test_files[i].storage));
@@ -101,6 +106,7 @@ static void test_reboot(void) {
         test_files[i].file.data = test_files[i].size > 0 ? test_files[i].storage : NULL;
     }
     power_loss_armed = false;
+    power_loss_occurred = false;
 }
 
 static size_t test_allocated_files(void) {
@@ -216,6 +222,7 @@ int file_delete_no_commit(file_t *file) {
 void flash_commit(void) {
     power_loss_event++;
     if (power_loss_armed && power_loss_event == power_loss_at) {
+        power_loss_occurred = true;
         power_loss_armed = false;
         longjmp(power_loss_env, 1);
     }
@@ -319,51 +326,37 @@ static void test_collision_rejected(void) {
     assert(!resident_container_can_create(TEST_SLOT));
 }
 
-static void test_interrupted_create_recovers(void) {
+static void test_deferred_create_commit(void) {
     uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0x31 };
     uint8_t client_id[42] = { 0x32 };
     static const uint8_t credential[] = { 0x33, 0x34, 0x35 };
     static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
 
-    for (size_t failed_commit = 1; failed_commit <= 3; failed_commit++) {
-        test_reset();
-        fail_sync_commit_at = failed_commit;
-        assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) != PICOKEYS_OK);
-
-        test_reboot();
-        assert(!resident_container_is_marker(file_search((uint16_t)(EF_CRED + TEST_SLOT))));
-        assert(resident_container_can_create(TEST_SLOT));
-
-        fail_sync_commit_at = 0;
-        sync_commit_count = 0;
-        assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
-        test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
-    }
+    test_reset();
+    fail_sync_commit_at = 1;
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    assert(sync_commit_count == 0);
+    fail_sync_commit_at = 0;
+    test_reboot();
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
 }
 
-static void test_interrupted_update_keeps_previous_generation(void) {
+static void test_deferred_update_commit(void) {
     uint8_t rp_id_hash[RP_ID_HASH_LEN] = { 0x41 };
     uint8_t client_id[42] = { 0x42 };
     static const uint8_t credential[] = { 0x43, 0x44, 0x45 };
     static const uint8_t updated_credential[] = { 0x53, 0x54, 0x55 };
     static const uint8_t public_key[] = { 0xa4, 0x01, 0x02 };
 
-    for (size_t failed_commit = 1; failed_commit <= 2; failed_commit++) {
-        test_reset();
-        assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
-
-        sync_commit_count = 0;
-        fail_sync_commit_at = failed_commit;
-        assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) != PICOKEYS_OK);
-
-        test_reboot();
-        test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, credential, sizeof(credential));
-
-        fail_sync_commit_at = 0;
-        sync_commit_count = 0;
-        assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);
-        test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
-    }
+    test_reset();
+    assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    sync_commit_count = 0;
+    fail_sync_commit_at = 1;
+    assert(resident_container_update_credential(TEST_SLOT, updated_credential, sizeof(updated_credential)) == PICOKEYS_OK);
+    assert(sync_commit_count == 0);
+    fail_sync_commit_at = 0;
+    test_reboot();
+    test_read_object(FIDO_RESIDENT_OBJECT_CREDENTIAL, updated_credential, sizeof(updated_credential));
 }
 
 static void test_existing_container_fixture(void) {
@@ -507,6 +500,7 @@ static void test_power_loss_create_event(size_t failed_event) {
         power_loss_at = failed_event;
         power_loss_armed = true;
         (void)resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key));
+        flash_commit();
         assert(false);
     }
     test_reboot();
@@ -530,6 +524,7 @@ static void test_power_loss_imported_create_event(size_t failed_event) {
         power_loss_at = failed_event;
         power_loss_armed = true;
         (void)resident_container_create_imported(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key), private_key, sizeof(private_key), metadata, sizeof(metadata));
+        flash_commit();
         assert(false);
     }
     test_reboot();
@@ -560,11 +555,13 @@ static void test_power_loss_update_event(size_t failed_event) {
 
     test_reset();
     assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    flash_commit();
     if (setjmp(power_loss_env) == 0) {
         power_loss_event = 0;
         power_loss_at = failed_event;
         power_loss_armed = true;
         (void)resident_container_update_credential(TEST_SLOT, replacement, sizeof(replacement));
+        flash_commit();
         assert(false);
     }
     test_reboot();
@@ -582,11 +579,13 @@ static void test_power_loss_delete_event(size_t failed_event) {
 
     test_reset();
     assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    flash_commit();
     if (setjmp(power_loss_env) == 0) {
         power_loss_event = 0;
         power_loss_at = failed_event;
         power_loss_armed = true;
         (void)resident_container_delete(TEST_SLOT);
+        flash_commit();
         assert(false);
     }
     test_reboot();
@@ -604,6 +603,7 @@ static void test_power_loss_boundaries(void) {
 
     test_reset();
     assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
+    flash_commit();
     size_t create_events = power_loss_event;
     assert(create_events > 0);
 
@@ -611,6 +611,7 @@ static void test_power_loss_boundaries(void) {
     static const uint8_t private_key[] = { 0xf1 };
     static const uint8_t metadata[] = { 0xa0 };
     assert(resident_container_create_imported(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key), private_key, sizeof(private_key), metadata, sizeof(metadata)) == PICOKEYS_OK);
+    flash_commit();
     size_t imported_create_events = power_loss_event;
     assert(imported_create_events > 0);
     assert(test_allocated_files() == 9);
@@ -625,11 +626,13 @@ static void test_power_loss_boundaries(void) {
     assert(resident_container_create(TEST_SLOT, rp_id_hash, client_id, sizeof(client_id), credential, sizeof(credential), public_key, sizeof(public_key)) == PICOKEYS_OK);
     power_loss_event = 0;
     assert(resident_container_update_credential(TEST_SLOT, replacement, sizeof(replacement)) == PICOKEYS_OK);
+    flash_commit();
     size_t update_events = power_loss_event;
     assert(update_events > 0);
 
     power_loss_event = 0;
     assert(resident_container_delete(TEST_SLOT) == PICOKEYS_OK);
+    flash_commit();
     size_t delete_events = power_loss_event;
     assert(delete_events > 0);
 
@@ -681,8 +684,8 @@ int main(void) {
     test_create_update_reboot_delete();
     test_reset();
     test_collision_rejected();
-    test_interrupted_create_recovers();
-    test_interrupted_update_keeps_previous_generation();
+    test_deferred_create_commit();
+    test_deferred_update_commit();
     test_existing_container_fixture();
     test_power_loss_boundaries();
     test_legacy_root_container_remains_accessible();

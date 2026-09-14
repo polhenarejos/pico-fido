@@ -35,7 +35,6 @@
 #define FIDO_OATH_CONTAINER_MARKER_RESERVED_1_OFFSET 7u
 #define FIDO_OATH_CONTAINER_MARKER_VERSION 1u
 #define FIDO_OATH_CONTAINER_MARKER_RESERVED_VALUE 0u
-#define FIDO_OATH_CONTAINER_COMMIT_TIMEOUT_MS 5000u
 #define FIDO_OATH_POLICY_ID 0x0201u
 
 static const uint8_t oath_container_marker_magic[4] = { 'P', 'K', 'O', '1' };
@@ -160,7 +159,7 @@ static int oath_marker_write(uint8_t slot) {
     if (r != PICOKEYS_OK) {
         return r;
     }
-    return flash_commit_sync(FIDO_OATH_CONTAINER_COMMIT_TIMEOUT_MS) ? PICOKEYS_OK : PICOKEYS_ERR_MEMORY_FATAL;
+    return PICOKEYS_OK;
 }
 
 static int oath_layout_activate(void *ctx, uint32_t container_id) {
@@ -194,7 +193,6 @@ static int oath_layout_retire(void *ctx, uint32_t container_id, const file_objec
             }
         }
     }
-    flash_commit();
     return PICOKEYS_OK;
 }
 
@@ -222,7 +220,6 @@ static int oath_layout_deactivate(void *ctx, uint32_t container_id) {
 static const file_object_container_layout_t oath_container_layout = {
     .namespace_id = FIDO_OATH_OBJECT_NAMESPACE,
     .container_kind = FIDO_OATH_CONTAINER_KIND,
-    .commit_timeout_ms = FIDO_OATH_CONTAINER_COMMIT_TIMEOUT_MS,
     .manifest_fid = oath_layout_manifest_fid,
     .record_fid = oath_layout_record_fid,
     .record_allocate = oath_layout_record_allocate,
@@ -295,7 +292,7 @@ static int oath_container_write(uint8_t slot, const uint8_t *credential, size_t 
             .transaction_group = 1
         }
     };
-    return file_object_container_update(&oath_container_layout, slot, writes, sizeof(writes) / sizeof(writes[0]), &primary, NULL);
+    return file_object_container_update_without_record_validation(&oath_container_layout, slot, writes, sizeof(writes) / sizeof(writes[0]), &primary, NULL);
 }
 
 int oath_container_create(uint8_t slot, const uint8_t *credential, size_t credential_size, const uint8_t *metadata, size_t metadata_size) {
@@ -359,5 +356,6 @@ int oath_container_purge(uint8_t slot) {
     if (r != PICOKEYS_OK) {
         return r;
     }
-    return flash_commit_sync(FIDO_OATH_CONTAINER_COMMIT_TIMEOUT_MS) ? PICOKEYS_OK : PICOKEYS_ERR_MEMORY_FATAL;
+    flash_commit();
+    return PICOKEYS_OK;
 }

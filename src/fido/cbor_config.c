@@ -283,6 +283,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
+            flash_commit();
         }
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_EXPIRE) {
             // Slot form: 0x03=slot, 0x02=4-byte timestamp. ID form: 0x02=ID, 0x03=timestamp.
@@ -310,6 +311,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
+            flash_commit();
         }
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_BUTTON) {
             bool by_id = vendorParamByteString.present && vendorParamByteString.len == CRED_RESIDENT_LEN && !vendorParamIntPresent;
@@ -331,6 +333,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
+            flash_commit();
         }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);

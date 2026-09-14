@@ -37,7 +37,6 @@
 #define FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_1_OFFSET 7u
 #define FIDO_RESIDENT_CONTAINER_MARKER_VERSION 1u
 #define FIDO_RESIDENT_CONTAINER_MARKER_RESERVED_VALUE 0u
-#define FIDO_RESIDENT_CONTAINER_COMMIT_TIMEOUT_MS 5000u
 #define FIDO_RESIDENT_POLICY_ID 0x0200u
 
 static const uint8_t resident_container_marker_magic[4] = { 'P', 'K', 'F', '1' };
@@ -177,7 +176,7 @@ static int resident_marker_write(uint8_t slot) {
     if (r != PICOKEYS_OK) {
         return r;
     }
-    return flash_commit_sync(FIDO_RESIDENT_CONTAINER_COMMIT_TIMEOUT_MS) ? PICOKEYS_OK : PICOKEYS_ERR_MEMORY_FATAL;
+    return PICOKEYS_OK;
 }
 
 static int resident_layout_activate(void *ctx, uint32_t container_id) {
@@ -211,7 +210,6 @@ static int resident_layout_retire(void *ctx, uint32_t container_id, const file_o
             }
         }
     }
-    flash_commit();
     return PICOKEYS_OK;
 }
 
@@ -236,7 +234,6 @@ static int resident_layout_deactivate(void *ctx, uint32_t container_id) {
 static const file_object_container_layout_t resident_container_layout = {
     .namespace_id = FIDO_OBJECT_NAMESPACE,
     .container_kind = FIDO_RESIDENT_CONTAINER_KIND,
-    .commit_timeout_ms = FIDO_RESIDENT_CONTAINER_COMMIT_TIMEOUT_MS,
     .manifest_fid = resident_layout_manifest_fid,
     .record_fid = resident_layout_record_fid,
     .record_allocate = resident_layout_record_allocate,
@@ -245,7 +242,9 @@ static const file_object_container_layout_t resident_container_layout = {
     .descriptor_valid = resident_layout_descriptor_valid,
     .activate = resident_layout_activate,
     .deactivate = resident_layout_deactivate,
-    .retire = resident_layout_retire
+    .retire = resident_layout_retire,
+    .rollback_new_records = true,
+    .defer_commits = true
 };
 
 static bool resident_crypto(file_object_container_crypto_t *primary, file_object_container_crypto_t *legacy) {
@@ -311,7 +310,7 @@ static int resident_container_update(uint8_t slot, const file_object_container_w
     if (!file_has_data(file_search(resident_manifest_fid(slot, 0))) && !file_has_data(file_search(resident_manifest_fid(slot, 1))) && !resident_container_can_create(slot)) {
         return PICOKEYS_WRONG_DATA;
     }
-    return file_object_container_update(&resident_container_layout, slot, writes, write_count, &primary, resident_legacy_crypto(&legacy));
+    return file_object_container_update_without_record_validation(&resident_container_layout, slot, writes, write_count, &primary, resident_legacy_crypto(&legacy));
 }
 
 int resident_container_create(uint8_t slot, const uint8_t rp_id_hash[RP_ID_HASH_LEN], const uint8_t *client_id, size_t client_id_size, const uint8_t *credential, size_t credential_size, const uint8_t *public_key, size_t public_key_size) {
