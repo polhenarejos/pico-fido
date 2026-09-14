@@ -33,6 +33,7 @@ uint16_t rp_counter = 1;
 uint16_t rp_total = 0;
 uint16_t cred_counter = 1;
 uint16_t cred_total = 0;
+uint16_t cred_scan_slot = 0;
 uint32_t rp_channel = 0;
 uint32_t cred_channel = 0;
 uint32_t rp_timer = 0;
@@ -50,6 +51,7 @@ void cbor_cred_mgmt_tick(void) {
     }
     if (cred_walk_active && now - cred_timer >= STATEFUL_WALK_IDLE_MS) {
         cred_counter = cred_total + 1;
+        cred_scan_slot = 0;
         cred_channel = 0;
         cred_walk_active = false;
     }
@@ -267,6 +269,7 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             }
             cred_counter = 1;
             cred_total = 0;
+            cred_scan_slot = 0;
             cred_channel = ctap_req ? ctap_req->cid : 0;
         }
         else {
@@ -277,38 +280,50 @@ int cbor_cred_mgmt(const uint8_t *data, size_t len) {
             rpIdHash = rpIdHashx;
         }
         file_t *cred_ef = NULL;
+        Credential cred = { 0 };
+        bool cred_loaded = false;
         uint16_t skip = 0;
-        for (int i = 0; i < MAX_RESIDENT_CREDENTIALS; i++) {
+        uint16_t scan_start = subcommand == 0x05 ? cred_scan_slot : 0;
+        uint16_t scan_target = subcommand == 0x05 ? 1 : cred_counter;
+        for (uint16_t i = scan_start; i < MAX_RESIDENT_CREDENTIALS; i++) {
             file_t *tef = file_search((uint16_t)(EF_CRED + i));
             if (file_has_data(tef) && credential_resident_matches_rp(tef, rpIdHash.data)) {
                 Credential candidate = { 0 };
                 int candidate_ret = credential_load_resident(tef, rpIdHash.data, &candidate);
-                credential_free(&candidate);
                 if (candidate_ret == CTAP2_ERR_NO_CREDENTIALS) {
+                    credential_free(&candidate);
                     continue;
                 }
                 if (candidate_ret != 0) {
+                    credential_free(&candidate);
                     CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
                 }
-                if (++skip == cred_counter) {
+                if (++skip == scan_target) {
                     if (cred_ef == NULL) {
                         cred_ef = tef;
+                        cred_scan_slot = i + 1;
+                        if (subcommand == 0x05) {
+                            cred = candidate;
+                            memset(&candidate, 0, sizeof(candidate));
+                            cred_loaded = true;
+                        }
                     }
                     if (subcommand == 0x05) {
+                        credential_free(&candidate);
                         break;
                     }
                 }
                 if (subcommand == 0x04) {
                     cred_total++;
                 }
+                credential_free(&candidate);
             }
         }
         if (!file_has_data(cred_ef)) {
             CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
         }
 
-        Credential cred = { 0 };
-        if (credential_load_resident(cred_ef, rpIdHash.data, &cred) != 0) {
+        if (!cred_loaded && credential_load_resident(cred_ef, rpIdHash.data, &cred) != 0) {
             CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
         }
         const uint8_t *key_seed = cred.id.data;

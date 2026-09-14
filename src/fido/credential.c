@@ -227,13 +227,11 @@ int credential_rp_count(uint16_t *count) {
         if (!resident_container_is_marker(ef) || credential_resident_rp_id_hash(ef, rp_id_hash) != PICOKEYS_OK) {
             continue;
         }
-        Credential credential = { 0 };
-        int ret = credential_load_resident(ef, rp_id_hash, &credential);
-        credential_free(&credential);
-        if (ret != PICOKEYS_OK) {
+        fido_resident_metadata_t metadata;
+        if (credential_resident_read_metadata(ef, &metadata) != PICOKEYS_OK || metadata.status == FIDO_RESIDENT_STATUS_EXPIRED || metadata.status == FIDO_RESIDENT_STATUS_REVOKED) {
             continue;
         }
-        ret = credential_rp_index_add(rp_id_hash, ef->fid);
+        int ret = credential_rp_index_add(rp_id_hash, ef->fid);
         if (ret != PICOKEYS_OK) {
             return ret;
         }
