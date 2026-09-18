@@ -219,8 +219,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     }
     CBOR_PARSE_MAP_END(map, 1);
 
-    if (rpId.present == false || clientDataHash.present == false) {
+    if (val_c <= 2 || rpId.present == false || clientDataHash.present == false) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+    if (rpId.len == 0 || clientDataHash.len != 32) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_LEN);
     }
     if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);

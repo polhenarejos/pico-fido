@@ -231,6 +231,15 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
     CBOR_PARSE_MAP_END(map, 1);
+    if (val_c <= 4 || clientDataHash.present == false || rp.id.present == false || user.id.present == false) {
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+    if (clientDataHash.len != 32 || rp.id.len == 0) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_LEN);
+    }
+    if (user.id.len == 0) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
     if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }

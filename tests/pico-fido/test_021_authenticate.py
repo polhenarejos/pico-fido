@@ -20,6 +20,7 @@
 
 from fido2.client import CtapError
 from fido2.cose import ES256, ES384, ES512, EdDSA
+from fido2.hid import CTAPHID
 from utils import verify, ES256K
 import pytest
 
@@ -168,6 +169,23 @@ def test_missing_cdh(device):
 def test_bad_cdh(device):
     with pytest.raises(CtapError) as e:
         device.GA(client_data_hash={"type": "wrong"})
+
+def test_get_assertion_rejects_truncated_map(device):
+    response = device.send_data(CTAPHID.CBOR, b"\x02\xa0")
+    assert response == bytes([CtapError.ERR.MISSING_PARAMETER])
+
+@pytest.mark.parametrize("client_data_hash", [b"", b"\x00" * 31, b"\x00" * 33])
+def test_get_assertion_rejects_invalid_client_data_hash_length(device, client_data_hash):
+    with pytest.raises(CtapError) as e:
+        device.GA(client_data_hash=client_data_hash)
+
+    assert e.value.code == CtapError.ERR.INVALID_LENGTH
+
+def test_get_assertion_rejects_empty_rp_id(device):
+    with pytest.raises(CtapError) as e:
+        device.GA(rp_id="")
+
+    assert e.value.code == CtapError.ERR.INVALID_LENGTH
 
 def test_bad_allow_list(device):
     with pytest.raises(CtapError) as e:
