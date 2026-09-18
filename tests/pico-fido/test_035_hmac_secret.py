@@ -21,6 +21,7 @@
 import os
 import pytest
 from fido2.ctap import CtapError
+from fido2.ctap2.base import Ctap2
 from fido2.ctap2.extensions import HmacSecretExtension
 from fido2.utils import hmac_sha256
 from fido2.ctap2.pin import ClientPin, PinProtocolV1, PinProtocolV2
@@ -50,6 +51,41 @@ def test_hmac_secret_info(info):
 
 def test_fake_extension(device):
     device.doMC(extensions={"tetris": True})
+
+
+def _make_credential_request(extension):
+    return {
+        1: os.urandom(32),
+        2: {"id": "example.com", "name": "Example RP"},
+        3: {"id": os.urandom(16), "name": "user", "displayName": "User"},
+        4: [{"type": "public-key", "alg": -7}],
+        6: extension,
+    }
+
+
+@pytest.mark.parametrize("extension", [{"hmac-secret": 1}, {"hmac-secret-mc": 1}])
+def test_make_credential_rejects_wrong_hmac_extension_type(device, extension):
+    ctap = device.client()._backend.ctap2
+    with pytest.raises(CtapError) as error:
+        ctap.send_cbor(Ctap2.CMD.MAKE_CREDENTIAL, _make_credential_request(extension))
+    assert error.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("credProtect", "wrong"), ("minPinLength", 1), ("hmac-secret", 1), ("hmac-secret-mc", 1)],
+)
+def test_get_assertion_rejects_wrong_advertised_extension_type(device, MCHmacSecret, name, value):
+    credential_id = MCHmacSecret.auth_data.credential_data.credential_id
+    request = {
+        1: "example.com",
+        2: os.urandom(32),
+        3: [{"type": "public-key", "id": credential_id}],
+        4: {name: value},
+    }
+    with pytest.raises(CtapError) as error:
+        device.client()._backend.ctap2.send_cbor(Ctap2.CMD.GET_ASSERTION, request)
+    assert error.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
 
 
 @pytest.mark.parametrize("salts", [(salt1,), (salt1, salt2)])

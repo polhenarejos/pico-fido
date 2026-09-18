@@ -165,10 +165,21 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 if (strcmp(_fd2, "hmac-secret-mc") == 0) {
-                    hmac_secret_mc = true;
+                    CBOR_ASSERT(cbor_value_is_map(&_f2) == true || cbor_value_is_boolean(&_f2) == true);
+                    if (cbor_value_is_map(&_f2) && !cbor_value_is_length_known(&_f2)) {
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                    }
+                    if (cbor_value_is_boolean(&_f2)) {
+                        bool ignored = false;
+                        CBOR_CHECK(cbor_value_get_boolean(&_f2, &ignored));
+                        CBOR_CHECK(cbor_value_advance_fixed(&_f2));
+                        continue;
+                    }
                     uint64_t ukey = 0;
+                    bool hmac_secret_mc_has_fields = false;
                     CBOR_PARSE_MAP_START(_f2, 3)
                     {
+                        hmac_secret_mc_has_fields = true;
                         CBOR_FIELD_GET_UINT(ukey, 3);
                         if (ukey == 0x01) {
                             CBOR_CHECK(COSE_read_key(&_f3, &kty, &hmac_alg, &crv, &kax, &kay));
@@ -187,9 +198,21 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                         }
                     }
                     CBOR_PARSE_MAP_END(_f2, 3);
+                    hmac_secret_mc = hmac_secret_mc_has_fields;
                     continue;
                 }
-                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
+                if (strcmp(_fd2, "hmac-secret") == 0) {
+                    if (cbor_value_is_map(&_f2)) {
+                        if (!cbor_value_is_length_known(&_f2)) {
+                            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                        }
+                        CBOR_ADVANCE(2);
+                    }
+                    else {
+                        CBOR_FIELD_GET_BOOL(extensions.hmac_secret, 2);
+                    }
+                    continue;
+                }
                 if (strcmp(_fd2, "credProtect") == 0) {
                     CBOR_FIELD_GET_UINT(extensions.credProtect, 2);
                     has_credprot = true;
