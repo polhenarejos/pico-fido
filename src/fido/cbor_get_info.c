@@ -75,7 +75,7 @@ int cbor_get_info(void) {
     CborError error = CborNoError;
     uint8_t enc_identifier[DEV_STATE_SIZE] = { 0 }, enc_cred_store_state[DEV_STATE_SIZE] = { 0 };
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
-    uint8_t lfields = 20;
+    uint8_t lfields = 22;
     file_t *ef_ee_ea = file_search_by_fid(EF_EE_DEV_EA, NULL, SPECIFY_EF);
     bool enterprise_profile = ((get_opts() & FIDO2_OPT_EA) && file_has_data(ef_ee_ea));
 #ifndef ENABLE_EMULATION
@@ -163,6 +163,12 @@ int cbor_get_info(void) {
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, MAX_CRED_ID_LENGTH)); // MAX_CRED_ID_MAX_LENGTH
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x09));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "usb"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "smart-card"));
+    CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x0A));
 
@@ -253,6 +259,12 @@ int cbor_get_info(void) {
     }
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x19));
     CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, enc_identifier, sizeof(enc_identifier)));
+
+    CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1A));
+    CBOR_CHECK(cbor_encoder_create_array(&mapEncoder, &arrayEncoder, 2));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "usb"));
+    CBOR_CHECK(cbor_encode_text_stringz(&arrayEncoder, "smart-card"));
+    CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &arrayEncoder));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x1B));
     CBOR_CHECK(cbor_encode_boolean(&mapEncoder, file_has_data(ef_pin_policy)));

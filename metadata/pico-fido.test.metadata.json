@@ -133,7 +133,8 @@
     "firmwareVersion": 2048,
     "maxCredBlobLength": 128,
     "transports": [
-      "usb"
+      "usb",
+      "smart-card"
     ],
     "maxRPIDsForSetMinPINLength": 120,
     "vendorPrototypeConfigCommands": [
