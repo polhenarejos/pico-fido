@@ -589,6 +589,20 @@ uint32_t get_sign_counter(void) {
     return get_uint32_le(caddr);
 }
 
+int bump_sign_counter(uint32_t *counter) {
+    if (counter == NULL || ef_counter == NULL || !file_has_data(ef_counter) || file_get_size(ef_counter) != sizeof(uint32_t)) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    uint32_t next = get_sign_counter() + 1;
+    int ret = file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&next, sizeof(next)));
+    if (ret != PICOKEYS_OK) {
+        return ret;
+    }
+    flash_commit();
+    *counter = next;
+    return PICOKEYS_OK;
+}
+
 uint8_t get_opts(void) {
     file_t *ef = file_search_by_fid(EF_OPTS, NULL, SPECIFY_EF);
     if (file_has_data(ef)) {

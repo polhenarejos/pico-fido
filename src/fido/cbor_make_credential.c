@@ -689,7 +689,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
     size_t olen = 0;
-    uint32_t ctr = get_sign_counter();
+    uint32_t ctr = 0;
+    if (bump_sign_counter(&ctr) != PICOKEYS_OK) {
+        mbedtls_ecp_keypair_free(&ekey);
+        CBOR_ERROR(CTAP2_ERR_PROCESSING);
+    }
     uint8_t cbor_buf[1024] = {0};
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
     CBOR_CHECK(COSE_key(&ekey, alg, &encoder, &mapEncoder));
@@ -818,11 +822,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
-
-    ctr++;
-    if (file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr))) != PICOKEYS_OK) {
-        CBOR_ERROR(CTAP2_ERR_PROCESSING);
-    }
 
     if (options.rk == ptrue) {
         if (credential_store(cred_id, cred_id_len, rp_id_hash, cbor_buf, rs) != 0) {

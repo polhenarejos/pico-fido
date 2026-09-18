@@ -1078,25 +1078,20 @@ static int cmd_calculate(void) {
         oath_credential_close(&credential);
         return SW_WRONG_LENGTH();
     }
-    res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
-
     bool is_hotp = (key.data[0] & OATH_TYPE_MASK) == OATH_TYPE_HOTP;
-    int ret = calculate_oath(P2(apdu), key.data, key.len, chal.data, chal.len);
-    if (ret != PICOKEYS_OK) {
-        mbedtls_platform_zeroize(plain_key, plain_key_len);
-        free(plain_key);
-        oath_credential_close(&credential);
-        return SW_EXEC_ERROR();
-    }
-    mbedtls_platform_zeroize(plain_key, plain_key_len);
-    free(plain_key);
+    uint8_t hotp_chal[sizeof(uint64_t)] = { 0 };
+    const uint8_t *effective_chal = chal.data;
+    size_t effective_chal_len = chal.len;
     if (is_hotp) {
-        uint64_t v = get_uint64_be(chal.data);
-        v++;
+        memcpy(hotp_chal, chal.data, sizeof(hotp_chal));
+        uint64_t v = get_uint64_be(chal.data) + 1;
+
         uint8_t *tmp = (uint8_t *)calloc(1, credential.size);
         if (!tmp) {
+            mbedtls_platform_zeroize(plain_key, plain_key_len);
+            free(plain_key);
             oath_credential_close(&credential);
-            return SW_EXEC_ERROR();
+            return SW_MEMORY_FAILURE();
         }
         memcpy(tmp, credential.data, credential.size);
         tlv_ctx_t ctxt;
@@ -1104,6 +1099,8 @@ static int cmd_calculate(void) {
         if (!tlv_find_tag(&ctxt, TAG_IMF, &chal)) {
             mbedtls_platform_zeroize(tmp, credential.size);
             free(tmp);
+            mbedtls_platform_zeroize(plain_key, plain_key_len);
+            free(plain_key);
             oath_credential_close(&credential);
             return SW_EXEC_ERROR();
         }
@@ -1112,10 +1109,25 @@ static int cmd_calculate(void) {
         mbedtls_platform_zeroize(tmp, credential.size);
         free(tmp);
         if (update_ret != PICOKEYS_OK) {
+            mbedtls_platform_zeroize(plain_key, plain_key_len);
+            free(plain_key);
             oath_credential_close(&credential);
-            return SW_EXEC_ERROR();
+            return SW_MEMORY_FAILURE();
         }
+        effective_chal = hotp_chal;
+        effective_chal_len = sizeof(hotp_chal);
     }
+
+    res_APDU[res_APDU_size++] = TAG_RESPONSE + P2(apdu);
+    int ret = calculate_oath(P2(apdu), key.data, key.len, effective_chal, effective_chal_len);
+    if (ret != PICOKEYS_OK) {
+        mbedtls_platform_zeroize(plain_key, plain_key_len);
+        free(plain_key);
+        oath_credential_close(&credential);
+        return SW_EXEC_ERROR();
+    }
+    mbedtls_platform_zeroize(plain_key, plain_key_len);
+    free(plain_key);
     oath_credential_close(&credential);
     apdu.ne = res_APDU_size;
     return SW_OK();

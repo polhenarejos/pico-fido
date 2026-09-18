@@ -103,6 +103,7 @@ extern void clearUserVerifiedFlag(void);
 extern void clearPinUvAuthTokenPermissionsExceptLbw(void);
 extern void send_keepalive(void);
 extern uint32_t get_sign_counter(void);
+extern int bump_sign_counter(uint32_t *counter);
 extern uint8_t get_opts(void);
 extern void set_opts(uint8_t);
 #define MAX_CREDENTIAL_COUNT_IN_LIST 16
