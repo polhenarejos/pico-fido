@@ -173,7 +173,7 @@ def send_chained_oath_apdu(ccid_card, command, p1=0, p2=0, data=None):
     response = []
     apdu = [0, command, p1, p2] + lc + dataf + [0, 0]
     while True:
-        chunk, sw1, sw2 = ccid_card.connection.transmit(apdu)
+        chunk, sw1, sw2 = transmit_apdu(ccid_card, apdu)
         response += chunk
         if sw1 == RESP_MORE_DATA:
             apdu = [0, INS_SEND_REMAINING, 0, 0, 0, 0]
