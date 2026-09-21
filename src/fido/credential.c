@@ -572,7 +572,7 @@ void credential_free(Credential *cred) {
             CBOR_FREE_BYTE_STRING(cred->extensions.credBlob);
         }
         cred->present = false;
-        cred->require_button = false;
+        cred->require_button = NULL;
         cred->extensions.present = false;
         cred->opts.present = false;
     }
@@ -1062,7 +1062,7 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
         return CTAP1_ERR_INVALID_PARAMETER;
     }
     cred->imported = false;
-    cred->require_button = false;
+    cred->require_button = NULL;
     if (resident_container_is_marker(ef)) {
         if (!credential_resident_usable(ef)) {
             return CTAP2_ERR_NO_CREDENTIALS;
@@ -1079,7 +1079,7 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
         size_t resident_id_len = 0;
         size_t metadata_len = 0;
         size_t private_key_len = 0;
-        bool require_button = false;
+        const bool *require_button = NULL;
         int ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CREDENTIAL, &credential, &credential_len);
         if (ret == PICOKEYS_OK) {
             ret = credential_resident_container_read_alloc(ef, FIDO_RESIDENT_OBJECT_CLIENT_ID, &resident_id, &resident_id_len);
@@ -1091,7 +1091,16 @@ int credential_load_resident(const file_t *ef, const uint8_t *rp_id_hash, Creden
             fido_resident_metadata_t resident_metadata;
             ret = resident_container_read_metadata((uint8_t)ef->fid, &resident_metadata);
             if (ret == PICOKEYS_OK) {
-                require_button = (resident_metadata.properties & FIDO_RESIDENT_PROPERTY_BUTTON) != 0;
+                switch (resident_metadata.properties & FIDO_RESIDENT_PROPERTY_BUTTON_MASK) {
+                    case FIDO_RESIDENT_PROPERTY_BUTTON_TRUE:
+                        require_button = ptrue;
+                        break;
+                    case FIDO_RESIDENT_PROPERTY_BUTTON_FALSE:
+                        require_button = pfalse;
+                        break;
+                    default:
+                        break;
+                }
             }
             if (ret == PICOKEYS_OK && (resident_metadata.properties & FIDO_RESIDENT_PROPERTY_IMPORTED) != 0) {
                 cred->imported = true;

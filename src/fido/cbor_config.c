@@ -316,7 +316,7 @@ int cbor_config(const uint8_t *data, size_t len) {
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_BUTTON) {
             bool by_id = vendorParamByteString.present && vendorParamByteString.len == CRED_RESIDENT_LEN && !vendorParamIntPresent;
             bool by_slot = vendorParamIntPresent && !vendorParamByteString.present && vendorParamInt <= UINT8_MAX;
-            if (!vendorCommandIdPresent || !vendorParamBoolPresent || (!by_id && !by_slot)) {
+            if (!vendorCommandIdPresent || !vendorParamBoolPresent || vendorParamTextString.present || (!by_id && !by_slot)) {
                 CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
             }
             file_t *ef = by_id ? config_resident_credential_by_id(vendorParamByteString.data, vendorParamByteString.len) : config_resident_credential(vendorParamInt);
@@ -325,10 +325,10 @@ int cbor_config(const uint8_t *data, size_t len) {
                 CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
             }
             if (*vendorParamBool) {
-                metadata.properties |= FIDO_RESIDENT_PROPERTY_BUTTON;
+                metadata.properties = (metadata.properties & (uint8_t)~FIDO_RESIDENT_PROPERTY_BUTTON_MASK) | FIDO_RESIDENT_PROPERTY_BUTTON_TRUE;
             }
             else {
-                metadata.properties &= (uint8_t)~FIDO_RESIDENT_PROPERTY_BUTTON;
+                metadata.properties = (metadata.properties & (uint8_t)~FIDO_RESIDENT_PROPERTY_BUTTON_MASK) | FIDO_RESIDENT_PROPERTY_BUTTON_FALSE;
             }
             if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);

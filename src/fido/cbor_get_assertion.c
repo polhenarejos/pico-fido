@@ -524,7 +524,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
             }
         }
-        bool require_button = numberOfCredentials > 0 && creds[0].require_button;
+        bool require_button = numberOfCredentials > 0 && (creds[0].require_button != NULL ? *creds[0].require_button : button_timeout_seconds() != 0);
 
         if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
             if (pinUvAuthParam.present == true) {
