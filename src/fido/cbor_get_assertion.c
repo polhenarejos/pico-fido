@@ -33,9 +33,12 @@
 #ifndef ENABLE_EMULATION
 #include "button.h"
 #endif
+#include "event.h"
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
 extern char *rp_id, *user_name, *display_name;
+extern size_t rp_id_len;
+extern uint8_t current_fido_operation;
 
 bool residentx = false;
 Credential credsx[MAX_CREDENTIAL_COUNT_IN_LIST] = { 0 };
@@ -93,6 +96,7 @@ err:
 }
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
+    current_fido_operation = OP_GA;
     size_t resp_size = 0;
     uint64_t pinUvAuthProtocol = 0, hmacSecretPinUvAuthProtocol = 1;
     CredOptions options = { 0 };
@@ -111,6 +115,13 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     int64_t kty = 2, alg = 0, crv = 0;
     CborByteString kax = { 0 }, kay = { 0 }, salt_enc = { 0 }, salt_auth = { 0 };
     const bool *credBlob = NULL;
+    uint8_t flags = 0;
+    uint8_t numberOfCredentials = 0;
+    Credential *selcred = NULL;
+    bool resident = false;
+#ifndef ENABLE_EMULATION
+    bool button_pressed = false;
+#endif
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -263,19 +274,13 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
     rp_id = rpId.data;
+    rp_id_len = rpId.len;
     user_name = NULL;
     display_name = NULL;
 
-    uint8_t flags = 0;
     uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
     mbedtls_sha256((uint8_t *) rpId.data, rpId.len, rp_id_hash, 0);
 
-    bool resident = false;
-#ifndef ENABLE_EMULATION
-    bool button_pressed = false;
-#endif
-    uint8_t numberOfCredentials = 0;
-    Credential *selcred = NULL;
     if (next == false) {
         if (pinUvAuthParam.present == true) {
             if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
@@ -524,7 +529,14 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 }
             }
         }
-        bool require_button = numberOfCredentials > 0 && (creds[0].require_button != NULL ? *creds[0].require_button : button_timeout_seconds() != 0);
+        bool require_button = numberOfCredentials > 0 && (creds[0].require_button != NULL
+            ? *creds[0].require_button
+#ifndef ENABLE_EMULATION
+            : button_timeout_seconds() != 0
+#else
+            : false
+#endif
+        );
 
         if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
             if (pinUvAuthParam.present == true) {
@@ -866,6 +878,31 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 err:
+    {
+        event_field_t event_fields[6];
+        size_t event_fields_len = 0;
+        uint8_t auth_flags = flags;
+        uint8_t credential_count = numberOfCredentials;
+        uint8_t event_error = (uint8_t)error;
+        if (rpId.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_RPID, CONST_BYTE_ARRAY((const uint8_t *)rpId.data, rpId.len) };
+        }
+        if (selcred != NULL && selcred->userName.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_USER_NAME, CONST_BYTE_ARRAY((const uint8_t *)selcred->userName.data, selcred->userName.len) };
+        }
+        if (selcred != NULL && selcred->userDisplayName.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_USER_DISPLAY_NAME, CONST_BYTE_ARRAY((const uint8_t *)selcred->userDisplayName.data, selcred->userDisplayName.len) };
+        }
+        event_fields[event_fields_len++] = (event_field_t){ TLV_AUTH_FLAGS, CONST_BYTE_ARRAY(&auth_flags, sizeof(auth_flags)) };
+        event_fields[event_fields_len++] = (event_field_t){ TLV_CREDENTIAL_COUNT, CONST_BYTE_ARRAY(&credential_count, sizeof(credential_count)) };
+        if (error != CborNoError) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_ERROR, CONST_BYTE_ARRAY(&event_error, sizeof(event_error)) };
+        }
+        event_send(OP_GA, error == CborNoError ? RC_OK : RC_ERROR, event_fields, event_fields_len);
+    }
+    current_fido_operation = OP_NONE;
+    rp_id = NULL;
+    rp_id_len = 0;
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(rpId);

@@ -106,6 +106,7 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_reset.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_get_info.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_make_credential.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/fido/event.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/known_apps.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_client_pin.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/credential.c

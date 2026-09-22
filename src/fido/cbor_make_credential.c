@@ -27,8 +27,11 @@
 #include "mbedtls/sha256.h"
 #include "random.h"
 #include "crypto_utils.h"
+#include "event.h"
 
 char *rp_id = NULL, *user_name = NULL, *display_name = NULL;
+size_t rp_id_len = 0;
+uint8_t current_fido_operation = OP_NONE;
 
 static bool minpin_contains_rp(const uint8_t *rp_id_hash) {
     file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
@@ -52,6 +55,7 @@ static bool minpin_contains_rp(const uint8_t *rp_id_hash) {
 }
 
 int cbor_make_credential(const uint8_t *data, size_t len) {
+    current_fido_operation = OP_MC;
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
@@ -70,6 +74,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     const bool *pin_complexity_policy = NULL, *uvm = NULL;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
+    int curve = -1, alg = 0;
+    uint8_t flags = 0;
+#ifndef ENABLE_EMULATION
+    bool button_pressed = false;
+#endif
     CredExtensions extensions = { 0 };
     //options.present = true;
     //options.up = ptrue;
@@ -292,13 +301,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
     rp_id = rp.id.data;
+    rp_id_len = rp.id.len;
     user_name = user.parent.name.data;
     display_name = user.displayName.data;
 
-    uint8_t flags = FIDO2_AUT_FLAG_AT;
-#ifndef ENABLE_EMULATION
-    bool button_pressed = false;
-#endif
+    flags = FIDO2_AUT_FLAG_AT;
     uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
     mbedtls_sha256((uint8_t *) rp.id.data, rp.id.len, rp_id_hash, 0);
 
@@ -324,7 +331,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
 
-    int curve = -1, alg = 0;
     if (pubKeyCredParams_len == 0) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
     }
@@ -854,6 +860,33 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     }
     flash_commit();
 err:
+    {
+        event_field_t event_fields[6];
+        size_t event_fields_len = 0;
+        uint8_t algorithm[4] = { (uint8_t)(alg >> 24), (uint8_t)(alg >> 16), (uint8_t)(alg >> 8), (uint8_t)alg };
+        uint8_t auth_flags = flags;
+        uint8_t event_error = (uint8_t)error;
+        if (rp.id.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_RPID, CONST_BYTE_ARRAY((const uint8_t *)rp.id.data, rp.id.len) };
+        }
+        if (user.parent.name.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_USER_NAME, CONST_BYTE_ARRAY((const uint8_t *)user.parent.name.data, user.parent.name.len) };
+        }
+        if (user.displayName.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_USER_DISPLAY_NAME, CONST_BYTE_ARRAY((const uint8_t *)user.displayName.data, user.displayName.len) };
+        }
+        if (alg != 0) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_ALGO, CONST_BYTE_ARRAY(algorithm, sizeof(algorithm)) };
+        }
+        event_fields[event_fields_len++] = (event_field_t){ TLV_AUTH_FLAGS, CONST_BYTE_ARRAY(&auth_flags, sizeof(auth_flags)) };
+        if (error != CborNoError) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_ERROR, CONST_BYTE_ARRAY(&event_error, sizeof(event_error)) };
+        }
+        event_send(OP_MC, error == CborNoError ? RC_OK : RC_ERROR, event_fields, event_fields_len);
+    }
+    current_fido_operation = OP_NONE;
+    rp_id = NULL;
+    rp_id_len = 0;
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(rp.id);

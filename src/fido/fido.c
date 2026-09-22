@@ -44,6 +44,11 @@
 #include "version.h"
 #include "crypto_utils.h"
 #include "otp.h"
+#include "event.h"
+
+extern char *rp_id;
+extern size_t rp_id_len;
+extern uint8_t current_fido_operation;
 
 static int fido_unload(void);
 
@@ -532,6 +537,18 @@ int wait_button_pressed(void) {
 }
 
 int wait_button_pressed_timeout(uint32_t timeout_seconds) {
+    if (timeout_seconds != 0 || force_button_wait) {
+        uint8_t operation = current_fido_operation;
+        event_field_t fields[2];
+        size_t fields_len = 0;
+        if (current_fido_operation != OP_NONE) {
+            fields[fields_len++] = (event_field_t){ TLV_OPERATION, CONST_BYTE_ARRAY(&operation, sizeof(operation)) };
+        }
+        if (rp_id != NULL && rp_id_len > 0) {
+            fields[fields_len++] = (event_field_t){ TLV_RPID, CONST_BYTE_ARRAY((const uint8_t *)rp_id, rp_id_len) };
+        }
+        event_send(OP_USER_PRESENCE, RC_NONE, fields, fields_len);
+    }
     uint32_t val = EV_PRESS_BUTTON_WITH_TIMEOUT(timeout_seconds);
 #if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
     queue_try_add(&card_to_usb_q, &val);
