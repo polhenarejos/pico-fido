@@ -282,6 +282,13 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
     mbedtls_sha256((uint8_t *) rpId.data, rpId.len, rp_id_hash, 0);
 
     if (next == false) {
+        bool alwaysUv = (get_opts() & FIDO2_OPT_AUV) ||
+                        (file_has_data(ef_pin) && !keydev_unlocked);
+
+        if (alwaysUv && pinUvAuthParam.present == false) {
+            CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+        }
+
         if (pinUvAuthParam.present == true) {
             if (pinUvAuthParam.len == 0 || pinUvAuthParam.data == NULL) {
                 if (check_user_presence() == false) {
