@@ -59,6 +59,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     CborValue map;
     CborError error = CborNoError;
     uint64_t subcommand = 0, pinUvAuthProtocol = 0, vendorCommandId = 0, newMinPinLength = 0, vendorParamInt = 0;
+    const bool *vendorParamBool = NULL;
     CborByteString pinUvAuthParam = { 0 }, vendorParamByteString = { 0 };
     CborCharString minPinLengthRPIDs[MAX_RPIDS_MINPIN_LENGTH] = { 0 }, vendorParamTextString = { 0 };
     size_t resp_size = 0, raw_subpara_len = 0, minPinLengthRPIDs_len = 0;
@@ -66,7 +67,7 @@ int cbor_config(const uint8_t *data, size_t len) {
     //CborEncoder mapEncoder;
     uint8_t *raw_subpara = NULL;
     const bool *forceChangePin = NULL, *pinPolicy = NULL;
-    bool vendorCommandIdPresent = false, vendorParamIntPresent = false, pinUvAuthProtocol_present = false;
+    bool vendorCommandIdPresent = false, vendorParamIntPresent = false, vendorParamBoolPresent = false, pinUvAuthProtocol_present = false;
 
     CBOR_CHECK(cbor_parser_init(data, len, 0, &parser, &map));
     uint64_t val_c = 1;
@@ -104,6 +105,13 @@ int cbor_config(const uint8_t *data, size_t len) {
                     }
                     else if (subpara == 0x04) {
                         CBOR_FIELD_GET_TEXT(vendorParamTextString, 2);
+                    }
+                    else if (subpara == 0x05) {
+                        CBOR_FIELD_GET_BOOL(vendorParamBool, 2);
+                        vendorParamBoolPresent = true;
+                    }
+                    else {
+                        CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
                     }
                 }
                 else if (subcommand == 0x03) { // Extensions
@@ -275,6 +283,7 @@ int cbor_config(const uint8_t *data, size_t len) {
             if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
+            flash_commit();
         }
         else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_EXPIRE) {
             // Slot form: 0x03=slot, 0x02=4-byte timestamp. ID form: 0x02=ID, 0x03=timestamp.
@@ -302,6 +311,29 @@ int cbor_config(const uint8_t *data, size_t len) {
             if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
                 CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
             }
+            flash_commit();
+        }
+        else if (vendorCommandId == CTAP_CONFIG_CREDENTIAL_BUTTON) {
+            bool by_id = vendorParamByteString.present && vendorParamByteString.len == CRED_RESIDENT_LEN && !vendorParamIntPresent;
+            bool by_slot = vendorParamIntPresent && !vendorParamByteString.present && vendorParamInt <= UINT8_MAX;
+            if (!vendorCommandIdPresent || !vendorParamBoolPresent || vendorParamTextString.present || (!by_id && !by_slot)) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            file_t *ef = by_id ? config_resident_credential_by_id(vendorParamByteString.data, vendorParamByteString.len) : config_resident_credential(vendorParamInt);
+            fido_resident_metadata_t metadata;
+            if (!ef || credential_resident_read_metadata(ef, &metadata) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_NO_CREDENTIALS);
+            }
+            if (*vendorParamBool) {
+                metadata.properties = (metadata.properties & (uint8_t)~FIDO_RESIDENT_PROPERTY_BUTTON_MASK) | FIDO_RESIDENT_PROPERTY_BUTTON_TRUE;
+            }
+            else {
+                metadata.properties = (metadata.properties & (uint8_t)~FIDO_RESIDENT_PROPERTY_BUTTON_MASK) | FIDO_RESIDENT_PROPERTY_BUTTON_FALSE;
+            }
+            if (credential_resident_update_metadata(ef, &metadata) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_NOT_ALLOWED);
+            }
+            flash_commit();
         }
         else {
             CBOR_ERROR(CTAP2_ERR_INVALID_SUBCOMMAND);
@@ -328,8 +360,8 @@ int cbor_config(const uint8_t *data, size_t len) {
     else if (subcommand == 0x03) {
         uint8_t currentMinPinLen = 4;
         file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
-        if (file_has_data(ef_minpin)) {
-            currentMinPinLen = *file_get_data(ef_minpin);
+        if (ef_minpin && ef_minpin->data && file_read_at(ef_minpin, 0, BYTE_ARRAY(&currentMinPinLen, sizeof(currentMinPinLen))) != PICOKEYS_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
         }
         if (newMinPinLength == 0) {
             newMinPinLength = currentMinPinLen;
@@ -340,10 +372,15 @@ int cbor_config(const uint8_t *data, size_t len) {
         else if (newMinPinLength > 0 && newMinPinLength < currentMinPinLen) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
-        if (forceChangePin == ptrue && !file_has_data(ef_pin)) {
+        bool pin_set = file_has_data(ef_pin);
+        uint8_t pin_header[2] = { 0 };
+        if (forceChangePin == ptrue && !pin_set) {
             CBOR_ERROR(CTAP2_ERR_PIN_NOT_SET);
         }
-        if (file_has_data(ef_pin) && file_get_data(ef_pin)[1] < newMinPinLength) {
+        if (pin_set && file_read_at(ef_pin, 0, BYTE_ARRAY(pin_header, sizeof(pin_header))) != PICOKEYS_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
+        }
+        if (pin_set && pin_header[1] < newMinPinLength) {
             forceChangePin = ptrue;
         }
         if (forceChangePin) {

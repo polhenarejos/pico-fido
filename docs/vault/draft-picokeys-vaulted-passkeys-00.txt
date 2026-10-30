@@ -11,22 +11,22 @@ Abstract
 
    This document specifies an experimental mechanism for exporting a
    WebAuthn credential from a hardware authenticator and importing it into
-   another authenticator at a later time.  The mechanism protects each
+   another authenticator at a later time. The mechanism protects each
    credential as an independently authenticated PKV1 envelope under a
    256-bit secret shared only by authenticators enrolled in the same vault.
 
    The proposal addresses a recovery case that registering a second
    authenticator does not solve: a user can create an offline credential
    backup now and acquire a replacement authenticator only when recovery is
-   required.  Enrollment, credential transport, and optional provisioning
-   identity are deliberately separated.  In particular, the identity
+   required. Enrollment, credential transport, and optional provisioning
+   identity are deliberately separated. In particular, the identity
    Certificate Authority (CA) does not store credentials and is not a vault
    synchronization service.
 
    This text describes the protocol implemented by Pico-FIDO and the
    pico-vault-enroller, including its CBOR commands, cryptographic
    derivations, envelope encoding, enrollment profile, error behavior,
-   security properties, and known limitations.  It is a proposal for
+   security properties, and known limitations. It is a proposal for
    discussion and experimentation, not an assigned CTAP extension or an
    Internet Standards Track document.
 
@@ -34,23 +34,23 @@ Abstract
 Status of This Memo
 
    This document uses an Internet-Draft-like structure to make the proposal
-   precise and reviewable.  It has not been submitted to the IETF or the
+   precise and reviewable. It has not been submitted to the IETF or the
    FIDO Alliance, has no standards status, and allocates no code point in a
-   standards registry.  All command selectors in this document are private,
+   standards registry. All command selectors in this document are private,
    experimental values.
 
 
 Table of Contents
 
-   1.  Introduction
-   2.  Conventions and Terminology
-   3.  Scope and Design Requirements
-   4.  Architecture and Trust Separation
-   5.  Cryptographic Conventions
-   6.  Vendor Command Framing
-   7.  PIN/UV Authorization
-   8.  Vault Enrollment
-   9.  PKV1 Credential Envelope
+   1. Introduction
+   2. Conventions and Terminology
+   3. Scope and Design Requirements
+   4. Architecture and Trust Separation
+   5. Cryptographic Conventions
+   6. Vendor Command Framing
+   7. PIN/UV Authorization
+   8. Vault Enrollment
+   9. PKV1 Credential Envelope
    10. Credential Plaintext and Metadata
    11. Export and Import Commands
    12. Other Vault Commands
@@ -64,38 +64,38 @@ Table of Contents
    20. Limitations and Open Issues
    21. IANA Considerations
    22. References
-   Appendix A.  CDDL Summary
-   Appendix B.  Worked Size Examples
+   Appendix A. CDDL Summary
+   Appendix B. Worked Size Examples
 
 
-1.  Introduction
+1. Introduction
 
    WebAuthn authenticators normally keep credential private keys inside an
-   authenticator.  A common recovery recommendation is to register a second
-   authenticator with every relying party.  That recommendation is useful
+   authenticator. A common recovery recommendation is to register a second
+   authenticator with every relying party. That recommendation is useful
    redundancy, but it is a second complete registration, not a backup of the
-   first credential.  It requires the user to possess two authenticators at
+   first credential. It requires the user to possess two authenticators at
    registration time and to maintain both registrations for every relying
    party.
 
-   PKV1 takes a different approach.  An enrolled authenticator exports one
-   selected credential as an opaque authenticated object.  The user MAY
+   PKV1 takes a different approach. An enrolled authenticator exports one
+   selected credential as an opaque authenticated object. The user MAY
    retain that object offline and purchase or enroll a replacement
-   authenticator later.  A relying party sees the restored credential as the
+   authenticator later. A relying party sees the restored credential as the
    same credential rather than as a newly registered credential, subject to
    the relying party's counter and risk policies.
 
    WebAuthn Level 3 defines backup eligibility and backup state and discusses
-   manual import and export as a possible backup mechanism.  It deliberately
+   manual import and export as a possible backup mechanism. It deliberately
    does not define a protocol for backing up or sharing private keys.
    CTAP 2.3 provides credential-management operations but no interoperable
-   command that exports or recreates credential private keys.  PKV1 fills
-   that experimental protocol gap.  It is not a claim of conformance with a
+   command that exports or recreates credential private keys. PKV1 fills
+   that experimental protocol gap. It is not a claim of conformance with a
    standardized CTAP backup operation, because no such operation currently
    exists.
 
 
-2.  Conventions and Terminology
+2. Conventions and Terminology
 
    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
    "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
@@ -109,8 +109,8 @@ Table of Contents
       A CTAP-capable hardware device or its explicit test emulator.
 
    Board serial
-      The authenticator's device-unique serial representation.  The
-      enrollment certificate uses its printable string form.  PKV1 stores
+      The authenticator's device-unique serial representation. The
+      enrollment certificate uses its printable string form. PKV1 stores
       the raw board identifier, up to 16 octets, as source provenance.
 
    Credential blob
@@ -125,12 +125,12 @@ Table of Contents
 
    Identity CA
       An OPTIONAL architectural layer that attests who or what is authorized
-      to provision an enrollment.  In the currently implemented enrollment
+      to provision an enrollment. In the currently implemented enrollment
       profile, a certificate from this CA is REQUIRED by the firmware.
 
    Kvault
       A uniformly random 32-octet secret shared by authenticators in one
-      vault domain.  Kvault is not derived from a passphrase.
+      vault domain. Kvault is not derived from a passphrase.
 
    Vault ID
       A non-secret 32-octet identifier derived from Kvault.
@@ -139,7 +139,7 @@ Table of Contents
       The authenticator's stored credential identifier.
 
    Requested ID
-      The identifier supplied to the export command.  It can be the stored
+      The identifier supplied to the export command. It can be the stored
       credential ID or another identifier accepted by the authenticator's
       resident-credential matching logic.
 
@@ -147,7 +147,7 @@ Table of Contents
       An unsigned 16-bit integer in network byte order.
 
 
-3.  Scope and Design Requirements
+3. Scope and Design Requirements
 
    This specification has the following requirements:
 
@@ -174,12 +174,12 @@ Table of Contents
    synchronization.
 
 
-4.  Architecture and Trust Separation
+4. Architecture and Trust Separation
 
-4.1.  Core Vault Layer
+4.1. Core Vault Layer
 
    The core vault consists of Kvault, the Vault ID derived from it, the PKV1
-   envelope format, and the export/import operations.  All authenticators
+   envelope format, and the export/import operations. All authenticators
    that are intended to exchange PKV1 objects MUST hold the same Kvault.
    An authenticator without that Kvault cannot derive the envelope keys and
    cannot successfully authenticate or import the object.
@@ -187,51 +187,56 @@ Table of Contents
    Routine PKV1 export and import do not use an X.509 certificate, contact a
    network service, or require the enroller to be online.
 
-4.2.  Enrollment Layer
+4.2. Enrollment Layer
 
    Enrollment securely transfers Kvault from an enroller to an authenticator.
-   It uses an ephemeral X448 exchange, a fresh device challenge, HKDF-SHA-256,
-   AES-256-GCM, PIN/UV authorization, and physical authorization.
+   The reference enroller reads the enrollment protocol from Vault status
+   subcommand 0x01. Protocol 1 is the legacy X448/HKDF-SHA256/AES-GCM
+   channel. Protocol 2 uses RFC 9180 HPKE Auth mode with DHKEM(X448,
+   HKDF-SHA512), HKDF-SHA512, AES-256-GCM, PIN/UV authorization, and
+   physical authorization. Current Pico-FIDO firmware advertises protocol 2.
 
-   The enroller is the most sensitive independent entity in the design.  It
-   can know Kvault and the private X448 enrollment key.  Compromise of an
+   The enroller is the most sensitive independent entity in the design. It
+   can know Kvault and the long-lived private X448 enrollment key. Compromise of an
    enroller or its recovery file can permit an attacker to enroll a rogue
    authenticator into the vault domain and import every obtained PKV1 object.
    Enroller source code SHOULD therefore be public, reproducible, narrowly
-   scoped, and auditable.  The reference implementation is maintained as the
+   scoped, and auditable. The reference implementation is maintained as the
    separate open-source pico-vault-enroller project.
 
-4.3.  Optional Identity Layer
+4.3. Optional Identity Layer
 
-   Identity is conceptually independent from the vault cryptography.  Its
-   purpose is to let an authenticator verify that the X448 enrollment public
-   key was certified by a trusted provisioning authority and that the
-   certificate is intended for this board.
+   Identity is conceptually independent from the vault cryptography. Its
+   purpose is to let an authenticator verify that the long-lived X448
+   enrollment public key was certified by a trusted provisioning authority
+   and that the certificate is intended for this board. The binding is
+   carried in the Vault X448-key extension 1.3.6.1.4.1.55555.1.2; the
+   certificate's ordinary SubjectPublicKeyInfo is not the HPKE sender key.
 
-   The identity authority is a CA, not a vault backend.  It MUST NOT receive
-   Kvault or credential plaintext as part of this protocol.  It is not on the
+   The identity authority is a CA, not a vault backend. It MUST NOT receive
+   Kvault or credential plaintext as part of this protocol. It is not on the
    export/import data path and need not retain PKV1 objects.
 
    A deployment seeking full anonymity MAY omit an identity policy at the
    architectural level and authorize enrollment using a local mechanism.
-   However, the version-1 Identity-CA Enrollment Profile in Section 8 is the
+   However, the protocol-2 Identity-CA Enrollment Profile in Section 8 is the
    only profile currently implemented by Pico-FIDO and requires a
-   certificate.  A certificate-free profile needs a separately specified
+   certificate. A certificate-free profile needs a separately specified
    negotiation and wire encoding; certificate_len = 0 is not valid in the
    current implementation.
 
-4.4.  Transport Client
+4.4. Transport Client
 
    A GUI or command-line client selects a credential, requests export, and
-   stores or transfers the resulting blob.  It receives credential metadata
+   stores or transfers the resulting blob. It receives credential metadata
    for presentation, but it need not receive Kvault or unencrypted private
-   key material.  Such a client MUST treat PKV1 as opaque binary data and
+   key material. Such a client MUST treat PKV1 as opaque binary data and
    MUST preserve it byte for byte.
 
 
-5.  Cryptographic Conventions
+5. Cryptographic Conventions
 
-5.1.  Primitive Set
+5.1. Primitive Set
 
    PKV1 uses:
 
@@ -244,10 +249,10 @@ Table of Contents
    Random keys, challenges, salts, and nonces MUST be generated by a
    cryptographically secure random number generator.
 
-5.2.  Kvault and Vault ID
+5.2. Kvault and Vault ID
 
-   Kvault MUST contain 32 uniformly random octets.  It MUST NOT be generated
-   by applying a password KDF to the user's passphrase.  The passphrase
+   Kvault MUST contain 32 uniformly random octets. It MUST NOT be generated
+   by applying a password KDF to the user's passphrase. The passphrase
    protects the enroller's recovery copy of Kvault as described in
    Section 13; it is not Kvault itself.
 
@@ -256,17 +261,17 @@ Table of Contents
       VaultID = SHA-256("PicoKeys Vault ID v1" || Kvault)
 
    The quoted string is encoded as the 20 ASCII octets shown, without a NUL
-   terminator.  Vault ID is a stable, non-secret domain identifier.  It MUST
+   terminator. Vault ID is a stable, non-secret domain identifier. It MUST
    NOT be used as an encryption key.
 
-5.3.  Credential Hash
+5.3. Credential Hash
 
       CredentialHash = SHA-256(RequestedID)
 
    CredentialHash is placed in the PKV1 header and participates in every
-   layer-key derivation.  It is therefore authenticated and key selecting.
+   layer-key derivation. It is therefore authenticated and key selecting.
 
-5.4.  Layer-Key Derivation
+5.4. Layer-Key Derivation
 
    For each layer index i, starting at zero:
 
@@ -281,32 +286,32 @@ Table of Contents
                 info = info,
                 L    = 32)
 
-   Algorithm and i are each encoded as one octet.  The ASCII domain string
-   has no NUL terminator.  A conforming implementation MUST use the exact
-   string, including capitalization and spaces.  The string name reflects
+   Algorithm and i are each encoded as one octet. The ASCII domain string
+   has no NUL terminator. A conforming implementation MUST use the exact
+   string, including capitalization and spaces. The string name reflects
    the version-1 implementation and MUST NOT be silently changed.
 
-5.5.  Secret Erasure
+5.5. Secret Erasure
 
    Authenticators and enrollers SHOULD erase ephemeral private keys, shared
    secrets, derived keys, cleartext credentials, and Kvault working buffers
-   as soon as they are no longer needed.  This is a defense-in-depth
+   as soon as they are no longer needed. This is a defense-in-depth
    requirement and does not claim protection against all physical attacks.
 
 
-6.  Vendor Command Framing
+6. Vendor Command Framing
 
-6.1.  Transport
+6.1. Transport
 
    The reference HID transport sends the request using
-   CTAPHID.VENDOR_FIRST + 1.  The first request octet is the private vault
-   selector 0x05.  The remaining octets are a CBOR map.  The CCID profile
+   CTAPHID.VENDOR_FIRST + 1. The first request octet is the private vault
+   selector 0x05. The remaining octets are a CBOR map. The CCID profile
    transports the same payload through its vendor APDU mapping.
 
    These values are experimental and MUST NOT be interpreted as assigned
    FIDO Alliance code points.
 
-6.2.  Request Map
+6.2. Request Map
 
    The common request map is:
 
@@ -317,26 +322,26 @@ Table of Contents
        3    uint    pinUvAuthProtocol    when authorization needed
        4    bstr    pinUvAuthParam       when authorization needed
 
-   Integer keys MUST appear in strictly increasing order.  Unknown top-level
-   keys MAY be rejected.  The parameters map currently defines:
+   Integer keys MUST appear in strictly increasing order. Unknown top-level
+   keys MAY be rejected. The parameters map currently defines:
 
       Key   Type    Name
       ---   ----    -----------------
        1    bstr    vendorParam
        3    uint    envelopeAlgorithm
 
-   A sender SHOULD use deterministic CBOR [RFC8949].  This is especially
+   A sender SHOULD use deterministic CBOR [RFC8949]. This is especially
    important because authorization covers the original encoded parameters
    map, not a semantically equivalent re-encoding.
 
-6.3.  Response
+6.3. Response
 
    A response consists of one CTAP status octet followed, on success, by a
-   command-specific CBOR map.  A successful command with no returned values
+   command-specific CBOR map. A successful command with no returned values
    MAY return an empty map or no CBOR body, as specified per command.
 
 
-7.  PIN/UV Authorization
+7. PIN/UV Authorization
 
    Commands that read, install, export, import, or delete sensitive vault
    state MUST be authorized with a pinUvAuthToken having the authenticator
@@ -350,40 +355,40 @@ Table of Contents
       || encodedParameters
 
    encodedParameters is the exact byte sequence of request key 2, including
-   the CBOR map header and all entries.  It is empty when key 2 is absent.
+   the CBOR map header and all entries. It is empty when key 2 is absent.
    Implementations MUST NOT decode and re-encode that map before validating
    pinUvAuthParam.
 
-   pinUvAuthProtocol 1 uses a 16-octet pinUvAuthParam.  Protocol 2 uses a
-   32-octet pinUvAuthParam.  Missing authorization returns
-   CTAP2_ERR_PUAT_REQUIRED.  Invalid protocol, length, token, MAC, or
+   pinUvAuthProtocol 1 uses a 16-octet pinUvAuthParam. Protocol 2 uses a
+   32-octet pinUvAuthParam. Missing authorization returns
+   CTAP2_ERR_PUAT_REQUIRED. Invalid protocol, length, token, MAC, or
    permission returns CTAP2_ERR_PIN_AUTH_INVALID.
 
    The Status command is intentionally readable without PIN/UV
-   authorization.  All other commands in this document require it.
+   authorization. All other commands in this document require it.
 
 
-8.  Vault Enrollment
+8. Vault Enrollment
 
-8.1.  Physical Authorization
+8.1. Physical Authorization
 
    On hardware, enrollment authorization is available only during the first
-   60,000 milliseconds after boot.  The user MUST hold the physical BOOTSEL
-   button for at least 10,000 milliseconds during that window.  Firmware
+   60,000 milliseconds after boot. The user MUST hold the physical BOOTSEL
+   button for at least 10,000 milliseconds during that window. Firmware
    provides LED feedback using the board's existing LED modes.
 
    A build compiled with ENABLE_EMULATION has no physical button or LED and
-   automatically approves the enrollment-presence check.  This exception
+   automatically approves the enrollment-presence check. This exception
    MUST NOT be enabled in production hardware builds.
 
-8.2.  Begin Enrollment (0x02)
+8.2. Begin Enrollment (0x02)
 
    The Begin Enrollment request has no parameters and requires PIN/UV
-   authorization.  If physical authorization is not ready, the authenticator
+   authorization. If physical authorization is not ready, the authenticator
    returns CTAP2_ERR_NOT_ALLOWED.
 
    The authenticator generates a fresh ephemeral X448 key pair (d_e, Q_e)
-   and a 32-octet challenge C.  It stores d_e and C as pending enrollment
+   and a 32-octet challenge C. It stores d_e and C as pending enrollment
    state and returns:
 
       Key   Type       Meaning
@@ -391,9 +396,9 @@ Table of Contents
        1    bstr(56)   authenticator X448 public key Q_e
        2    bstr(32)   challenge C
 
-8.3.  Identity-CA Enrollment Profile
+8.3. Identity-CA Enrollment Profile
 
-   The current profile requires one DER-encoded X.509 certificate.  Before
+   The current profile requires one DER-encoded X.509 certificate. Before
    accepting Kvault, the authenticator MUST verify all of the following:
 
    *  the certificate parses successfully;
@@ -404,32 +409,43 @@ Table of Contents
       uniformResourceIdentifier whose complete byte value exactly equals the
       authenticator's printable board serial; and
 
-   *  its SubjectPublicKeyInfo contains a 56-octet X448 public key Q_c.
+   *  its Vault X448-key extension 1.3.6.1.4.1.55555.1.2 contains exactly
+      the 56-octet X448 public key Q_c;
 
    Matching is exact: prefixes, suffixes, case changes, alternate serials,
-   and partial values MUST NOT be accepted.  CA issuance and applicant
+   and partial values MUST NOT be accepted. CA issuance and applicant
    authentication are outside this wire protocol.
 
-8.4.  Enrollment Key Agreement
+8.4. Enrollment Key Agreement
 
-   The enroller holds the X448 private key corresponding to Q_c.  Both sides
-   calculate:
+   The enroller stores the long-lived X448 private key corresponding to Q_c
+   in its protected enrollment JSON and creates a fresh ephemeral key pair
+   (e_s, Q_s) for each enrollment. The device is the HPKE recipient and the
+   enroller is the authenticated sender. The
+   DHKEM AuthEncap/AuthDecap input is:
 
-      Z = X448(privateKey, peerPublicKey)
+      dh = X448(e_s, Q_e) || X448(privateKey, Q_e)
 
-      enrollInfo = "PicoKeys Vault enrollment v1"
-                   || C || Q_c || Q_e
+   The fixed RFC 9180 profile is:
 
-      K_e = HKDF-SHA-256(
-                salt = empty,
-                IKM  = Z,
-                info = enrollInfo,
-                L    = 32)
+      mode       = 0x02 (mode_auth)
+      KEM ID     = 0x0021 (DHKEM(X448, HKDF-SHA512))
+      HPKE KDF   = 0x0003 (HKDF-SHA512)
+      AEAD ID    = 0x0002 (AES-256-GCM)
 
-   All X448 public values are exactly 56 octets.  The ASCII string has no NUL
-   terminator.
+   The KEM suite identifier is "KEM" || I2OSP(0x0021, 2). The HPKE suite
+   identifier is "HPKE" || I2OSP(0x0021, 2) || I2OSP(0x0003, 2) ||
+   I2OSP(0x0002, 2). The PSK and PSK identifier are both empty. HPKE
+   labeled extraction and expansion use the exact RFC 9180 labels. The
+   application info is:
 
-8.5.  Enrollment Plaintext
+      info = "PicoKeys Vault enrollment v2" || C
+
+   All X448 public values are exactly 56 octets. The ASCII string has no NUL
+   terminator. The single enrollment message uses sequence number zero, so
+   the AEAD nonce is the derived HPKE base_nonce.
+
+8.5. Enrollment Plaintext
 
    The current plaintext is:
 
@@ -437,30 +453,26 @@ Table of Contents
       || labelLength (1 octet)
       || label (labelLength UTF-8 octets)
 
-   labelLength MUST be between 0 and 64.  Firmware also accepts a legacy
-   plaintext containing exactly the 32-octet Kvault and no label.
+   labelLength MUST be between 0 and 64. Legacy protocol 1 devices use the
+   same plaintext layout but the legacy channel packet format.
 
-8.6.  Finish Enrollment Packet (0x03)
+8.6. Finish Enrollment Packet (0x03)
 
-   The enroller generates a fresh 12-octet nonce N and computes:
-
-      C_e || T_e = AES-256-GCM-Encrypt(
-                       key       = K_e,
-                       nonce     = N,
-                       plaintext = enrollmentPlaintext,
-                       AAD       = enrollInfo,
-                       tagLength = 16)
+   HPKE encryption uses sequence number zero for this single enrollment message.
+   The complete certificate DER is the AEAD associated data.
 
    vendorParam is the following binary packet:
 
       uint16be certificateLength
       || certificateDER
-      || N
+      || enc
       || C_e
       || T_e
 
-   certificateLength MUST be in the range 1..1900.  Finish Enrollment
-   requires PIN/UV authorization and an active Begin Enrollment state.  Any
+   where `enc` is the 56-octet HPKE encapsulated X448 public key.
+
+   certificateLength MUST be in the range 1..1900. Finish Enrollment
+   requires PIN/UV authorization and an active Begin Enrollment state. Any
    certificate, packet, or AEAD failure returns
    CTAP2_ERR_INTEGRITY_FAILURE and clears the pending enrollment state.
 
@@ -470,12 +482,12 @@ Table of Contents
       { 1: VaultID }
 
    The certificate carried by Finish Enrollment authorizes and binds this
-   transfer.  The authenticator does not persist that certificate.
+   transfer. The authenticator does not persist that certificate.
 
 
-9.  PKV1 Credential Envelope
+9. PKV1 Credential Envelope
 
-9.1.  Fixed Header
+9.1. Fixed Header
 
    Every PKV1 envelope begins with an 86-octet header:
 
@@ -488,16 +500,16 @@ Table of Contents
        69      16   sourceSerial slot
        85       1   envelopeAlgorithm
 
-   sourceSerialLength MUST NOT exceed 16.  An exporter copies the raw source
+   sourceSerialLength MUST NOT exceed 16. An exporter copies the raw source
    board identifier into the start of sourceSerial and fills the unused
-   octets with zero.  The source serial is provenance, not a destination
-   binding.  Version-1 import verifies the authenticated header but does not
+   octets with zero. The source serial is provenance, not a destination
+   binding. Version-1 import verifies the authenticated header but does not
    require the importing board to have the same serial.
 
-   The complete 86-octet header is AAD for every encryption layer.  Header
+   The complete 86-octet header is AAD for every encryption layer. Header
    fields are visible but cannot be modified without causing AEAD failure.
 
-9.2.  Algorithm Registry
+9.2. Algorithm Registry
 
       Value  Layer 0                 Layer 1
       -----  ----------------------  ----------------------
@@ -506,15 +518,15 @@ Table of Contents
         3    ChaCha20-Poly1305       AES-256-GCM
         4    AES-256-GCM             ChaCha20-Poly1305
 
-   Algorithm 1 is the default when request parameter 3 is absent.  Other
+   Algorithm 1 is the default when request parameter 3 is absent. Other
    values MUST be rejected.
 
-   Algorithms 3 and 4 are sequential compositions.  The output and 16-octet
-   tag of layer 0 become the plaintext of layer 1.  They are offered for
+   Algorithms 3 and 4 are sequential compositions. The output and 16-octet
+   tag of layer 0 become the plaintext of layer 1. They are offered for
    algorithm-agility experiments; they do not establish a general claim of
    twice the security of a single well-implemented AEAD.
 
-9.3.  Nonces and Body Layout
+9.3. Nonces and Body Layout
 
    Each layer uses an independent random 12-octet nonce and a 16-octet tag.
    Nonces appear immediately after the fixed header in layer order.
@@ -530,13 +542,13 @@ Table of Contents
 
       Header || N_0 || N_1 || C_1 || T_1
 
-   Every AEAD invocation uses Header as AAD.  Nonce reuse under the same
+   Every AEAD invocation uses Header as AAD. Nonce reuse under the same
    derived layer key is forbidden.
 
-9.4.  Envelope Length
+9.4. Envelope Length
 
    Let P be the encoded credential-plaintext length and L be the number of
-   layers.  The total envelope length is:
+   layers. The total envelope length is:
 
       86 + (12 * L) + P + (16 * L)
 
@@ -544,9 +556,9 @@ Table of Contents
    tag lengths.
 
 
-10.  Credential Plaintext and Metadata
+10. Credential Plaintext and Metadata
 
-10.1.  Credential Plaintext Map
+10.1. Credential Plaintext Map
 
    The encrypted plaintext is a six-entry CBOR map:
 
@@ -559,14 +571,14 @@ Table of Contents
        5   bstr  encoded Credential Metadata map
        6   bstr  RequestedID used by the export operation
 
-   All six keys are required by the version-1 importer.  Metadata keys 1
-   (rpId) and 2 (rpIdHash) are also required.  Importers MUST verify key 1,
+   All six keys are required by the version-1 importer. Metadata keys 1
+   (rpId) and 2 (rpIdHash) are also required. Importers MUST verify key 1,
    verify SHA-256(key 6) against CredentialHash, verify that the outer and
    metadata RP IDs match, verify SHA-256(rpId) against rpIdHash, and verify
    that the declared algorithm, curve, and private key are consistent before
    persisting a credential.
 
-10.2.  Credential Metadata Map
+10.2. Credential Metadata Map
 
    Metadata is an encoded CBOR map carried inside plaintext key 5 and also
    returned separately by Export for user-interface presentation.
@@ -587,7 +599,7 @@ Table of Contents
       12   uint  RTC creation value                           optional
       13   bstr  resident identifier                          optional
 
-   Keys 9 and 10 MAY be omitted for the ES256/P-256 default.  If either
+   Keys 9 and 10 MAY be omitted for the ES256/P-256 default. If either
    non-default value is needed, both SHOULD be present.
 
    The extensions map uses text keys:
@@ -598,14 +610,14 @@ Table of Contents
       "largeBlobKey"       true
       "thirdPartyPayment"  true
 
-   The options map currently defines "rk" as a boolean.  Implementations
+   The options map currently defines "rk" as a boolean. Implementations
    MUST reject malformed required values and MUST preserve extension
    semantics needed to reconstruct the credential.
 
 
-11.  Export and Import Commands
+11. Export and Import Commands
 
-11.1.  Export Credential (0x04)
+11.1. Export Credential (0x04)
 
    Request parameters:
 
@@ -614,7 +626,7 @@ Table of Contents
        1   bstr  RequestedID; non-empty and within device limit
        3   uint  envelopeAlgorithm; optional, default 1
 
-   Export requires PIN/UV authorization.  The authenticator locates the
+   Export requires PIN/UV authorization. The authenticator locates the
    matching resident credential, obtains or reconstructs its private key,
    encodes Section 10, derives the layer keys, and returns:
 
@@ -624,17 +636,17 @@ Table of Contents
        2   bstr  encoded Credential Metadata map
 
    The separately returned metadata is not protected by the PKV1 AEAD and
-   MAY contain RP and user information.  A client MUST apply an appropriate
-   local privacy policy.  The copy embedded in the envelope is encrypted and
+   MAY contain RP and user information. A client MUST apply an appropriate
+   local privacy policy. The copy embedded in the envelope is encrypted and
    authenticated.
 
-11.2.  Import Credential (0x05)
+11.2. Import Credential (0x05)
 
    Request parameters:
 
       { 1: complete PKV1 envelope }
 
-   Import requires PIN/UV authorization.  The authenticator MUST:
+   Import requires PIN/UV authorization. The authenticator MUST:
 
    1. validate magic, version, algorithm, and safe lengths;
    2. load Kvault and recompute VaultID;
@@ -649,44 +661,44 @@ Table of Contents
    Authentication MUST complete before any credential state is committed.
    The successful response is an empty CBOR map.
 
-11.3.  Vault-Domain Enforcement
+11.3. Vault-Domain Enforcement
 
    An unenrolled board has no usable Kvault and therefore cannot derive the
-   keys required to import a PKV1 object.  A board enrolled with another
+   keys required to import a PKV1 object. A board enrolled with another
    Kvault computes a different VaultID and MUST reject the object before
-   decryption.  Possession of a valid identity certificate alone does not
+   decryption. Possession of a valid identity certificate alone does not
    grant PKV1 access.
 
-11.4.  Duplicate and Replay Behavior
+11.4. Duplicate and Replay Behavior
 
    PKV1 has no freshness counter, expiry, revocation field, or global replay
-   database.  Importing the same authenticated object more than once is
-   governed by the authenticator's credential-storage semantics.  Clients
+   database. Importing the same authenticated object more than once is
+   governed by the authenticator's credential-storage semantics. Clients
    MUST NOT assume that import consumes or invalidates the envelope.
 
-11.5.  Imported-Credential Counter Semantics
+11.5. Imported-Credential Counter Semantics
 
    A global signature counter is authenticator state and MUST NOT be copied
    into, used to initialize, reset, or otherwise modify the destination
-   authenticator's native global counter.  A credential recreated by Import
-   is non-native.  Assertions made with that imported credential MUST encode
+   authenticator's native global counter. A credential recreated by Import
+   is non-native. Assertions made with that imported credential MUST encode
    signCount as zero and MUST NOT increment the destination authenticator's
-   native global counter.  This requirement overrides Metadata key 8 for an
-   imported credential.  Native credentials on the destination continue to
+   native global counter. This requirement overrides Metadata key 8 for an
+   imported credential. Native credentials on the destination continue to
    use the destination counter according to their normal policy.
 
    Zero is an explicit statement that counter-based clone detection is not
    available for the imported credential; it does not establish monotonic
-   continuity with the source authenticator.  A relying party that has
+   continuity with the source authenticator. A relying party that has
    already stored a non-zero count MAY treat a later zero as an anomaly or
-   clone signal.  Implementations and deployments MUST test and document
+   clone signal. Implementations and deployments MUST test and document
    that relying-party transition rather than claiming transparent counter
    migration.
 
 
-12.  Other Vault Commands
+12. Other Vault Commands
 
-12.1.  Command Summary
+12.1. Command Summary
 
       Value  Name                    PIN/UV  Purpose
       -----  ----------------------  ------  ----------------------------
@@ -697,7 +709,7 @@ Table of Contents
        0x05  Import Credential       yes     consume PKV1
        0x06  Unenroll                yes     erase vault state
 
-12.2.  Status (0x01)
+12.2. Status (0x01)
 
    Status returns:
 
@@ -708,11 +720,12 @@ Table of Contents
        3   uint  milliseconds since board boot
        4   bool  syntactically present wrapped-Kvault record
        5   tstr  stored vault label
+       6   uint  enrollment protocol identifier
 
    Key 4 does not by itself prove that the record decrypts successfully.
    Clients MUST use a non-empty, 32-octet key 1 as the enrolled-state signal.
 
-12.3.  Unenroll (0x06)
+12.3. Unenroll (0x06)
 
    Unenroll clears pending enrollment state, wrapped Kvault, and label, and
    commits the deletion.
@@ -720,16 +733,16 @@ Table of Contents
    does not delete external PKV1 objects or enroller recovery files.
 
 
-13.  Enroller Recovery File Profile
+13. Enroller Recovery File Profile
 
-13.1.  Purpose
+13.1. Purpose
 
    The reference enroller stores the vault secret and enrollment identity in
-   a local passphrase-protected JSON envelope.  This file is operational
+   a local passphrase-protected JSON envelope. This file is operational
    recovery material, not a CTAP message and not part of PKV1 credential
    transport.
 
-13.2.  Passphrase KDF
+13.2. Passphrase KDF
 
    The passphrase is UTF-8 encoded and processed with Argon2id [RFC9106]:
 
@@ -745,10 +758,10 @@ Table of Contents
       "PicoKeys Kvault envelope v1"
 
    Deployments MAY increase KDF cost after benchmarking their supported
-   systems.  They MUST record parameters if they diverge from this fixed
+   systems. They MUST record parameters if they diverge from this fixed
    profile and MUST retain compatibility information.
 
-13.3.  Inner Plaintext JSON
+13.3. Inner Plaintext JSON
 
    The encrypted JSON object contains:
 
@@ -756,14 +769,15 @@ Table of Contents
       license_id       deployment identifier string
       label            UTF-8 string
       kvault           base64, 32 octets after decoding
-      x448_private     base64, 56 octets after decoding
+      x448_private     base64, 56 octets after decoding; long-lived static
+                       HPKE sender private key corresponding to Q_c
       certificate      base64, DER certificate
       vault_id         lowercase hexadecimal VaultID
 
    License policy is deployment specific and is not required by the PKV1
    cryptography.
 
-13.4.  Outer JSON
+13.4. Outer JSON
 
    The outer object contains:
 
@@ -776,16 +790,16 @@ Table of Contents
       public_key       base64 display/recovery hint
 
    Fields outside ciphertext are not covered by the fixed AAD and MUST be
-   treated as untrusted hints until checked against decrypted values.  On
-   POSIX systems the reference enroller sets file mode 0600.  Applications
+   treated as untrusted hints until checked against decrypted values. On
+   POSIX systems the reference enroller sets file mode 0600. Applications
    SHOULD additionally use secure local storage, restrictive directory
    permissions, backups appropriate to the threat model, and crash-safe
    replacement when updating this file.
 
 
-14.  Processing and State Requirements
+14. Processing and State Requirements
 
-14.1.  Enrollment State Machine
+14.1. Enrollment State Machine
 
    The minimum state machine is:
 
@@ -799,32 +813,32 @@ Table of Contents
    Pending secrets MUST be cleared on Finish failure, Finish success,
    Unenroll, and device reset.
 
-14.2.  Stored Kvault
+14.2. Stored Kvault
 
-   Kvault MUST NOT be stored in cleartext persistent memory.  The reference
+   Kvault MUST NOT be stored in cleartext persistent memory. The reference
    firmware wraps it under its device-internal key and records the local KDF
-   format version.  A mere correctly sized record is not proof of successful
+   format version. A mere correctly sized record is not proof of successful
    decryption; Status exposes these two conditions separately.
 
-14.3.  Import Atomicity
+14.3. Import Atomicity
 
    An importer MUST authenticate and parse the complete object before
-   modifying credential storage.  A failed operation MUST NOT leave a
-   partially imported credential.  Implementations SHOULD make persistent
-   credential updates atomic at the storage layer.  The reference firmware
+   modifying credential storage. A failed operation MUST NOT leave a
+   partially imported credential. Implementations SHOULD make persistent
+   credential updates atomic at the storage layer. The reference firmware
    publishes credential ID, RP hash, public key, private key, metadata, and
    imported state in one authenticated resident-container generation.
 
-14.4.  Bounds
+14.4. Bounds
 
    Implementations MUST enforce all fixed field lengths before copying or
-   allocating.  The reference limits enrollment certificates to 1900 octets,
+   allocating. The reference limits enrollment certificates to 1900 octets,
    labels to 64 UTF-8 octets, source serials to 16 octets, and encoded
-   credential metadata to 512 octets.  Unknown algorithms and unsupported
+   credential metadata to 512 octets. Unknown algorithms and unsupported
    versions MUST fail closed.
 
 
-15.  Error Handling
+15. Error Handling
 
    The reference mapping is:
 
@@ -847,123 +861,123 @@ Table of Contents
    boundary.
 
 
-16.  Security Considerations
+16. Security Considerations
 
-16.1.  Threat Model
+16.1. Threat Model
 
    The design protects credentials against an attacker who steals only a
-   PKV1 object or controls only the transport client.  It does not protect
+   PKV1 object or controls only the transport client. It does not protect
    against an attacker who obtains Kvault, compromises an enrolled and
    unlocked authenticator, compromises the enroller, defeats the device's
    physical protections, or controls credential use at the relying party.
 
-16.2.  Stolen Board
+16.2. Stolen Board
 
    A stolen enrolled board contains wrapped Kvault and imported credentials.
-   PIN/UV authorization is therefore a material security boundary.  A thief
+   PIN/UV authorization is therefore a material security boundary. A thief
    who learns the PIN or bypasses firmware or hardware protections may export
-   credentials or use the board to import stolen blobs.  Users SHOULD
+   credentials or use the board to import stolen blobs. Users SHOULD
    deregister credentials at relying parties after theft and SHOULD treat
    all objects in that VaultID domain as exposed if Kvault extraction is
    plausible.
 
-16.3.  Broken Board
+16.3. Broken Board
 
    If a board becomes unusable but the user retains both a valid PKV1 object
    and the passphrase-protected enroller recovery file, a replacement board
-   can be enrolled and the credential restored.  If no PKV1 object was
+   can be enrolled and the credential restored. If no PKV1 object was
    exported, this protocol cannot reconstruct that credential merely from
    Kvault.
 
-16.4.  Lost Credential Blob
+16.4. Lost Credential Blob
 
    Loss of one PKV1 object loses that recovery copy but does not reveal the
-   credential and does not affect other independently exported objects.  If
+   credential and does not affect other independently exported objects. If
    the source board also fails and no duplicate blob exists, that credential
    cannot be restored through PKV1.
 
-16.5.  Lost Kvault
+16.5. Lost Kvault
 
    If every enrolled board and every recoverable copy of Kvault is lost,
-   existing PKV1 objects are computationally unrecoverable.  The protocol
-   has no escrow or CA back door.  The CA certificate and its signing key do
+   existing PKV1 objects are computationally unrecoverable. The protocol
+   has no escrow or CA back door. The CA certificate and its signing key do
    not recover Kvault.
 
-16.6.  Compromised Kvault or Enroller
+16.6. Compromised Kvault or Enroller
 
-   Kvault is a vault-wide secret.  Its compromise affects every PKV1 object
+   Kvault is a vault-wide secret. Its compromise affects every PKV1 object
    in that domain, although an attacker still needs the objects themselves.
    A compromised enroller can disclose Kvault and its X448 private key or
-   enroll unauthorized boards.  Open source improves auditability but does
+   enroll unauthorized boards. Open source improves auditability but does
    not by itself prove that a distributed binary or host is uncompromised.
    Reproducible builds, code signing, isolated execution, and minimal network
    access are RECOMMENDED.
 
-16.7.  Compromised Identity CA
+16.7. Compromised Identity CA
 
    Compromise of the identity CA can authorize fraudulent enrollment
-   certificates in the Identity-CA profile.  It does not directly decrypt
+   certificates in the Identity-CA profile. It does not directly decrypt
    previously produced PKV1 objects unless the attacker also obtains Kvault
-   through a successful provisioning attack.  CA keys SHOULD be isolated,
+   through a successful provisioning attack. CA keys SHOULD be isolated,
    certificate issuance audited, and certificate lifetime and revocation
    policy defined by the deployment.
 
-16.8.  AEAD Composition
+16.8. AEAD Composition
 
    The full header is authenticated by every layer, binding VaultID,
-   CredentialHash, source serial, version, and algorithm.  Algorithms 3 and
-   4 require independent nonces and independently derived keys.  Layering
+   CredentialHash, source serial, version, and algorithm. Algorithms 3 and
+   4 require independent nonces and independently derived keys. Layering
    AEAD schemes adds implementation complexity and is not a substitute for
    correct nonce generation, key protection, constant-time verification, or
    cryptographic review.
 
-16.9.  Rollback, Replay, and Counters
+16.9. Rollback, Replay, and Counters
 
-   PKV1 does not provide freshness or revocation.  Restoring an older
+   PKV1 does not provide freshness or revocation. Restoring an older
    credential state can interact with signature counters and relying-party
-   clone-detection policy.  Per Section 11.5, a non-native imported
+   clone-detection policy. Per Section 11.5, a non-native imported
    credential reports zero and does not advance the destination's native
-   global counter.  This avoids fabricating board-counter continuity, but it
+   global counter. This avoids fabricating board-counter continuity, but it
    does not clear a non-zero value already stored by a relying party.
    Deployments MUST test relying-party behavior and MUST NOT claim that PKV1
    preserves all external state transitions.
 
-16.10.  Metadata and Semantic Validation
+16.10. Metadata and Semantic Validation
 
    AEAD integrity proves that a holder of Kvault created the authenticated
    plaintext; it does not prove that every redundant field is semantically
-   consistent.  Importers SHOULD validate plaintext version, RequestedID
+   consistent. Importers SHOULD validate plaintext version, RequestedID
    hash, RP ID hash, algorithm, curve, key representation, and metadata
    constraints before persistence.
 
 
-17.  Privacy Considerations
+17. Privacy Considerations
 
    VaultID, CredentialHash, sourceSerialLength, sourceSerial, and algorithm
-   are visible in every PKV1 header.  VaultID links objects from the same
-   vault domain.  The source serial links exports from one board.  Stable
+   are visible in every PKV1 header. VaultID links objects from the same
+   vault domain. The source serial links exports from one board. Stable
    identifiers can enable correlation if objects are disclosed to an
    untrusted storage or transport provider.
 
    The Export response's separate metadata can reveal RP ID, user ID, user
-   name, and display name.  Clients SHOULD minimize logging, telemetry,
+   name, and display name. Clients SHOULD minimize logging, telemetry,
    filenames, previews, and cloud indexing of this data.
 
    An identity CA may associate enrollment with a customer, license, account,
-   or board.  Deployments requiring anonymity should use a future local or
+   or board. Deployments requiring anonymity should use a future local or
    anonymous enrollment profile and should not describe the current
    Identity-CA profile as anonymous.
 
 
-18.  Interoperability and Versioning
+18. Interoperability and Versioning
 
-   The fourth magic octet is the PKV1 envelope version.  An implementation
-   MUST reject unknown versions rather than guessing their layout.  New
+   The fourth magic octet is the PKV1 envelope version. An implementation
+   MUST reject unknown versions rather than guessing their layout. New
    algorithms require a new documented registry entry and capability
-   negotiation.  Existing numeric meanings MUST NOT be reassigned.
+   negotiation. Existing numeric meanings MUST NOT be reassigned.
 
    The current vendor command family has no standardized discovery or
-   version-negotiation mechanism.  A standards proposal should define:
+   version-negotiation mechanism. A standards proposal should define:
 
    *  authenticator capability discovery;
    *  protocol and envelope version negotiation;
@@ -974,11 +988,11 @@ Table of Contents
    *  identity-free and identity-bearing enrollment profiles.
 
    WebAuthn backup eligibility/state flags alone are insufficient to discover
-   or invoke PKV1.  CTAP clients MUST treat these commands as a vendor
+   or invoke PKV1. CTAP clients MUST treat these commands as a vendor
    extension unless and until an applicable standard is adopted.
 
 
-19.  Implementation and Test Requirements
+19. Implementation and Test Requirements
 
    A conforming implementation SHOULD test at least:
 
@@ -1000,14 +1014,14 @@ Table of Contents
       extension, not only every PKV1 AEAD algorithm.
 
    Tests using real authenticators SHOULD be explicitly marked as live and,
-   where they alter device state, destructive.  Automated suites MUST NOT
+   where they alter device state, destructive. Automated suites MUST NOT
    silently run destructive hardware tests against an arbitrary attached
    authenticator.
 
 
-20.  Limitations and Open Issues
+20. Limitations and Open Issues
 
-   *  PKV1 is a vendor proposal.  WebAuthn defines backup state semantics but
+   *  PKV1 is a vendor proposal. WebAuthn defines backup state semantics but
       not private-key backup transport; CTAP 2.3 does not transpose those
       semantics into export/import commands.
 
@@ -1026,11 +1040,11 @@ Table of Contents
       import destination constraint.
 
    *  PKV1 does not synchronize relying-party state, large-blob content
-      stored elsewhere, or server-side account policy.  Imported credentials
+      stored elsewhere, or server-side account policy. Imported credentials
       report signCount zero; a relying party that previously stored a
       non-zero source count may flag that transition.
 
-   *  A passphrase protects only the enroller recovery file.  Its strength is
+   *  A passphrase protects only the enroller recovery file. Its strength is
       bounded by passphrase entropy, Argon2id parameters, host security, and
       the availability of offline guesses.
 
@@ -1042,17 +1056,17 @@ Table of Contents
       do not automatically improve practical security over a single AEAD.
 
 
-21.  IANA Considerations
+21. IANA Considerations
 
-   This document requests no IANA action.  It also requests no allocation
-   from a FIDO Alliance registry.  The selector, subcommands, parameter keys,
+   This document requests no IANA action. It also requests no allocation
+   from a FIDO Alliance registry. The selector, subcommands, parameter keys,
    and algorithm values are private experimental values and can conflict
    with other vendor implementations.
 
 
-22.  References
+22. References
 
-22.1.  Normative References
+22.1. Normative References
 
    [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
               Requirement Levels", BCP 14, RFC 2119, March 1997.
@@ -1085,7 +1099,7 @@ Table of Contents
               "Recommendation for Block Cipher Modes of Operation: Galois/
               Counter Mode (GCM) and GMAC", NIST SP 800-38D, November 2007.
 
-22.2.  Informative References
+22.2. Informative References
 
    [WebAuthn3]
               W3C, "Web Authentication: An API for accessing Public Key
@@ -1096,9 +1110,9 @@ Table of Contents
               https://fidoalliance.org/specs/fido-v2.3-rd-20251023/
               fido-client-to-authenticator-protocol-v2.3-rd-20251023.html.
 
-Appendix A.  CDDL Summary
+Appendix A. CDDL Summary
 
-   The following CDDL is explanatory.  Binary PKV1 framing and command-
+   The following CDDL is explanatory. Binary PKV1 framing and command-
    specific requirements in the body of this document are authoritative.
 
    vault-request = {
@@ -1119,6 +1133,7 @@ Appendix A.  CDDL Summary
        3 => uint,                     ; board milliseconds
        4 => bool,                     ; wrapped record present
        5 => tstr                      ; label
+       6 => uint                      ; enrollment protocol: 1 legacy, 2 HPKE
    }
 
    begin-response = {
@@ -1165,7 +1180,7 @@ Appendix A.  CDDL Summary
    }
 
 
-Appendix B.  Worked Size Examples
+Appendix B. Worked Size Examples
 
    For a credential plaintext of P = 400 octets:
 
@@ -1178,7 +1193,7 @@ Appendix B.  Worked Size Examples
          + 32 bytes of tags = 542 octets.
 
    In the two-layer case, the inner 16-octet tag is encrypted as part of the
-   outer plaintext.  The size formula remains P + 32 tag octets overall.
+   outer plaintext. The size formula remains P + 32 tag octets overall.
 
 
 Author's Address

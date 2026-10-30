@@ -48,7 +48,17 @@ jobs:
       run: ./tests/build-in-docker.sh
     - name: Build legacy emulator in container
       run: ./tests/build-legacy-in-docker.sh
+    - name: Validate Vault test secrets
+      env:
+        PICO_FIDO_VAULT_ENROLLMENT_JSON: ${{ secrets.PICO_FIDO_VAULT_ENROLLMENT_JSON }}
+        PICO_FIDO_VAULT_PASSPHRASE: ${{ secrets.PICO_FIDO_VAULT_PASSPHRASE }}
+      run: |
+        test -n "$PICO_FIDO_VAULT_ENROLLMENT_JSON" || { echo "PICO_FIDO_VAULT_ENROLLMENT_JSON is required." >&2; exit 1; }
+        test -n "$PICO_FIDO_VAULT_PASSPHRASE" || { echo "PICO_FIDO_VAULT_PASSPHRASE is required." >&2; exit 1; }
     - name: Start emulation and test
+      env:
+        PICO_FIDO_VAULT_ENROLLMENT_JSON: ${{ secrets.PICO_FIDO_VAULT_ENROLLMENT_JSON }}
+        PICO_FIDO_VAULT_PASSPHRASE: ${{ secrets.PICO_FIDO_VAULT_PASSPHRASE }}
       run: ./tests/run-test-in-docker.sh
     - name: Test legacy flash compatibility
       run: ./tests/run-test-041-in-docker.sh

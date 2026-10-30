@@ -43,7 +43,7 @@
 #include "mbedtls/x509_csr.h"
 #include "mbedtls/x509_crt.h"
 
-#include "vault.h"
+#include "fido_vault.h"
 
 extern uint8_t keydev_dec[32];
 extern bool has_keydev_dec;
@@ -275,7 +275,7 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             mbedtls_x509write_csr_set_subject_name(&ctx, (char *) buffer);
             mbedtls_pk_context key;
             mbedtls_pk_init(&key);
-            mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+            key.pk_info = mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY);
             key.pk_ctx = &ekey;
             mbedtls_x509write_csr_set_key(&ctx, &key);
             mbedtls_x509write_csr_set_md_alg(&ctx, MBEDTLS_MD_SHA256);

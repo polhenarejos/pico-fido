@@ -44,6 +44,33 @@ static bool hkey_init = false;
 #define PIN_DATA_LEN 35
 #define PIN_RETRY_COMMIT_TIMEOUT_MS 500
 
+static bool minpin_record_has_header(const file_t *ef) {
+    return file_has_data(ef) && file_get_size(ef) >= 2;
+}
+
+static int minpin_read_length(const file_t *ef, uint8_t *min_pin) {
+    if (!min_pin) {
+        return PICOKEYS_ERR_NULL_PARAM;
+    }
+    *min_pin = 4;
+    if (!ef || !ef->data) {
+        return PICOKEYS_OK;
+    }
+    return file_read_at(ef, 0, BYTE_ARRAY(min_pin, sizeof(*min_pin)));
+}
+
+static bool minpin_force_change_pending(const file_t *ef) {
+    if (!ef || !ef->data) {
+        return false;
+    }
+
+    uint8_t pending = 0;
+    if (file_read_at(ef, 1, BYTE_ARRAY(&pending, sizeof(pending))) != PICOKEYS_OK) {
+        return true;
+    }
+    return pending != 0;
+}
+
 static bool load_pin_data(const file_t *ef, uint8_t pin_data[PIN_DATA_LEN], uint16_t *pin_data_len) {
     uint32_t stored_len = file_get_size(ef);
     const uint8_t *data = file_get_data(ef);
@@ -442,9 +469,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
     }
     else if (subcommand == 0x1) { //getPINRetries
         bool power_cycle_locked = pin_power_cycle_locked();
+        uint8_t retries = file_has_data(ef_pin) ? *file_get_data(ef_pin) & PIN_RETRY_COUNT_MASK : MAX_PIN_RETRIES;
         CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, power_cycle_locked ? 2 : 1));
         CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x03));
-        CBOR_CHECK(cbor_encode_uint(&mapEncoder, (uint64_t)(*file_get_data(ef_pin) & PIN_RETRY_COUNT_MASK)));
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, retries));
         if (power_cycle_locked) {
             CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x04));
             CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
@@ -514,8 +542,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint16_t pin_codepoints = pin_codepoint_len(paddedNewPin, pin_byte_len);
         uint8_t minPin = 4;
         file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
-        if (file_has_data(ef_minpin)) {
-            minPin = *file_get_data(ef_minpin);
+        if (minpin_read_length(ef_minpin, &minPin) != PICOKEYS_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
         }
         if (pin_codepoints < minPin) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
@@ -692,8 +720,8 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         uint16_t pin_codepoints = pin_codepoint_len(paddedNewPin, pin_byte_len);
         uint8_t minPin = 4;
         file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
-        if (file_has_data(ef_minpin)) {
-            minPin = *file_get_data(ef_minpin);
+        if (minpin_read_length(ef_minpin, &minPin) != PICOKEYS_OK) {
+            CBOR_ERROR(CTAP2_ERR_PROCESSING);
         }
         if (pin_codepoints < minPin) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
@@ -722,14 +750,14 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         pin_data[2] = 1; // New format indicator
         pin_derive_verifier(CONST_BYTE_ARRAY(dhash, 16), pin_data + 3);
 
-        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1 && mbedtls_ct_memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
+        if (minpin_record_has_header(ef_minpin) && file_get_data(ef_minpin)[1] == 1 && mbedtls_ct_memcmp(pin_data + 3, file_get_data(ef_pin) + 3, 32) == 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
         }
         file_put_data(ef_pin, CONST_BYTE_ARRAY(pin_data, sizeof(pin_data)));
 
         mbedtls_platform_zeroize(pin_data, sizeof(pin_data));
         mbedtls_platform_zeroize(dhash, sizeof(dhash));
-        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
+        if (minpin_record_has_header(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
             uint8_t *tmpf = (uint8_t *) calloc(1, file_get_size(ef_minpin));
             memcpy(tmpf, file_get_data(ef_minpin), file_get_size(ef_minpin));
             tmpf[1] = 0;
@@ -748,6 +776,10 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
             CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
         }
         if (pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
+            CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+        }
+        if ((pinUvAuthProtocol == 1 && pinHashEnc.len != 16) ||
+            (pinUvAuthProtocol == 2 && pinHashEnc.len != 16 + IV_SIZE)) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }
         if (subcommand == 0x5 && (permissions != 0 || rpId.present == true)) {
@@ -869,7 +901,7 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
 
         flash_commit();
         file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
-        if (file_has_data(ef_minpin) && file_get_data(ef_minpin)[1] == 1) {
+        if (minpin_force_change_pending(ef_minpin)) {
             if (subcommand == 0x09 && permissions == CTAP_PERMISSION_ACFG && rpId.present == false) {
                 CBOR_ERROR(CTAP2_ERR_PIN_POLICY_VIOLATION);
             }

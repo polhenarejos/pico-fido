@@ -21,24 +21,7 @@ set(USB_VID 0x2E8A)
 set(USB_PID 0x10FE)
 
 if(ESP_PLATFORM)
-    if(NOT DEFINED ENABLE_POWER_ON_RESET)
-        set(ENABLE_POWER_ON_RESET 0)
-    endif()
-    if(NOT DEFINED ENABLE_PQC)
-        set(ENABLE_PQC 0)
-    endif()
-    set(EXTRA_COMPONENT_DIRS
-        src/fido
-        pico-keys-sdk/config/esp32/components/pico-keys-sdk
-        pico-keys-sdk/config/esp32/components/tinycbor
-    )
-    if(ENABLE_PQC)
-        list(APPEND EXTRA_COMPONENT_DIRS
-            pico-keys-sdk/config/esp32/components/mlkem512
-            pico-keys-sdk/config/esp32/components/mlkem768
-            pico-keys-sdk/config/esp32/components/mlkem1024
-        )
-    endif()
+    set(PICOKEYS_COMPONENTS fido)
     include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 else()
     if(NOT ENABLE_EMULATION)
@@ -105,6 +88,7 @@ endif()
 
 set(USB_ITF_HID 1)
 include(pico-keys-sdk/picokeys_sdk_import.cmake)
+SET_BUILD_NUMBER("${CMAKE_CURRENT_LIST_DIR}")
 
 if(NOT ESP_PLATFORM)
     set(SOURCES ${PICOKEYS_SOURCES})
@@ -123,6 +107,7 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_reset.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_get_info.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_make_credential.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/fido/event.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/known_apps.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_client_pin.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/credential.c
@@ -131,20 +116,11 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_cred_mgmt.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_config.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_vendor.c
-    ${CMAKE_CURRENT_LIST_DIR}/src/fido/vault.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/fido/fido_vault.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/cbor_large_blobs.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/management.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/defs.c
 )
-
-if (NOT ESP_PLATFORM)
-    list(APPEND SOURCES
-        ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/x509.c
-        ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/x509_crt.c
-        ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/pkparse.c
-        ${CMAKE_CURRENT_LIST_DIR}/pico-keys-sdk/third-party/mbedtls/library/pk_ecc.c
-    )
-endif()
 
 if(ENABLE_OATH_APP)
     list(APPEND SOURCES

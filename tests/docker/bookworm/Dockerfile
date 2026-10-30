@@ -27,6 +27,7 @@ RUN apt install -y libccid \
     swtpm \
     && rm -rf /var/lib/apt/lists/*
 RUN pip3 install pytest pycvc cryptography inputimeout fido2==2.2.1 --break-system-packages
+RUN pip3 install --break-system-packages git+https://github.com/polhenarejos/pico-vault-enroller.git
 WORKDIR /
 RUN git clone https://github.com/frankmorgner/vsmartcard.git
 WORKDIR /vsmartcard/virtualsmartcard

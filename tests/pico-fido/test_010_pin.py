@@ -23,6 +23,7 @@ import hashlib
 import pytest
 from fido2.ctap import CtapError
 from fido2.client import ClientPin
+from fido2.ctap2.pin import ClientPin as CtapClientPin, PinProtocolV1, PinProtocolV2
 from fido2.webauthn import UserVerificationRequirement
 from fido2.utils import hmac_sha256
 
@@ -137,6 +138,33 @@ def test_get_pin_token_but_no_pin_set(resetdevice, client_pin):
     with pytest.raises(CtapError) as e:
         client_pin.get_pin_token("TestPin")
     assert e.value.code == CtapError.ERR.PIN_NOT_SET
+
+@pytest.mark.parametrize("protocol_type", [PinProtocolV1, PinProtocolV2])
+def test_get_pin_token_rejects_oversized_pin_hash(device, protocol_type):
+    device.reset()
+    try:
+        ctap = device.client()._backend.ctap2
+        client_pin = CtapClientPin(ctap, protocol_type())
+        client_pin.set_pin("TestPin")
+        retries = client_pin.get_pin_retries()[0]
+        key_agreement, shared_secret = client_pin._get_shared_secret()
+        pin_hash_enc = client_pin.protocol.encrypt(shared_secret, b"\x00" * 80)
+
+        with pytest.raises(CtapError) as error:
+            client_pin.ctap.client_pin(
+                client_pin.protocol.VERSION,
+                CtapClientPin.CMD.GET_TOKEN_USING_PIN_LEGACY,
+                key_agreement=key_agreement,
+                pin_hash_enc=pin_hash_enc,
+            )
+
+        assert error.value.code == CtapError.ERR.INVALID_PARAMETER
+        assert client_pin.get_pin_retries()[0] == retries
+    finally:
+        device.reset()
+
+def test_get_pin_retries_but_no_pin_set(resetdevice, client_pin):
+    assert client_pin.get_pin_retries() == (8, None)
 
 def test_change_pin_but_no_pin_set(device, client_pin):
     with pytest.raises(CtapError) as e:

@@ -164,9 +164,26 @@ def test_otp_pin_change_stops_at_retry_floor(reset_oath):
         data=[TAG_PASSWORD, len(new_pin)] + new_pin,
     )
 
+def send_chained_oath_apdu(ccid_card, command, p1=0, p2=0, data=None):
+    lc = []
+    dataf = []
+    if data:
+        lc = [0] + list(len(data).to_bytes(2, "big"))
+        dataf = data
+    response = []
+    apdu = [0, command, p1, p2] + lc + dataf + [0, 0]
+    while True:
+        chunk, sw1, sw2 = transmit_apdu(ccid_card, apdu)
+        response += chunk
+        if sw1 == RESP_MORE_DATA:
+            apdu = [0, INS_SEND_REMAINING, 0, 0, 0, 0]
+            continue
+        if sw1 != 0x90:
+            raise APDUResponse(sw1, sw2)
+        return response
+
 def list_apdu(ccid_card):
-    resp = send_apdu(ccid_card, INS_LIST, p1=0, p2=0)
-    return resp
+    return send_chained_oath_apdu(ccid_card, INS_LIST)
 
 name_kaka = [ord('k'), ord('a'), ord('k'), ord('a')]
 data_name = [TAG_NAME] + [len(name_kaka)] + name_kaka
@@ -190,6 +207,33 @@ def test_life(reset_oath):
     resp = send_apdu(reset_oath, INS_DELETE, p1=0, p2=0, data=data)
     resp = list_apdu(reset_oath)
     assert(len(resp) == 0)
+
+
+def test_list_and_calculate_all_response_chaining(reset_oath):
+    key = list(b"foo bar")
+    names = [(f"{i:02d}" + "x" * 248).encode() for i in range(17)]
+    list_expected = []
+    for name in names:
+        data = [TAG_NAME, len(name)] + list(name)
+        data += [TAG_KEY, len(key) + 2, TYPE_TOTP | ALG_SHA1, 6] + key
+        send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+        list_expected += [TAG_NAME_LIST, len(name) + 1, TYPE_TOTP | ALG_SHA1] + list(name)
+
+    assert len(list_expected) > 4096
+    assert list_apdu(reset_oath) == list_expected
+
+    challenge = [0, 0, 0, 0, 0, 0, 0, 1]
+    digest = hmac.digest(bytes(key), bytes(challenge), "sha1")
+    offset = digest[-1] & 0x0f
+    truncated = [digest[offset] & 0x7f] + list(digest[offset + 1:offset + 4])
+    calculate_expected = []
+    for name in names:
+        calculate_expected += [TAG_NAME, len(name)] + list(name)
+        calculate_expected += [TAG_T_RESPONSE, 5, 6] + truncated
+
+    data = [TAG_CHALLENGE, len(challenge)] + challenge
+    assert len(calculate_expected) > 4096
+    assert send_chained_oath_apdu(reset_oath, INS_CALC_ALL, p2=1, data=data) == calculate_expected
 
 
 def test_rename_prefix_extension(reset_oath):
@@ -273,6 +317,37 @@ def test_auth(reset_oath):
     with pytest.raises(APDUResponse) as e:
         list_apdu(reset_oath)
     assert [e.value.sw1, e.value.sw2] == [0x69, 0x82]
+
+def test_set_code_revokes_otp_pin(reset_oath):
+    pin = list(b"123456")
+    send_apdu(
+        reset_oath,
+        INS_SET_PIN,
+        p1=0,
+        p2=0,
+        data=[TAG_PASSWORD, len(pin)] + pin,
+    )
+
+    key = list(bytes(b"kaka blahonga"))
+    chal = [1, 2, 3, 4, 5, 6, 7, 8]
+    response = list(hmac.digest(bytes(key), bytes(chal), "sha1"))
+    data = (
+        [TAG_KEY, len(key) + 1, ALG_SHA1 | TYPE_TOTP] + key +
+        [TAG_CHALLENGE, len(chal)] + chal +
+        [TAG_RESPONSE, len(response)] + response
+    )
+    send_apdu(reset_oath, INS_SET_CODE, p1=0, p2=0, data=data)
+
+    reset_oath.connection.reconnect()
+    with pytest.raises(APDUResponse) as e:
+        send_apdu(
+            reset_oath,
+            INS_VERIFY_PIN,
+            p1=0,
+            p2=0,
+            data=[TAG_PASSWORD, len(pin)] + pin,
+        )
+    assert [e.value.sw1, e.value.sw2] == [0x69, 0x85]
 
 def test_bothoath(reset_oath):
     digits = 6

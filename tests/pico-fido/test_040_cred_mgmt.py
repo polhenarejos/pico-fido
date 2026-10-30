@@ -435,7 +435,7 @@ def test_multiple_enumeration(
 def test_multiple_enumeration_with_deletions(
     device, MC_RK_Res, enumeration_test
 ):
-    """ Create each credential in random order.  Test enumerate still works after randomly deleting each credential"""
+    """ Create each credential in random order. Test enumerate still works after randomly deleting each credential"""
 
     expected_enumeration = {"xakcop.com": 1, "ssh:": 1}
 

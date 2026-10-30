@@ -21,6 +21,7 @@
 import os
 import pytest
 from fido2.ctap import CtapError
+from fido2.ctap2.base import Ctap2
 from fido2.ctap2.extensions import HmacSecretExtension
 from fido2.utils import hmac_sha256
 from fido2.ctap2.pin import ClientPin, PinProtocolV1, PinProtocolV2
@@ -50,6 +51,41 @@ def test_hmac_secret_info(info):
 
 def test_fake_extension(device):
     device.doMC(extensions={"tetris": True})
+
+
+def _make_credential_request(extension):
+    return {
+        1: os.urandom(32),
+        2: {"id": "example.com", "name": "Example RP"},
+        3: {"id": os.urandom(16), "name": "user", "displayName": "User"},
+        4: [{"type": "public-key", "alg": -7}],
+        6: extension,
+    }
+
+
+@pytest.mark.parametrize("extension", [{"hmac-secret": 1}, {"hmac-secret-mc": 1}])
+def test_make_credential_rejects_wrong_hmac_extension_type(device, extension):
+    ctap = device.client()._backend.ctap2
+    with pytest.raises(CtapError) as error:
+        ctap.send_cbor(Ctap2.CMD.MAKE_CREDENTIAL, _make_credential_request(extension))
+    assert error.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("credProtect", "wrong"), ("minPinLength", 1), ("hmac-secret", 1), ("hmac-secret-mc", 1)],
+)
+def test_get_assertion_rejects_wrong_advertised_extension_type(device, MCHmacSecret, name, value):
+    credential_id = MCHmacSecret.auth_data.credential_data.credential_id
+    request = {
+        1: "example.com",
+        2: os.urandom(32),
+        3: [{"type": "public-key", "id": credential_id}],
+        4: {name: value},
+    }
+    with pytest.raises(CtapError) as error:
+        device.client()._backend.ctap2.send_cbor(Ctap2.CMD.GET_ASSERTION, request)
+    assert error.value.code == CtapError.ERR.CBOR_UNEXPECTED_TYPE
 
 
 @pytest.mark.parametrize("salts", [(salt1,), (salt1, salt2)])
@@ -180,6 +216,78 @@ def test_make_credential_hmac_secret_mc(device, protocol_type, salt_count):
     assert isinstance(result, bytes)
     assert len(result) == len(salt_enc)
     assert len(protocol.decrypt(shared_secret, result)) == len(salt)
+
+
+@pytest.mark.parametrize("protocol_type", [PinProtocolV1, PinProtocolV2])
+def test_hmac_secret_mc_matches_follow_up_assertion(device, protocol_type):
+    device.reset()
+    ctap = device.client()._backend.ctap2
+    protocol = protocol_type()
+    client_pin = ClientPin(ctap, protocol)
+    client_pin.set_pin("12345678")
+    token = client_pin.get_pin_token(
+        "12345678", permissions=ClientPin.PERMISSION.MAKE_CREDENTIAL
+    )
+    key_agreement, shared_secret = client_pin._get_shared_secret()
+    salt = b"\x01" * 32
+    salt_enc = protocol.encrypt(shared_secret, salt)
+    extensions = {
+        "hmac-secret": True,
+        "hmac-secret-mc": {
+            1: key_agreement,
+            2: salt_enc,
+            3: protocol.authenticate(shared_secret, salt_enc),
+            4: protocol.VERSION,
+        },
+    }
+    client_data_hash = os.urandom(32)
+    mc = device.MC(
+        client_data_hash=client_data_hash,
+        extensions=extensions,
+        options={"rk": True},
+        pin_uv_protocol=protocol.VERSION,
+        pin_uv_param=protocol.authenticate(token, client_data_hash),
+    )
+    credential_id = mc["res"].auth_data.credential_data.credential_id
+    registered = protocol.decrypt(
+        shared_secret, mc["res"].auth_data.extensions["hmac-secret-mc"]
+    )
+    allow_list = [{"id": credential_id, "type": "public-key"}]
+    ga_extensions = {
+        "hmac-secret": {
+            1: key_agreement,
+            2: salt_enc,
+            3: protocol.authenticate(shared_secret, salt_enc),
+            4: protocol.VERSION,
+        }
+    }
+    token = client_pin.get_pin_token(
+        "12345678", permissions=ClientPin.PERMISSION.GET_ASSERTION
+    )
+    client_data_hash = os.urandom(32)
+    ga = device.GA(
+        client_data_hash=client_data_hash,
+        allow_list=allow_list,
+        extensions=ga_extensions,
+        pin_uv_protocol=protocol.VERSION,
+        pin_uv_param=protocol.authenticate(token, client_data_hash),
+    )
+    print(ga["res"])
+    asserted = protocol.decrypt(
+        shared_secret,
+        ga["res"].auth_data.extensions["hmac-secret"],
+    )
+    assert registered == asserted
+
+    ga = device.GA(
+        allow_list=allow_list,
+        extensions=ga_extensions,
+    )
+    unverified = protocol.decrypt(
+        shared_secret,
+        ga["res"].auth_data.extensions["hmac-secret"],
+    )
+    assert registered != unverified
 
 def test_bad_auth(device,  MCHmacSecret):
 

@@ -99,7 +99,7 @@ def test_setminpin_too_many_rpids(device):
     device.reset()
     ClientPin(device.client()._backend.ctap2).set_pin(PIN)
     cfg = FidoConfig(device)
-    # Keep the encoded Config request below GetInfo.maxMsgSize (1024).  Recent
+    # Keep the encoded Config request below GetInfo.maxMsgSize (1024). Recent
     # python-fido2 releases reject oversized requests locally, before the
     # authenticator can enforce its maxRPIDsForSetMinPINLength limit.
     rp_ids = [f"r{i}" for i in range(MAX_RPIDS_MINPIN_LENGTH + 1)]
@@ -150,6 +150,23 @@ def test_setminpin_check_force(device, SetMinPin, MCMinPin):
     cfg.set_min_pin_length(len(PIN)+1,rp_ids=['example.com'])
     info = device.client()._backend.ctap2.get_info()
     assert info.force_pin_change == True
+
+def test_change_pin_rejects_below_configured_floor(device, SetMinPin):
+    client_pin = ClientPin(device.client()._backend.ctap2)
+
+    with pytest.raises(CtapError) as e:
+        client_pin.change_pin(PIN, PIN[:MINPINLENGTH - 1])
+
+    assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
+
+def test_force_change_blocks_pin_token(device, SetMinPin):
+    cfg = FidoConfig(device)
+    cfg.set_min_pin_length(MINPINLENGTH, rp_ids=['example.com'], force_change_pin=True)
+
+    with pytest.raises(CtapError) as e:
+        ClientPin(device.client()._backend.ctap2).get_pin_token(PIN)
+
+    assert e.value.code == CtapError.ERR.PIN_INVALID
 
 @pytest.mark.parametrize(
     "force", [True, False]

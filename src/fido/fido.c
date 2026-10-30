@@ -44,6 +44,11 @@
 #include "version.h"
 #include "crypto_utils.h"
 #include "otp.h"
+#include "event.h"
+
+extern char *rp_id;
+extern size_t rp_id_len;
+extern uint8_t current_fido_operation;
 
 static int fido_unload(void);
 
@@ -208,7 +213,7 @@ static int x509_create_cert(mbedtls_ecdsa_context *ecdsa, uint8_t *buffer, size_
     mbedtls_x509write_crt_set_serial_raw(&ctx, serial, sizeof(serial));
     mbedtls_pk_context key;
     mbedtls_pk_init(&key);
-    mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+    key.pk_info = mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY);
     key.pk_ctx = ecdsa;
     mbedtls_x509write_crt_set_subject_key(&ctx, &key);
     mbedtls_x509write_crt_set_issuer_key(&ctx, &key);
@@ -459,7 +464,6 @@ int scan_files_fido(void) {
     else {
         printf("FATAL ERROR: CERT DEV not found in memory!\r\n");
     }
-    ef_vault_label = file_search_by_fid(EF_VAULT_LABEL, NULL, SPECIFY_EF);
     ef_counter = file_search_by_fid(EF_COUNTER, NULL, SPECIFY_EF);
     if (ef_counter) {
         if (!file_has_data(ef_counter)) {
@@ -512,7 +516,7 @@ int scan_files_fido(void) {
 }
 
 void scan_all(void) {
-    file_scan_flash();
+    //file_scan_flash();
     scan_files_fido();
 }
 
@@ -529,7 +533,23 @@ void init_fido(void) {
 }
 
 int wait_button_pressed(void) {
-    uint32_t val = EV_PRESS_BUTTON;
+    return wait_button_pressed_timeout(button_timeout_seconds());
+}
+
+int wait_button_pressed_timeout(uint32_t timeout_seconds) {
+    if (timeout_seconds != 0 || force_button_wait) {
+        uint8_t operation = current_fido_operation;
+        event_field_t fields[2];
+        size_t fields_len = 0;
+        if (current_fido_operation != OP_NONE) {
+            fields[fields_len++] = (event_field_t){ TLV_OPERATION, CONST_BYTE_ARRAY(&operation, sizeof(operation)) };
+        }
+        if (rp_id != NULL && rp_id_len > 0) {
+            fields[fields_len++] = (event_field_t){ TLV_RPID, CONST_BYTE_ARRAY((const uint8_t *)rp_id, rp_id_len) };
+        }
+        event_send(OP_USER_PRESENCE, RC_NONE, fields, fields_len);
+    }
+    uint32_t val = EV_PRESS_BUTTON_WITH_TIMEOUT(timeout_seconds);
 #if defined(PICO_PLATFORM) || defined(ESP_PLATFORM)
     queue_try_add(&card_to_usb_q, &val);
     do {
@@ -547,13 +567,16 @@ int wait_button_pressed(void) {
 
 uint32_t user_present_time_limit = 0;
 
-bool check_user_presence(void) {
+static bool check_user_presence_internal(uint32_t timeout_seconds, bool honor_force) {
+    (void) honor_force;
     if (user_present_time_limit == 0 || user_present_time_limit + TRANSPORT_TIME_LIMIT < board_millis()) {
         bool previous_force_button_wait = force_button_wait;
 #ifdef FORCE_BUTTON_WAIT
-        force_button_wait = true;
+        if (honor_force) {
+            force_button_wait = true;
+        }
 #endif
-        int ret = wait_button_pressed();
+        int ret = wait_button_pressed_timeout(timeout_seconds);
         force_button_wait = previous_force_button_wait;
         if (ret > 0) {
             return false;
@@ -561,6 +584,15 @@ bool check_user_presence(void) {
         //user_present_time_limit = board_millis();
     }
     return true;
+}
+
+bool check_user_presence(void) {
+    return check_user_presence_internal(button_timeout_seconds(), true);
+}
+
+bool check_user_presence_for_credential(bool require_button) {
+    uint32_t timeout_seconds = require_button ? button_timeout_seconds() : 0;
+    return check_user_presence_internal(timeout_seconds, false);
 }
 
 void fido_led_3_blinks(void) {
@@ -572,6 +604,20 @@ void fido_led_3_blinks(void) {
 uint32_t get_sign_counter(void) {
     uint8_t *caddr = file_get_data(ef_counter);
     return get_uint32_le(caddr);
+}
+
+int bump_sign_counter(uint32_t *counter) {
+    if (counter == NULL || ef_counter == NULL || !file_has_data(ef_counter) || file_get_size(ef_counter) != sizeof(uint32_t)) {
+        return PICOKEYS_ERR_FILE_NOT_FOUND;
+    }
+    uint32_t next = get_sign_counter() + 1;
+    int ret = file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&next, sizeof(next)));
+    if (ret != PICOKEYS_OK) {
+        return ret;
+    }
+    flash_commit();
+    *counter = next;
+    return PICOKEYS_OK;
 }
 
 uint8_t get_opts(void) {

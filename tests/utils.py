@@ -62,14 +62,17 @@ def send_apdu(card, command, p1, p2, data=None, ne=None):
         apdu = [0x00, command]
 
     apdu = apdu + [p1, p2] + lc + dataf + le
-    try:
-        response, sw1, sw2 = card.connection.transmit(apdu)
-    except CardConnectionException:
-        card.connection.reconnect()
-        response, sw1, sw2 = card.connection.transmit(apdu)
+    response, sw1, sw2 = transmit_apdu(card, apdu)
     if (sw1 != 0x90):
         raise APDUResponse(sw1, sw2)
     return response
+
+def transmit_apdu(card, apdu):
+    try:
+        return card.connection.transmit(apdu)
+    except CardConnectionException:
+        card.connection.reconnect()
+        return card.connection.transmit(apdu)
 
 
 def verify(MC, GA, client_data_hash):

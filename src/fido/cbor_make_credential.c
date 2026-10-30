@@ -27,8 +27,11 @@
 #include "mbedtls/sha256.h"
 #include "random.h"
 #include "crypto_utils.h"
+#include "event.h"
 
 char *rp_id = NULL, *user_name = NULL, *display_name = NULL;
+size_t rp_id_len = 0;
+uint8_t current_fido_operation = OP_NONE;
 
 static bool minpin_contains_rp(const uint8_t *rp_id_hash) {
     file_t *ef_minpin = file_search_by_fid(EF_MINPINLEN, NULL, SPECIFY_EF);
@@ -52,6 +55,7 @@ static bool minpin_contains_rp(const uint8_t *rp_id_hash) {
 }
 
 int cbor_make_credential(const uint8_t *data, size_t len) {
+    current_fido_operation = OP_MC;
     CborParser parser;
     CborValue map;
     CborError error = CborNoError;
@@ -70,6 +74,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     const bool *pin_complexity_policy = NULL, *uvm = NULL;
     uint8_t *aut_data = NULL;
     size_t resp_size = 0;
+    int curve = -1, alg = 0;
+    uint8_t flags = 0;
+#ifndef ENABLE_EMULATION
+    bool button_pressed = false;
+#endif
     CredExtensions extensions = { 0 };
     //options.present = true;
     //options.up = ptrue;
@@ -165,10 +174,21 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
             {
                 CBOR_FIELD_GET_KEY_TEXT(2);
                 if (strcmp(_fd2, "hmac-secret-mc") == 0) {
-                    hmac_secret_mc = true;
+                    CBOR_ASSERT(cbor_value_is_map(&_f2) == true || cbor_value_is_boolean(&_f2) == true);
+                    if (cbor_value_is_map(&_f2) && !cbor_value_is_length_known(&_f2)) {
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                    }
+                    if (cbor_value_is_boolean(&_f2)) {
+                        bool ignored = false;
+                        CBOR_CHECK(cbor_value_get_boolean(&_f2, &ignored));
+                        CBOR_CHECK(cbor_value_advance_fixed(&_f2));
+                        continue;
+                    }
                     uint64_t ukey = 0;
+                    bool hmac_secret_mc_has_fields = false;
                     CBOR_PARSE_MAP_START(_f2, 3)
                     {
+                        hmac_secret_mc_has_fields = true;
                         CBOR_FIELD_GET_UINT(ukey, 3);
                         if (ukey == 0x01) {
                             CBOR_CHECK(COSE_read_key(&_f3, &kty, &hmac_alg, &crv, &kax, &kay));
@@ -187,9 +207,21 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                         }
                     }
                     CBOR_PARSE_MAP_END(_f2, 3);
+                    hmac_secret_mc = hmac_secret_mc_has_fields;
                     continue;
                 }
-                CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "hmac-secret", extensions.hmac_secret);
+                if (strcmp(_fd2, "hmac-secret") == 0) {
+                    if (cbor_value_is_map(&_f2)) {
+                        if (!cbor_value_is_length_known(&_f2)) {
+                            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                        }
+                        CBOR_ADVANCE(2);
+                    }
+                    else {
+                        CBOR_FIELD_GET_BOOL(extensions.hmac_secret, 2);
+                    }
+                    continue;
+                }
                 if (strcmp(_fd2, "credProtect") == 0) {
                     CBOR_FIELD_GET_UINT(extensions.credProtect, 2);
                     has_credprot = true;
@@ -231,6 +263,15 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
     CBOR_PARSE_MAP_END(map, 1);
+    if (val_c <= 4 || clientDataHash.present == false || rp.id.present == false || user.id.present == false) {
+        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+    }
+    if (clientDataHash.len != 32 || rp.id.len == 0) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_LEN);
+    }
+    if (user.id.len == 0) {
+        CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+    }
     if (pinUvAuthProtocol_present && pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) {
         CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
     }
@@ -260,13 +301,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
     rp_id = rp.id.data;
+    rp_id_len = rp.id.len;
     user_name = user.parent.name.data;
     display_name = user.displayName.data;
 
-    uint8_t flags = FIDO2_AUT_FLAG_AT;
-#ifndef ENABLE_EMULATION
-    bool button_pressed = false;
-#endif
+    flags = FIDO2_AUT_FLAG_AT;
     uint8_t rp_id_hash[RP_ID_HASH_LEN] = {0};
     mbedtls_sha256((uint8_t *) rp.id.data, rp.id.len, rp_id_hash, 0);
 
@@ -292,7 +331,6 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
 
-    int curve = -1, alg = 0;
     if (pubKeyCredParams_len == 0) {
         CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
     }
@@ -680,7 +718,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_ERROR(CTAP1_ERR_OTHER);
     }
     size_t olen = 0;
-    uint32_t ctr = get_sign_counter();
+    uint32_t ctr = 0;
+    if (bump_sign_counter(&ctr) != PICOKEYS_OK) {
+        mbedtls_ecp_keypair_free(&ekey);
+        CBOR_ERROR(CTAP2_ERR_PROCESSING);
+    }
     uint8_t cbor_buf[1024] = {0};
     cbor_encoder_init(&encoder, cbor_buf, sizeof(cbor_buf), 0);
     CBOR_CHECK(COSE_key(&ekey, alg, &encoder, &mapEncoder));
@@ -816,10 +858,35 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
         dev_state_update(DEV_STATE_CRED_STATE);
     }
-    ctr++;
-    file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
     flash_commit();
 err:
+    {
+        event_field_t event_fields[6];
+        size_t event_fields_len = 0;
+        uint8_t algorithm[4] = { (uint8_t)(alg >> 24), (uint8_t)(alg >> 16), (uint8_t)(alg >> 8), (uint8_t)alg };
+        uint8_t auth_flags = flags;
+        uint8_t event_error = (uint8_t)error;
+        if (rp.id.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_RPID, CONST_BYTE_ARRAY((const uint8_t *)rp.id.data, rp.id.len) };
+        }
+        if (user.parent.name.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_USER_NAME, CONST_BYTE_ARRAY((const uint8_t *)user.parent.name.data, user.parent.name.len) };
+        }
+        if (user.displayName.present) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_USER_DISPLAY_NAME, CONST_BYTE_ARRAY((const uint8_t *)user.displayName.data, user.displayName.len) };
+        }
+        if (alg != 0) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_ALGO, CONST_BYTE_ARRAY(algorithm, sizeof(algorithm)) };
+        }
+        event_fields[event_fields_len++] = (event_field_t){ TLV_AUTH_FLAGS, CONST_BYTE_ARRAY(&auth_flags, sizeof(auth_flags)) };
+        if (error != CborNoError) {
+            event_fields[event_fields_len++] = (event_field_t){ TLV_ERROR, CONST_BYTE_ARRAY(&event_error, sizeof(event_error)) };
+        }
+        event_send(OP_MC, error == CborNoError ? RC_OK : RC_ERROR, event_fields, event_fields_len);
+    }
+    current_fido_operation = OP_NONE;
+    rp_id = NULL;
+    rp_id_len = 0;
     CBOR_FREE_BYTE_STRING(clientDataHash);
     CBOR_FREE_BYTE_STRING(pinUvAuthParam);
     CBOR_FREE_BYTE_STRING(rp.id);

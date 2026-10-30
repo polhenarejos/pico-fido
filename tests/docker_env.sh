@@ -83,9 +83,9 @@ ${DOCKER} image build \
 
 run_in_docker()
 {
-    ENV_ARGS=""
+    ENV_ARGS=()
     while [ "$1" == "-e" ]; do
-        ENV_ARGS="${ENV_ARGS} $1 $2"
+        ENV_ARGS+=("$1" "$2")
         shift 2
     done
 
@@ -95,13 +95,10 @@ run_in_docker()
         shift 2
     fi
 
-    ${DOCKER} container run --rm \
-        --cap-add ALL \
-        --privileged \
-        --volume $PWD:$PWD \
-        --workdir ${WORKDIR} \
-        -e MAKEFLAGS \
-        ${ENV_ARGS} \
-        ${DOCKER_IMAGE_TAG} \
-        $@
+    DOCKER_ARGS=(container run --rm --cap-add ALL --privileged --volume "$PWD:$PWD" --workdir "$WORKDIR" -e MAKEFLAGS)
+    if [ "${#ENV_ARGS[@]}" -gt 0 ]; then
+        DOCKER_ARGS+=("${ENV_ARGS[@]}")
+    fi
+    DOCKER_ARGS+=("$DOCKER_IMAGE_TAG" "$@")
+    "${DOCKER}" "${DOCKER_ARGS[@]}"
 }

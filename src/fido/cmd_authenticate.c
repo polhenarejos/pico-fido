@@ -84,7 +84,11 @@ int cmd_authenticate(void) {
     }
     resp->flags = 0;
     resp->flags |= P1(apdu) == CTAP_AUTH_ENFORCE ? CTAP_AUTH_FLAG_TUP : 0x0;
-    uint32_t ctr = get_sign_counter();
+    uint32_t ctr = 0;
+    if (bump_sign_counter(&ctr) != PICOKEYS_OK) {
+        mbedtls_ecp_keypair_free(&key);
+        return SW_MEMORY_FAILURE();
+    }
     put_uint32_be(ctr, resp->ctr);
     uint8_t hash[32], sig_base[CTAP_APPID_SIZE + 1 + 4 + CTAP_CHAL_SIZE];
     memcpy(sig_base, req->appId, CTAP_APPID_SIZE);
@@ -103,9 +107,5 @@ int cmd_authenticate(void) {
         return SW_EXEC_ERROR();
     }
     res_APDU_size = 1 + 4 + (uint16_t)olen;
-
-    ctr++;
-    file_put_data(ef_counter, CONST_BYTE_ARRAY((uint8_t *)&ctr, sizeof(ctr)));
-    flash_commit();
     return SW_OK();
 }

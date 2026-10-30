@@ -283,23 +283,22 @@ static void test_reset_purge_removes_corrupt_container(void) {
     }
 }
 
-static void test_interrupted_update_keeps_previous_generation(void) {
+static void test_update_uses_async_commit(void) {
     static const uint8_t credential[] = { 0x10, 0x11, 0x12 };
     static const uint8_t metadata[] = { 0x20, 0x21 };
     static const uint8_t replacement[] = { 0x30, 0x31, 0x32 };
     static const uint8_t replacement_metadata[] = { 0x40, 0x41 };
 
-    for (size_t failed_commit = 1; failed_commit <= 2; failed_commit++) {
-        test_reset();
-        assert(oath_container_create(TEST_SLOT, credential, sizeof(credential), metadata, sizeof(metadata)) == PICOKEYS_OK);
-        sync_commit_count = 0;
-        fail_sync_commit_at = failed_commit;
-        assert(oath_container_update(TEST_SLOT, replacement, sizeof(replacement), replacement_metadata, sizeof(replacement_metadata)) != PICOKEYS_OK);
+    test_reset();
+    assert(oath_container_create(TEST_SLOT, credential, sizeof(credential), metadata, sizeof(metadata)) == PICOKEYS_OK);
+    sync_commit_count = 0;
+    fail_sync_commit_at = 1;
+    assert(oath_container_update(TEST_SLOT, replacement, sizeof(replacement), replacement_metadata, sizeof(replacement_metadata)) == PICOKEYS_OK);
+    assert(sync_commit_count == 0);
 
-        test_reboot();
-        test_read_object(FIDO_OATH_OBJECT_CREDENTIAL, credential, sizeof(credential));
-        test_read_object(FIDO_OATH_OBJECT_METADATA, metadata, sizeof(metadata));
-    }
+    test_reboot();
+    test_read_object(FIDO_OATH_OBJECT_CREDENTIAL, replacement, sizeof(replacement));
+    test_read_object(FIDO_OATH_OBJECT_METADATA, replacement_metadata, sizeof(replacement_metadata));
 }
 
 static bool test_credential_matches(const uint8_t *first, size_t first_size, const uint8_t *second, size_t second_size) {
@@ -414,7 +413,7 @@ int main(void) {
     test_collision_rejected();
     test_reset();
     test_reset_purge_removes_corrupt_container();
-    test_interrupted_update_keeps_previous_generation();
+    test_update_uses_async_commit();
     test_power_loss_boundaries();
     puts("fido_oath_container_test: OK");
     return 0;

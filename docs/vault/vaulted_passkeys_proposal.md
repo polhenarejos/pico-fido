@@ -155,8 +155,8 @@ The roles are defined by security responsibility, not by product boundary. One o
 
 | Role | Primary responsibility | Security significance |
 |---|---|---|
-| Optional identity CA | Signs the certificate for the enroller's X448 public key and board serial when attribution is required. | Compromise enables unauthorized identity claims. The private CA key must be protected and governed. It is not required for anonymous provisioning. |
-| Enroller (reference: `pico-vault-enroller`) | Creates `Kvault` and the X448 key pair, obtains the optional certificate, performs enrollment, and stores the encrypted enrollment envelope. | Critical provisioning authority. It handles plaintext `Kvault` and must be open to audit, minimized, and operationally protected. |
+| Optional identity CA | Signs the certificate that binds the enroller's long-lived X448 public key through the Vault X448-key extension and identifies the board when attribution is required. | Compromise enables unauthorized identity claims. The private CA key must be protected and governed. It is not required for anonymous provisioning. |
+| Enroller (reference: `pico-vault-enroller`) | Creates `Kvault` and the long-lived X448 key pair, obtains the optional certificate, performs enrollment, and stores the encrypted enrollment envelope. | Critical provisioning authority. It handles plaintext `Kvault` and must be open to audit, minimized, and operationally protected. |
 | Vault-capable authenticator (reference: Pico-FIDO) | Validates applicable identity data, stores `Kvault` wrapped by a device-internal key, and performs PIN-authorized export/import. | Security boundary that keeps private keys inside the device during routine mobility. |
 | Credential-management client (reference: PicoKeyApp) | Unlocks credential management, checks applicable board-registration policy, requests export/import, and persists opaque PKV1 blobs locally. | Should not need `Kvault` or plaintext credential private keys. Local storage remains sensitive because it contains recoverable ciphertext. |
 | Relying party | Uses ordinary WebAuthn public keys and assertions. | Does not participate and need not be modified. |
@@ -195,27 +195,37 @@ Firmware validates the certificate chain against a CA root embedded in firmware 
 
 ### 5.3 Enrollment Ceremony
 
-The enroller generates a uniformly random 32-byte `Kvault` and an X448 private/public key pair. It computes:
+The enroller generates a uniformly random 32-byte `Kvault` and a long-lived X448 private/public key pair, storing the private key in the protected enrollment JSON. It computes:
 
 ```text
 vault_id = SHA-256("PicoKeys Vault ID v1" || Kvault)
 ```
 
-When the optional identity layer is enabled, the enroller sends its X448 public key to the organization's Vault CA. The CA signs a certificate containing the public key in the agreed vault-key extension and the board serial in a DNS-name or URI subject-alternative-name entry. At enrollment finish, firmware searches the certificate SAN sequence for an exact byte-for-byte match to the board's own serial string.
+When the optional identity layer is enabled, the enroller sends its X448 public key to the organization's Vault CA. The CA signs a certificate containing the public key in the Vault X448-key extension `1.3.6.1.4.1.55555.1.2` and the board serial in a DNS-name or URI subject-alternative-name entry. The certificate's ordinary SubjectPublicKeyInfo is not the HPKE sender key. At enrollment finish, firmware verifies the extension binding and searches the certificate SAN sequence for an exact byte-for-byte match to the board's own serial string.
 
-The device's enrollment-begin operation (vendor command `0x05`, subcommand `0x02`) returns a device ephemeral X448 public key and a fresh 32-byte challenge. The enroller derives:
+The device's enrollment-begin operation (vendor command `0x05`, subcommand `0x02`) returns a device ephemeral X448 public key and a fresh 32-byte challenge. The enroller reads the selected enrollment protocol from Vault status subcommand `0x01`; a missing field is treated as legacy protocol `1`, while protocol `2` is the fixed RFC 9180 suite `mode_auth`, `DHKEM(X448, HKDF-SHA512)`, HKDF-SHA512, and AES-256-GCM. The device key is the temporary recipient key; protocol 2 uses it as the HPKE recipient key, the long-lived X448 private key from the enrollment JSON as `skS`, and a fresh ephemeral X448 key as `skE`.
+
+For the authenticated HPKE KEM, the sender and recipient derive:
 
 ```text
-Z    = X448(enroller_private, device_ephemeral_public)
-info = "PicoKeys Vault enrollment v1" || challenge || enroller_public || device_ephemeral_public
-Ke   = HKDF-SHA256(salt = empty, IKM = Z, info = info, L = 32)
+dh = X448(enroller_ephemeral_private, device_public)
+     || X448(enroller_static_private, device_public)
 ```
 
-When the identity layer is enabled, the finish packet is certificate-length-prefixed, followed by the DER certificate, a 12-byte AES-GCM nonce, and an AES-GCM ciphertext/tag. The encrypted plaintext is `Kvault` followed by a one-byte label length and an optional UTF-8 label. The device performs packet-length checks, optional X.509 parsing, optional CA-chain and serial-SAN validation, X448 public-key extraction, X448/HKDF derivation, and AES-GCM authentication/decryption. Only after applicable checks succeed does it commit the vault key to persistent storage.
+HPKE's `AuthEncap`/`AuthDecap` KEM context binds the sender and recipient public keys. Protocol 2 fixes the RFC 9180 parameters as follows:
+
+```text
+mode       = 0x02  mode_auth
+kem_id     = 0x0021 DHKEM(X448, HKDF-SHA512)
+kdf_id     = 0x0003 HKDF-SHA512
+aead_id    = 0x0002 AES-256-GCM
+```
+
+The KEM suite identifier is `"KEM" || I2OSP(0x0021, 2)` and the HPKE suite identifier is `"HPKE" || I2OSP(0x0021, 2) || I2OSP(0x0003, 2) || I2OSP(0x0002, 2)`. Protocol 2 uses the empty PSK and empty PSK identifier. Its application `info` is `"PicoKeys Vault enrollment v2" || challenge`; the key schedule uses RFC 9180 `LabeledExtract`/`LabeledExpand`, and the single message uses sequence number zero, so its AES-GCM nonce is the derived `base_nonce`. The complete DER certificate is AEAD associated data. The protocol-2 finish packet is certificate-length-prefixed, followed by the DER certificate, the 56-byte HPKE encapsulated key, and the HPKE ciphertext/tag; it has no standalone AES-GCM nonce. For legacy protocol 1, the enroller instead emits the original certificate, 12-byte nonce, and AES-GCM ciphertext/tag format. The encrypted plaintext is `Kvault` followed by a one-byte label length and an optional UTF-8 label. The device performs packet-length checks, X.509 parsing, CA-chain and serial-SAN validation, X448 public-key extraction and all-zero-output rejection, HPKE AuthDecap, and HPKE AEAD authentication before committing the vault key.
 
 The device stores the vault key encrypted under a device-internal key-management secret. Separately, the enroller writes a passphrase-protected recovery envelope. The current implementation derives its 32-byte AES-GCM key [[10]](#ref-10) with Argon2id [[11]](#ref-11) using three iterations, four lanes, and 64 MiB of memory, and authenticates the ciphertext with the fixed AAD `PicoKeys Kvault envelope v1`.
 
-The enroller envelope contains `Kvault`, the enroller's X448 private key, the optional certificate, license association, label, and vault identifier. The device does not need the user's vault passphrase, while the enroller can recover the vault state for later authorized provisioning or recovery.
+The enroller envelope contains `Kvault`, the enroller's long-lived X448 private key, the optional certificate, license association, label, and vault identifier. The device does not need the user's vault passphrase, while the enroller can recover the vault state and static sender key for later authorized provisioning or recovery.
 
 ### 5.4 Separation of Enrollment and Export/Import
 
@@ -502,7 +512,7 @@ The next step is to make the design reviewable: publish the enroller source and 
 
 | Subcommand | Name | Purpose |
 |---|---|---|
-| `0x01` | Vault status | Returns vault identifier, enrollment status, button state, device time, and label. |
+| `0x01` | Vault status | Returns vault identifier, enrollment status, button state, device time, label, and enrollment protocol. |
 | `0x02` | Enrollment begin | Generates device ephemeral X448 public key and challenge. |
 | `0x03` | Enrollment finish | Validates the inline certificate identity and serial, decrypts the enrollment packet, and stores `Kvault`; the certificate is not persisted. |
 | `0x04` | Export opaque | Exports a selected resident credential as a PKV1 envelope under algorithm ID 1–4. |
