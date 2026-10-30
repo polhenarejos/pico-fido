@@ -37,6 +37,15 @@ typedef struct CredExtensions {
     CborByteString credBlob;
     const bool *largeBlobKey;
     const bool *thirdPartyPayment;
+#ifdef ENABLE_PREVIEW_SIGN
+    const bool *previewSign;        // previewSign v4: sign extension present
+    /* previewSign v4 fields — used by both generateKey and signByCredential */
+    int64_t ps_algorithm;           // Selected algorithm (e.g., -7, -9, -65539)
+    uint64_t ps_flags;              // UP/UV flags from generateKey (0b000, 0b001, 0b101)
+    CborByteString ps_key_handle;   // Key 2: inner credential ID (all modes)
+    CborByteString ps_tbs;          // Key 6: to-be-signed data (all modes)
+    CborByteString ps_additional_args; // Key 7: additional args CBOR (ARKG only)
+#endif
     bool present;
 } CredExtensions;
 

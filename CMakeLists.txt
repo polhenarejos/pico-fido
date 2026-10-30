@@ -63,6 +63,14 @@ configure_bool_option(
     "OTP Application: \t\t disabled"
 )
 
+option(ENABLE_PREVIEW_SIGN "Enable/disable previewSign raw-signing extension" OFF)
+configure_bool_option(
+    ENABLE_PREVIEW_SIGN
+    ENABLE_PREVIEW_SIGN
+    "previewSign Extension: \t\t enabled"
+    "previewSign Extension: \t\t disabled"
+)
+
 if(FORBID_DISABLE_AUV)
     add_compile_definitions(FORBID_DISABLE_AUV=1)
 endif()
@@ -121,6 +129,12 @@ list(APPEND SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/management.c
     ${CMAKE_CURRENT_LIST_DIR}/src/fido/defs.c
 )
+
+if(ENABLE_PREVIEW_SIGN)
+    list(APPEND SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/arkg.c
+    )
+endif()
 
 if(ENABLE_OATH_APP)
     list(APPEND SOURCES

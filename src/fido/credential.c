@@ -407,6 +407,14 @@ int credential_create(CborCharString *rpId, CborByteString *userId, CborCharStri
             CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "thirdPartyPayment"));
             CBOR_CHECK(cbor_encode_boolean(&mapEncoder2, true));
         }
+#ifdef ENABLE_PREVIEW_SIGN
+        if (extensions->ps_algorithm != 0) {
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "psAlgorithm"));
+            CBOR_CHECK(cbor_encode_int(&mapEncoder2, extensions->ps_algorithm));
+            CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder2, "psFlags"));
+            CBOR_CHECK(cbor_encode_uint(&mapEncoder2, extensions->ps_flags));
+        }
+#endif
         CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &mapEncoder2));
     }
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x08));
@@ -508,6 +516,10 @@ int credential_load(const uint8_t *cred_id, size_t cred_id_len, const uint8_t *r
                     CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
                     CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", cred->extensions.largeBlobKey);
                     CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", cred->extensions.thirdPartyPayment);
+#ifdef ENABLE_PREVIEW_SIGN
+                    CBOR_FIELD_KEY_TEXT_VAL_INT(2, "psAlgorithm", cred->extensions.ps_algorithm);
+                    CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "psFlags", cred->extensions.ps_flags);
+#endif
                     CBOR_ADVANCE(2);
                 }
                 CBOR_PARSE_MAP_END(_f1, 2);
@@ -618,6 +630,10 @@ static int credential_parse_metadata(const uint8_t *data, size_t data_len, Crede
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", cred->extensions.credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", cred->extensions.largeBlobKey);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", cred->extensions.thirdPartyPayment);
+#ifdef ENABLE_PREVIEW_SIGN
+                CBOR_FIELD_KEY_TEXT_VAL_INT(2, "psAlgorithm", cred->extensions.ps_algorithm);
+                CBOR_FIELD_KEY_TEXT_VAL_UINT(2, "psFlags", cred->extensions.ps_flags);
+#endif
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
