@@ -350,6 +350,15 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
             flags |= FIDO2_AUT_FLAG_UV;
             // Check pinUvAuthToken permissions. See 6.2.2.4
         }
+        if (get_opts() & FIDO2_OPT_AUV) {
+            /* getInfo advertises alwaysUv, so every assertion must carry a
+             * pinUvAuthToken: without one the client cannot prove user
+             * verification. Also fail when no PIN is configured, because then
+             * UV cannot be performed at all. */
+            if (!file_has_data(ef_pin) || pinUvAuthParam.present == false) {
+                CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+            }
+        }
         if (extensions.present == true && extensions.hmac_secret == ptrue) {
             if (kax.present == false || kay.present == false || crv == 0 || alg == 0 ||
                 salt_enc.present == false || salt_auth.present == false) {
