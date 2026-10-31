@@ -327,6 +327,37 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypa
     return mbedtls_ct_memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
 }
 
+/* Reduce a derived scalar modulo the group order.
+ *
+ * mbedtls_ecp_read_key() rejects scalars >= n. For the NIST curves that is
+ * negligible (n is within 2^-32 of 2^bits), but the Brainpool orders are about
+ * 0.66 * 2^bits, so roughly a third of the HKDF-derived scalars were rejected
+ * and credential creation failed. Reducing here keeps the derivation
+ * deterministic: scalars that already fit are left unchanged. */
+static int ec_reduce_scalar(int curve, uint8_t *buf, size_t len) {
+    mbedtls_ecp_group grp;
+    mbedtls_mpi d;
+    int ret;
+    mbedtls_ecp_group_init(&grp);
+    mbedtls_mpi_init(&d);
+    ret = mbedtls_ecp_group_load(&grp, (mbedtls_ecp_group_id) curve);
+    if (ret == 0) {
+        ret = mbedtls_mpi_read_binary(&d, buf, len);
+    }
+    if (ret == 0) {
+        ret = mbedtls_mpi_mod_mpi(&d, &d, &grp.N);
+    }
+    if (ret == 0 && mbedtls_mpi_cmp_int(&d, 0) == 0) {
+        ret = mbedtls_mpi_lset(&d, 1);
+    }
+    if (ret == 0) {
+        ret = mbedtls_mpi_write_binary(&d, buf, len);
+    }
+    mbedtls_mpi_free(&d);
+    mbedtls_ecp_group_free(&grp);
+    return ret;
+}
+
 int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int curve, mbedtls_ecp_keypair *key) {
     uint8_t outk[67] = { 0 }; //SECP521R1 key is 66 bytes length
     int r = 0;
@@ -367,7 +398,12 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
         if (cinfo->bit_size % 8 != 0) {
             outk[0] >>= 8 - (cinfo->bit_size % 8);
         }
-        r = mbedtls_ecp_read_key(curve, key, outk, (size_t)((cinfo->bit_size + 7) / 8));
+        const size_t klen = (size_t)((cinfo->bit_size + 7) / 8);
+        if ((r = ec_reduce_scalar(curve, outk, klen)) != 0) {
+            mbedtls_platform_zeroize(outk, sizeof(outk));
+            return r;
+        }
+        r = mbedtls_ecp_read_key(curve, key, outk, klen);
         mbedtls_platform_zeroize(outk, sizeof(outk));
         if (r != 0) {
             return r;
