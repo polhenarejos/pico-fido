@@ -622,19 +622,26 @@ static uint16_t otp_status_ext(void) {
     return SW_OK();
 }
 
-static uint16_t otp_status(bool is_otp) {
+/*
+ * Write the OTP status into 'out' and return its length without touching the global APDU
+ * response buffers. otp_hid_get_report_cb() runs on the USB core while the card thread (the
+ * other core) may be building a CTAP response: re-pointing the global response buffer to the
+ * endpoint buffer from this callback lost that response (e.g. a button timeout was returned
+ * as CTAP2_OK with zeroed data).
+ */
+static uint16_t otp_status_fill(uint8_t *out, bool is_otp) {
     if (scanned == false) {
         scan_all();
         scanned = true;
     }
-    res_APDU_size = 0;
+    uint16_t n = 0;
     if (is_otp) {
-        res_APDU_size++;
+        n++;
     }
-    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MAJOR;
-    res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
-    res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = config_seq;
+    out[n++] = PICO_FIDO_VERSION_MAJOR;
+    out[n++] = PICO_FIDO_VERSION_MINOR;
+    out[n++] = 0;
+    out[n++] = config_seq;
     uint8_t opts = 0;
     if (otp_slot_has_data(EF_OTP_SLOT1)) {
         uint8_t data[OTP_SLOT_PLAIN_MAX] = { 0 };
@@ -660,16 +667,21 @@ static uint16_t otp_status(bool is_otp) {
         }
         mbedtls_platform_zeroize(data, sizeof(data));
     }
-    res_APDU[res_APDU_size++] = opts;
-    res_APDU[res_APDU_size++] = 0;
-    res_APDU[res_APDU_size++] = status_byte;
+    out[n++] = opts;
+    out[n++] = 0;
+    out[n++] = status_byte;
+    return n;
+}
+
+static uint16_t otp_status(bool is_otp) {
+    uint16_t n = otp_status_fill(res_APDU, is_otp);
     if (is_otp) {
         res_APDU_size = 0;
     }
     else {
+        res_APDU_size = n;
         apdu.ne = res_APDU_size;
     }
-
     return SW_OK();
 }
 
@@ -1155,8 +1167,7 @@ static uint16_t otp_hid_get_report_cb(uint8_t itf,
         otp_curr_seq = otp_exp_seq = 0;
     }
     else {
-        res_APDU = buffer;
-        otp_status(true);
+        otp_status_fill(buffer, true); /* do not re-point res_APDU (see otp_status_fill) */
         DEBUG_DATA(buffer, 8);
     }
 
