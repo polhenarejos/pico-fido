@@ -533,10 +533,26 @@ void init_fido(void) {
 }
 
 int wait_button_pressed(void) {
-    return wait_button_pressed_timeout(button_timeout_seconds());
+    bool previous_force_button_wait = force_button_wait;
+#if defined(FORCE_BUTTON_WAIT) && !defined(ENABLE_EMULATION)
+    force_button_wait = true;
+#endif
+    int ret = wait_button_pressed_timeout(button_timeout_seconds());
+    force_button_wait = previous_force_button_wait;
+    return ret;
 }
 
 int wait_button_pressed_timeout(uint32_t timeout_seconds) {
+    // This core runs button_task(), so waiting here would deadlock USB processing.
+#if defined(PICO_PLATFORM)
+    if (get_core_num() == 0) {
+        return 1;
+    }
+#elif defined(ESP_PLATFORM)
+    if (xTaskGetCurrentTaskHandle() == hcore0) {
+        return 1;
+    }
+#endif
     if (timeout_seconds != 0 || force_button_wait) {
         uint8_t operation = current_fido_operation;
         event_field_t fields[2];
@@ -592,7 +608,11 @@ bool check_user_presence(void) {
 
 bool check_user_presence_for_credential(bool require_button) {
     uint32_t timeout_seconds = require_button ? button_timeout_seconds() : 0;
+#if defined(FORCE_BUTTON_WAIT) && !defined(ENABLE_EMULATION)
+    return check_user_presence_internal(timeout_seconds, require_button);
+#else
     return check_user_presence_internal(timeout_seconds, false);
+#endif
 }
 
 void fido_led_3_blinks(void) {

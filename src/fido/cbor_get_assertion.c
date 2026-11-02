@@ -532,11 +532,22 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         bool require_button = numberOfCredentials > 0 && (creds[0].require_button != NULL
             ? *creds[0].require_button
 #ifndef ENABLE_EMULATION
+#ifdef FORCE_BUTTON_WAIT
+            : true
+#else
             : button_timeout_seconds() != 0
+#endif
 #else
             : false
 #endif
         );
+#ifndef ENABLE_EMULATION
+#ifdef FORCE_BUTTON_WAIT
+        bool button_wait_required = require_button;
+#else
+        bool button_wait_required = require_button && button_timeout_seconds() != 0;
+#endif
+#endif
 
         if (options.up == ptrue || options.present == false || options.up == NULL) { //9.1
             if (pinUvAuthParam.present == true) {
@@ -545,7 +556,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                         CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
 #ifndef ENABLE_EMULATION
-                    button_pressed = require_button && button_timeout_seconds() != 0;
+                    button_pressed = button_wait_required;
 #endif
                 }
             }
@@ -555,7 +566,7 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                         CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
                     }
 #ifndef ENABLE_EMULATION
-                    button_pressed = require_button && button_timeout_seconds() != 0;
+                    button_pressed = button_wait_required;
 #endif
                 }
             }
