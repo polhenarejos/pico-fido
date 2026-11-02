@@ -155,7 +155,10 @@ static CborError COSE_key_params(int crv, int alg, mbedtls_ecp_group *grp, mbedt
     CborError error = CborNoError;
     int kty = 1;
     if (crv == FIDO2_CURVE_P256 || crv == FIDO2_CURVE_P384 || crv == FIDO2_CURVE_P521 ||
-        crv == FIDO2_CURVE_P256K1) {
+        crv == FIDO2_CURVE_P256K1 ||
+        crv == FIDO2_CURVE_BP256R1 || crv == FIDO2_CURVE_BP384R1 || crv == FIDO2_CURVE_BP512R1) {
+        /* Brainpool curves are Weierstrass curves like P-256/P-384/P-521 and
+         * must be encoded as EC2 (kty=2) with x/y coordinates, not as OKP. */
         kty = 2;
     }
 
