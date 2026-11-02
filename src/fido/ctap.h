@@ -30,7 +30,7 @@ extern "C" {
 
 #define CTAP_EC_KEY_SIZE         32      // EC key size in bytes
 #define CTAP_EC_POINT_SIZE       ((CTAP_EC_KEY_SIZE * 2) + 1) // Size of EC point
-#define CTAP_MAX_KH_SIZE         255     // Max size of key handle
+#define CTAP_MAX_KH_SIZE         128     // Max size of key handle
 #define CTAP_MAX_ATT_CERT_SIZE   2048    // Max size of attestation certificate
 #define CTAP_MAX_EC_SIG_SIZE     72      // Max size of DER coded EC signature
 #define CTAP_CTR_SIZE            4       // Size of counter field
