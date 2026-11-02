@@ -115,6 +115,8 @@ void append_keyboard_buffer(const_byte_array_t data) {
 #define CFGFLAG_UPDATE_MASK (PACING_10MS | PACING_20MS)
 
 static uint8_t config_seq = { 1 };
+static volatile uint8_t otp_status_config_seq = 1;
+static volatile uint8_t otp_status_config_flags = 0;
 
 PACK(
 typedef struct otp_config {
@@ -379,6 +381,45 @@ static int encode_modhex(const uint8_t *in, size_t len, uint8_t *out) {
 }
 static bool scanned = false;
 
+static uint8_t otp_status_flags(void) {
+    uint8_t opts = 0;
+    if (otp_slot_has_data(EF_OTP_SLOT1)) {
+        uint8_t data[OTP_SLOT_PLAIN_MAX] = { 0 };
+        uint16_t data_len = 0;
+        if (otp_slot_load(EF_OTP_SLOT1, data, &data_len) == PICOKEYS_OK) {
+            opts |= CONFIG1_VALID;
+            otp_config_t *otp_config = (otp_config_t *)data;
+            if (!(otp_config->tkt_flags & CHAL_RESP) || otp_config->cfg_flags & CHAL_BTN_TRIG) {
+                opts |= CONFIG1_TOUCH;
+            }
+        }
+        mbedtls_platform_zeroize(data, sizeof(data));
+    }
+    if (otp_slot_has_data(EF_OTP_SLOT2)) {
+        uint8_t data[OTP_SLOT_PLAIN_MAX] = { 0 };
+        uint16_t data_len = 0;
+        if (otp_slot_load(EF_OTP_SLOT2, data, &data_len) == PICOKEYS_OK) {
+            opts |= CONFIG2_VALID;
+            otp_config_t *otp_config = (otp_config_t *)data;
+            if (!(otp_config->tkt_flags & CHAL_RESP) || otp_config->cfg_flags & CHAL_BTN_TRIG) {
+                opts |= CONFIG2_TOUCH;
+            }
+        }
+        mbedtls_platform_zeroize(data, sizeof(data));
+    }
+    return opts;
+}
+
+static void otp_status_cache_refresh(void) {
+    otp_status_config_seq = config_seq;
+    otp_status_config_flags = otp_status_flags();
+}
+
+int picokey_init(void) {
+    otp_status_cache_refresh();
+    return PICOKEYS_OK;
+}
+
 void init_otp(void) {
     if (scanned == false) {
         scan_all();
@@ -635,34 +676,12 @@ static uint16_t otp_status(bool is_otp) {
     res_APDU[res_APDU_size++] = PICO_FIDO_VERSION_MINOR;
     res_APDU[res_APDU_size++] = 0;
     res_APDU[res_APDU_size++] = config_seq;
-    uint8_t opts = 0;
-    if (otp_slot_has_data(EF_OTP_SLOT1)) {
-        uint8_t data[OTP_SLOT_PLAIN_MAX] = { 0 };
-        uint16_t data_len = 0;
-        if (otp_slot_load(EF_OTP_SLOT1, data, &data_len) == PICOKEYS_OK) {
-            opts |= CONFIG1_VALID;
-            otp_config_t *otp_config = (otp_config_t *)data;
-            if (!(otp_config->tkt_flags & CHAL_RESP) || otp_config->cfg_flags & CHAL_BTN_TRIG) {
-                opts |= CONFIG1_TOUCH;
-            }
-        }
-        mbedtls_platform_zeroize(data, sizeof(data));
-    }
-    if (otp_slot_has_data(EF_OTP_SLOT2)) {
-        uint8_t data[OTP_SLOT_PLAIN_MAX] = { 0 };
-        uint16_t data_len = 0;
-        if (otp_slot_load(EF_OTP_SLOT2, data, &data_len) == PICOKEYS_OK) {
-            opts |= CONFIG2_VALID;
-            otp_config_t *otp_config = (otp_config_t *)data;
-            if (!(otp_config->tkt_flags & CHAL_RESP) || otp_config->cfg_flags & CHAL_BTN_TRIG) {
-                opts |= CONFIG2_TOUCH;
-            }
-        }
-        mbedtls_platform_zeroize(data, sizeof(data));
-    }
+    uint8_t opts = otp_status_flags();
     res_APDU[res_APDU_size++] = opts;
     res_APDU[res_APDU_size++] = 0;
     res_APDU[res_APDU_size++] = status_byte;
+    otp_status_config_seq = config_seq;
+    otp_status_config_flags = opts;
     if (is_otp) {
         res_APDU_size = 0;
     }
@@ -1080,8 +1099,10 @@ static int otp_send_frame(uint8_t *frame, size_t frame_len) {
 static int otp_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const *buffer, uint16_t bufsize) {
     (void)itf;
     (void)report_id;
-    (void)bufsize;
     if (report_type == 3) {
+        if (buffer == NULL || bufsize < 8) {
+            return 1;
+        }
         DEBUG_PAYLOAD(buffer, bufsize);
         if (buffer[7] == 0xFF) { // reset
             *get_send_buffer_size(ITF_KEYBOARD) = 0;
@@ -1101,10 +1122,15 @@ static int otp_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type
                     uint16_t residual_crc = calculate_crc(otp_frame_rx, 64), rcrc = get_uint16_le(otp_frame_rx + 65);
                     uint8_t slot_id = otp_frame_rx[64];
                     if (residual_crc == rcrc) {
+                        if (is_busy()) {
+                            return 1;
+                        }
+                        struct apdu apdu_bk = apdu;
                         uint8_t hdr[5];
                         apdu.header = hdr;
                         apdu.data = otp_frame_rx;
                         apdu.nc = 64;
+                        apdu.rlen = 0;
                         apdu.rdata = otp_frame_tx;
                         apdu.header[0] = 0;
                         apdu.header[1] = 0x01;
@@ -1116,6 +1142,7 @@ static int otp_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type
                             otp_send_frame(apdu.rdata, apdu.rlen);
                         }
                         _is_otp = false;
+                        apdu = apdu_bk;
                     }
                     else {
                         printf("[OTP] Bad CRC!\n");
@@ -1137,8 +1164,9 @@ static uint16_t otp_hid_get_report_cb(uint8_t itf,
     (void) itf;
     (void) report_id;
     (void) report_type;
-    (void) buffer;
-    (void) reqlen;
+    if (buffer == NULL || reqlen < 8) {
+        return 0;
+    }
     uint16_t send_buffer_size = *get_send_buffer_size(ITF_KEYBOARD);
     if (send_buffer_size > 0) {
         uint8_t seq = otp_curr_seq++;
@@ -1155,8 +1183,19 @@ static uint16_t otp_hid_get_report_cb(uint8_t itf,
         otp_curr_seq = otp_exp_seq = 0;
     }
     else {
+        if (is_busy()) {
+            memset(buffer, 0, 8);
+            buffer[1] = PICO_FIDO_VERSION_MAJOR;
+            buffer[2] = PICO_FIDO_VERSION_MINOR;
+            buffer[4] = otp_status_config_seq;
+            buffer[5] = otp_status_config_flags;
+            buffer[7] = 0x80;
+            return reqlen;
+        }
+        struct apdu apdu_bk = apdu;
         res_APDU = buffer;
         otp_status(true);
+        apdu = apdu_bk;
         DEBUG_DATA(buffer, 8);
     }
 
