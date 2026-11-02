@@ -119,6 +119,11 @@ def test_bad_key_handle_length(device, RegRes):
         )
     assert e.value.code == APDU.WRONG_DATA
 
+def test_key_handle_too_long(device):
+    with pytest.raises(ApduError) as e:
+        device.ctap1.authenticate(bytes(32), bytes(32), bytes(129))
+    assert e.value.code == 0x6A80
+
 def test_incorrect_appid(device, RegRes):
 
     badid = bytearray(RegRes['res'].attestation_object.auth_data.rp_id_hash)

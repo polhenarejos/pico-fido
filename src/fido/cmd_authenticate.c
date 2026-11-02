@@ -28,11 +28,17 @@ int cmd_authenticate(void) {
     CTAP_AUTHENTICATE_RESP *resp = (CTAP_AUTHENTICATE_RESP *) res_APDU;
     //if (scan_files_fido(true) != PICOKEYS_OK)
     //    return SW_EXEC_ERROR();
-    if (apdu.nc < CTAP_CHAL_SIZE + CTAP_APPID_SIZE + 1 + 1) {
+    const size_t key_handle_offset = offsetof(CTAP_AUTHENTICATE_REQ, keyHandle);
+
+    if (apdu.nc < key_handle_offset) {
         return SW_WRONG_DATA();
     }
-    if (req->keyHandleLen < KEY_HANDLE_LEN) {
+    if (req->keyHandleLen < KEY_HANDLE_LEN ||
+        req->keyHandleLen > CTAP_MAX_KH_SIZE) {
         return SW_INCORRECT_PARAMS();
+    }
+    if ((size_t)apdu.nc < key_handle_offset + req->keyHandleLen) {
+        return SW_WRONG_DATA();
     }
     if (P1(apdu) != CTAP_AUTH_ENFORCE && P1(apdu) != CTAP_AUTH_CHECK_ONLY) {
         return SW_INCORRECT_P1P2();
@@ -48,6 +54,10 @@ int cmd_authenticate(void) {
     mbedtls_ecp_keypair_init(&key);
     int ret = 0;
     uint8_t *tmp_kh = (uint8_t *) calloc(1, req->keyHandleLen);
+    if (tmp_kh == NULL) {
+        mbedtls_ecp_keypair_free(&key);
+        return SW_MEMORY_FAILURE();
+    }
     memcpy(tmp_kh, req->keyHandle, req->keyHandleLen);
     if (credential_verify(tmp_kh, req->keyHandleLen, req->appId, false) == 0) {
         Credential cred;
