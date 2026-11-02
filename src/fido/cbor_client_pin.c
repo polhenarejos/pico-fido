@@ -802,6 +802,9 @@ int cbor_client_pin(const uint8_t *data, size_t len) {
         if ((*file_get_data(ef_pin) & PIN_RETRY_COUNT_MASK) == 0) {
             CBOR_ERROR(CTAP2_ERR_PIN_BLOCKED);
         }
+        if (needs_power_cycle) {
+            CBOR_ERROR(CTAP2_ERR_PIN_AUTH_BLOCKED);
+        }
         if (mbedtls_mpi_read_binary(&hkey.ctx.mbed_ecdh.Qp.X, kax.data, kax.len) != 0) {
             CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
         }

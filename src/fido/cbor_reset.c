@@ -29,6 +29,8 @@
 #include "fs/phy.h"
 #include "files.h"
 
+extern bool needs_power_cycle;
+
 static bool fido_reset_should_clear(uint16_t fid) {
     uint8_t prefix = (uint8_t)(fid >> 8);
 
@@ -127,6 +129,7 @@ int cbor_reset(void) {
     if (fido_reset_storage() != PICOKEYS_OK) {
         return CTAP2_ERR_PROCESSING;
     }
+    needs_power_cycle = false;
     init_fido();
 #ifdef DEFAULT_MCUV_NOT_REQUIRED
     set_opts(get_opts() | FIDO2_OPT_MCUV_NOTRQD);

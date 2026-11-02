@@ -520,7 +520,6 @@ void scan_all(void) {
     scan_files_fido();
 }
 
-extern bool needs_power_cycle;
 void init_fido(void) {
     fido_object_authorization_session_invalidate();
     keydev_unlocked = false;
@@ -529,7 +528,6 @@ void init_fido(void) {
 #ifdef ENABLE_OTP_APP
     init_otp();
 #endif
-    needs_power_cycle = false;
 }
 
 int wait_button_pressed(void) {
