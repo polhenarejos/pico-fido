@@ -185,6 +185,55 @@ def send_chained_oath_apdu(ccid_card, command, p1=0, p2=0, data=None):
 def list_apdu(ccid_card):
     return send_chained_oath_apdu(ccid_card, INS_LIST)
 
+@pytest.mark.parametrize("oath_type", [TYPE_TOTP, TYPE_HOTP])
+@pytest.mark.parametrize(
+    "property_data",
+    [
+        [TAG_PROPERTY, PROP_REQUIRE_TOUCH],
+        [TAG_PROPERTY, 1, PROP_REQUIRE_TOUCH],
+    ],
+)
+def test_put_touch_property_wire_encoding(reset_oath, oath_type, property_data):
+    name = list(b"touch-wire") + [ord("T") if oath_type == TYPE_TOTP else ord("H")]
+    key = list(b"foo bar")
+    data = [TAG_NAME, len(name)] + name
+    data += [TAG_KEY, len(key) + 2, oath_type | ALG_SHA1, 6] + key
+    data += property_data
+
+    try:
+        send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+        listed = send_chained_oath_apdu(reset_oath, INS_LIST, data=[0x01])
+        expected = [TAG_NAME_LIST, len(name) + 2, oath_type | ALG_SHA1] + name + [0x01]
+        assert any(listed[i:i + len(expected)] == expected for i in range(len(listed)))
+    finally:
+        try:
+            send_apdu(reset_oath, INS_DELETE, p1=0, p2=0, data=[TAG_NAME, len(name)] + name)
+        except APDUResponse:
+            pass
+
+@pytest.mark.parametrize(
+    "property_data",
+    [
+        [TAG_PROPERTY],
+        [TAG_PROPERTY, PROP_REQUIRE_TOUCH, TAG_PROPERTY, PROP_REQUIRE_TOUCH],
+    ],
+)
+def test_put_rejects_malformed_touch_property(reset_oath, property_data):
+    name = list(b"bad-property")
+    key = list(b"foo bar")
+    data = [TAG_NAME, len(name)] + name
+    data += [TAG_KEY, len(key) + 2, TYPE_TOTP | ALG_SHA1, 6] + key + property_data
+
+    try:
+        with pytest.raises(APDUResponse) as error:
+            send_apdu(reset_oath, INS_PUT, p1=0, p2=0, data=data)
+        assert [error.value.sw1, error.value.sw2] == [0x6a, 0x80]
+    finally:
+        try:
+            send_apdu(reset_oath, INS_DELETE, p1=0, p2=0, data=[TAG_NAME, len(name)] + name)
+        except APDUResponse:
+            pass
+
 name_kaka = [ord('k'), ord('a'), ord('k'), ord('a')]
 data_name = [TAG_NAME] + [len(name_kaka)] + name_kaka
 data_key = [TAG_KEY, 0x16, 0x21, 0x06, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b]

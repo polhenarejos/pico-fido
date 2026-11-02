@@ -172,8 +172,11 @@ def _live_enrollment(device):
         except json.JSONDecodeError as error:
             pytest.fail(f"invalid PICO_FIDO_VAULT_ENROLLMENT_JSON: {error}")
     else:
-        path = Path(os.environ.get("PICO_FIDO_VAULT_ENROLLMENT", str(DEFAULT_ENROLLMENT)))
+        enrollment_path = os.environ.get("PICO_FIDO_VAULT_ENROLLMENT")
+        path = Path(enrollment_path or DEFAULT_ENROLLMENT)
         if not path.is_file():
+            if not enrollment_path:
+                pytest.skip("live Vault enrollment test requires an enrollment file or JSON")
             pytest.fail(f"enrollment JSON does not exist: {path}")
         value = json.loads(path.read_text(encoding="utf-8"))
     passphrase = os.environ.get("PICO_FIDO_VAULT_PASSPHRASE") or "test"
