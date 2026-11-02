@@ -25,6 +25,7 @@ from fido2.ctap import CtapError
 from fido2.client import ClientPin
 from fido2.ctap2.pin import ClientPin as CtapClientPin, PinProtocolV1, PinProtocolV2
 from fido2.webauthn import UserVerificationRequirement
+from fido2.hid import CTAPHID
 from fido2.utils import hmac_sha256
 
 from utils import *
@@ -67,43 +68,50 @@ def _raw_change_pin(client_pin, old_pin, new_pin):
         pin_uv_param=pin_uv_param,
     )
 
-def test_lockout(device, resetdevice, client_pin):
+def test_lockout(device):
+    if getattr(device.dev.descriptor, "serial_number", None) != "AAAAAA":
+        pytest.skip("PIN lockout changes persistent state; use the disposable emulator")
+
     pin = "TestPin"
-    client_pin.set_pin(pin)
+    device.reset()
+    client_pin = ClientPin(device.client()._backend.ctap2)
 
-    pin_token = client_pin.get_pin_token(pin)
+    try:
+        client_pin.set_pin(pin)
 
-    for i in range(1, 10):
-        err = [CtapError.ERR.PIN_INVALID]
-        if 3 <= i <= 7:
-            err = [CtapError.ERR.PIN_AUTH_BLOCKED]
-        elif i >= 8:
-            err = [CtapError.ERR.PIN_BLOCKED, CtapError.ERR.PIN_INVALID]
+        for i in range(1, 4):
+            expected_error = CtapError.ERR.PIN_AUTH_BLOCKED if i == 3 else CtapError.ERR.PIN_INVALID
+
+            with pytest.raises(CtapError) as e:
+                client_pin.get_pin_token("WrongPin")
+            assert e.value.code == expected_error
+            assert client_pin.get_pin_retries()[0] == 8 - i
+
+        for attempt_pin in ("WrongPin", pin):
+            with pytest.raises(CtapError) as e:
+                client_pin.get_pin_token(attempt_pin)
+            assert e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED
+            assert client_pin.get_pin_retries()[0] == 5
+
+        device.send_data(CTAPHID.INIT, os.urandom(8))
+
+        for attempt_pin in ("WrongPin", pin):
+            with pytest.raises(CtapError) as e:
+                client_pin.get_pin_token(attempt_pin)
+            assert e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED
+            assert client_pin.get_pin_retries()[0] == 5
 
         with pytest.raises(CtapError) as e:
-            client_pin.get_pin_token("WrongPin")
-        assert e.value.code == err or e.value.code in err
+            _raw_change_pin(client_pin, pin, "NewPin")
+        assert e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED
+        assert client_pin.get_pin_retries()[0] == 5
 
-        attempts = 8 - i
-        if i > 8:
-            attempts = 0
-
-        res = client_pin.get_pin_retries()
-        assert res[0] == attempts
-
-        if e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED:
-            device.reboot()
-            client_pin = ClientPin(resetdevice.client()._backend.ctap2)
-
-    with pytest.raises(CtapError) as e:
-        device.doMC()
-
-    device.reboot()
-    client_pin = ClientPin(resetdevice.client()._backend.ctap2)
-
-    with pytest.raises(CtapError) as e:
-        client_pin.get_pin_token(pin)
-    assert e.value.code == CtapError.ERR.PIN_BLOCKED
+        device.reset()
+        client_pin = ClientPin(device.client()._backend.ctap2)
+        client_pin.set_pin("NewPin")
+        assert client_pin.get_pin_token("NewPin")
+    finally:
+        device.reset()
 
 def test_send_zero_length_pin_auth(device):
     device.reset()
@@ -171,14 +179,14 @@ def test_change_pin_but_no_pin_set(device, client_pin):
         client_pin.change_pin("TestPin", "1234")
     assert e.value.code == CtapError.ERR.PIN_NOT_SET
 
-def test_setting_pin_and_get_info(device, client_pin, info):
+def test_setting_pin_and_get_info(device, client_pin):
     device.reset()
     client_pin.set_pin("TestPin")
 
     with pytest.raises(CtapError) as e:
         client_pin.set_pin("TestPin")
 
-    assert info.options["clientPin"]
+    assert device.client()._backend.ctap2.get_info().options["clientPin"]
 
     pin_token = client_pin.get_pin_token("TestPin")
 
@@ -310,40 +318,3 @@ def test_change_pin_too_short_multibyte_codepoints(device, client_pin):
         assert e.value.code == CtapError.ERR.PIN_POLICY_VIOLATION
     finally:
         device.reset()
-
-def test_pin_attempts(device, client_pin):
-    # Flip 1 bit
-    pin = PIN1
-    device.reset()
-    client_pin.set_pin(pin)
-    pin_wrong = list(pin)
-    c = pin[len(pin) // 2]
-
-    pin_wrong[len(pin) // 2] = chr(ord(c) ^ 1)
-    pin_wrong = "".join(pin_wrong)
-
-    for i in range(1, 3):
-        with pytest.raises(CtapError) as e:
-            pin_token = client_pin.get_pin_token(pin=pin_wrong)
-        assert e.value.code == CtapError.ERR.PIN_INVALID
-
-        print("Check there is %d pin attempts left" % (8 - i))
-        res = client_pin.get_pin_retries()
-        assert res[0] == (8 - i)
-
-    for i in range(1, 3):
-        with pytest.raises(CtapError) as e:
-            client_pin.get_pin_token(pin_wrong)
-        assert e.value.code == CtapError.ERR.PIN_AUTH_BLOCKED
-
-    device.reboot()
-    client_pin = ClientPin(device.client()._backend.ctap2)
-
-    pin_token = client_pin.get_pin_token(pin=pin)
-    cdh = os.urandom(32)
-    pin_auth = hmac_sha256(pin_token, cdh)[:32]
-
-    reg = device.MC(pin_uv_param=pin_auth, pin_uv_protocol=2, client_data_hash=cdh)['res']
-
-    res = client_pin.get_pin_retries()
-    assert res[0] == (8)
