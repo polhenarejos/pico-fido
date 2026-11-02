@@ -149,15 +149,63 @@ static int cbor_vendor_generic(uint8_t cmd, const uint8_t *data, size_t len) {
             if (vendorParam.present == false) {
                 CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
             }
-            if (check_user_presence() == false) {
+            if (vendorParam.len != 12 + sizeof(keydev_dec) + 16) {
+                CBOR_ERROR(CTAP1_ERR_INVALID_PARAMETER);
+            }
+            if (ef_keydev == NULL || ef_keydev_enc == NULL || ef_pin == NULL) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            uint32_t keydev_size = file_get_size(ef_keydev);
+            uint8_t zeros[1 + 12 + sizeof(keydev_dec) + 16] = { 0 };
+            if (keydev_size > sizeof(zeros)) {
+                CBOR_ERROR(CTAP2_ERR_INTEGRITY_FAILURE);
+            }
+            bool pin_enabled = file_has_data(ef_pin);
+            if (pin_enabled) {
+                if (pinUvAuthParam.present == false) {
+                    CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+                }
+                if ((pinUvAuthProtocol != 1 && pinUvAuthProtocol != 2) || pinUvAuthParam.len != (pinUvAuthProtocol == 1 ? 16u : 32u) || raw_vendor_params == NULL || raw_vendor_params_len > CTAP_MAX_CBOR_PAYLOAD - 34u || paut.in_use == false || paut.data == NULL || paut.len != 32) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
+                uint8_t *payload = calloc(1, 34u + raw_vendor_params_len);
+                if (payload == NULL) {
+                    CBOR_ERROR(CTAP2_ERR_PROCESSING);
+                }
+                memset(payload, 0xff, 32);
+                payload[32] = 0x0d;
+                payload[33] = (uint8_t)vendorCmd;
+                memcpy(payload + 34, raw_vendor_params, raw_vendor_params_len);
+                int auth_ret = verify((uint8_t)pinUvAuthProtocol, paut.data, payload, (uint16_t)(34u + raw_vendor_params_len), pinUvAuthParam.data);
+                free(payload);
+                if (auth_ret != 0 || !(paut.permissions & CTAP_PERMISSION_ACFG)) {
+                    CBOR_ERROR(CTAP2_ERR_PIN_AUTH_INVALID);
+                }
+            }
+            bool previous_force_button_wait = force_button_wait;
+#ifndef ENABLE_EMULATION
+            if (pin_enabled == false) {
+                force_button_wait = true;
+            }
+#endif
+            bool user_present = check_user_presence();
+            force_button_wait = previous_force_button_wait;
+            if (user_present == false) {
                 CBOR_ERROR(CTAP2_ERR_OPERATION_DENIED);
             }
-            uint8_t zeros[32];
-            memset(zeros, 0, sizeof(zeros));
-            file_put_data(ef_keydev_enc, CONST_BYTE_ARRAY(vendorParam.data, vendorParam.len));
-            file_put_data(ef_keydev, CONST_BYTE_ARRAY(zeros, file_get_size(ef_keydev))); // Overwrite ef with 0
-            file_put_data(ef_keydev, CONST_BYTE_ARRAY(NULL, 0)); // Set ef to 0 bytes
+            if (file_put_data(ef_keydev_enc, CONST_BYTE_ARRAY(vendorParam.data, vendorParam.len)) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            if (file_put_data(ef_keydev, CONST_BYTE_ARRAY(zeros, keydev_size)) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+            if (file_put_data(ef_keydev, CONST_BYTE_ARRAY(NULL, 0)) != PICOKEYS_OK) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
             flash_commit();
+            mbedtls_platform_zeroize(keydev_dec, sizeof(keydev_dec));
+            has_keydev_dec = false;
+            keydev_unlocked = false;
             goto err;
         }
         else {
