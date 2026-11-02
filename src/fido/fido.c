@@ -327,7 +327,26 @@ int verify_key(const uint8_t *appId, const uint8_t *keyHandle, mbedtls_ecp_keypa
     return mbedtls_ct_memcmp(keyHandle + KEY_PATH_LEN, hmac, sizeof(hmac));
 }
 
-/* Reduce a derived scalar modulo the group order.
+/* Short-Weierstrass groups take the private key as a big-endian integer in
+ * [1, n-1]. Edwards and Montgomery keys (Ed25519/Ed448, X25519/X448) are
+ * little-endian byte strings (RFC 7748, RFC 8032), not integers below n, so
+ * they must reach mbedtls_ecp_read_key() unmodified. */
+static bool ec_is_short_weierstrass(int curve) {
+    switch (curve) {
+        case MBEDTLS_ECP_DP_SECP256R1:
+        case MBEDTLS_ECP_DP_SECP384R1:
+        case MBEDTLS_ECP_DP_SECP521R1:
+        case MBEDTLS_ECP_DP_SECP256K1:
+        case MBEDTLS_ECP_DP_BP256R1:
+        case MBEDTLS_ECP_DP_BP384R1:
+        case MBEDTLS_ECP_DP_BP512R1:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/* Reduce a derived scalar modulo the group order (short-Weierstrass only).
  *
  * mbedtls_ecp_read_key() rejects scalars >= n. For the NIST curves that is
  * negligible (n is within 2^-32 of 2^bits), but the Brainpool orders are about
@@ -399,7 +418,7 @@ int derive_key(const uint8_t *app_id, bool new_key, uint8_t *key_handle, int cur
             outk[0] >>= 8 - (cinfo->bit_size % 8);
         }
         const size_t klen = (size_t)((cinfo->bit_size + 7) / 8);
-        if ((r = ec_reduce_scalar(curve, outk, klen)) != 0) {
+        if (ec_is_short_weierstrass(curve) && (r = ec_reduce_scalar(curve, outk, klen)) != 0) {
             mbedtls_platform_zeroize(outk, sizeof(outk));
             return r;
         }
