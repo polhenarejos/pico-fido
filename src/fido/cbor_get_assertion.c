@@ -777,10 +777,10 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 CBOR_ERROR(CTAP1_ERR_OTHER);
             }
         }
-        if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1) {
+        if (ekey.grp.id == MBEDTLS_ECP_DP_SECP384R1 || ekey.grp.id == MBEDTLS_ECP_DP_BP384R1) {
             md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
         }
-        else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1) {
+        else if (ekey.grp.id == MBEDTLS_ECP_DP_SECP521R1 || ekey.grp.id == MBEDTLS_ECP_DP_BP512R1) {
             md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
         }
 #ifdef MBEDTLS_EDDSA_C
