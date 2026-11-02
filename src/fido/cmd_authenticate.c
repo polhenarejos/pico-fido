@@ -33,8 +33,7 @@ int cmd_authenticate(void) {
     if (apdu.nc < key_handle_offset) {
         return SW_WRONG_DATA();
     }
-    if (req->keyHandleLen < KEY_HANDLE_LEN ||
-        req->keyHandleLen > CTAP_MAX_KH_SIZE) {
+    if (req->keyHandleLen < KEY_HANDLE_LEN) {
         return SW_INCORRECT_PARAMS();
     }
     if ((size_t)apdu.nc < key_handle_offset + req->keyHandleLen) {
