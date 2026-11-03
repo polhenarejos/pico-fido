@@ -34,6 +34,9 @@
 #include "button.h"
 #endif
 #include "event.h"
+#ifdef ENABLE_PREVIEW_SIGN
+#include "arkg.h"
+#endif
 
 int cbor_get_assertion(const uint8_t *data, size_t len, bool next);
 extern char *rp_id, *user_name, *display_name;
@@ -238,6 +241,60 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "credBlob", credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", extensions.thirdPartyPayment);
+#ifdef ENABLE_PREVIEW_SIGN
+                /* previewSign v4: accept only a map with:
+                 *   Key 2 = inner credential ID (all modes)
+                 *   Key 6 = tbs (to-be-signed data, all modes)
+                 *   Key 7 = additional_args CBOR (ARKG only) */
+                if (strcmp(_fd2, "previewSign") == 0) {
+                    if (cbor_value_is_map(&_f2)) {
+                        extensions.previewSign = ptrue;
+                        CborValue _psf;
+                        CBOR_CHECK(cbor_value_enter_container(&_f2, &_psf));
+                        while (!cbor_value_at_end(&_psf)) {
+                            int64_t ps_key = 0;
+                            if (cbor_value_is_integer(&_psf)) {
+                                CBOR_CHECK(cbor_value_get_int64(&_psf, &ps_key));
+                                CBOR_CHECK(cbor_value_advance_fixed(&_psf));
+                                if (ps_key == 2 && cbor_value_is_byte_string(&_psf)) {
+                                    /* Key 2 = inner credential ID */
+                                    if (extensions.ps_key_handle.present) {
+                                        /* Duplicate key 2 (RFC 8949 §5.6) */
+                                        CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                                    }
+                                    CBOR_CHECK(cbor_value_dup_byte_string(&_psf, &extensions.ps_key_handle.data, &extensions.ps_key_handle.len, &_psf));
+                                    extensions.ps_key_handle.present = true;
+                                    continue;
+                                }
+                                else if (ps_key == 6 && cbor_value_is_byte_string(&_psf)) {
+                                    /* Key 6 = tbs (to-be-signed data) */
+                                    if (extensions.ps_tbs.present) {
+                                        /* Duplicate key 6 (RFC 8949 §5.6) */
+                                        CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                                    }
+                                    CBOR_CHECK(cbor_value_dup_byte_string(&_psf, &extensions.ps_tbs.data, &extensions.ps_tbs.len, &_psf));
+                                    extensions.ps_tbs.present = true;
+                                    continue;
+                                }
+                                else if (ps_key == 7 && cbor_value_is_byte_string(&_psf)) {
+                                    /* Key 7 = additional_args (CBOR-encoded COSE_Sign_Args, ARKG only) */
+                                    if (extensions.ps_additional_args.present) {
+                                        /* Duplicate key 7 (RFC 8949 §5.6) */
+                                        CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                                    }
+                                    CBOR_CHECK(cbor_value_dup_byte_string(&_psf, &extensions.ps_additional_args.data, &extensions.ps_additional_args.len, &_psf));
+                                    extensions.ps_additional_args.present = true;
+                                    continue;
+                                }
+                            }
+                            CBOR_CHECK(cbor_value_advance(&_psf));
+                        }
+                        CBOR_CHECK(cbor_value_leave_container(&_f2, &_psf));
+                        continue;
+                    }
+                    /* v4: boolean input is NOT accepted — ignore it */
+                }
+#endif
                 CBOR_ADVANCE(2);
             }
             CBOR_PARSE_MAP_END(_f1, 2);
@@ -654,6 +711,11 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
         if (extensions.thirdPartyPayment == ptrue) {
             l++;
         }
+#ifdef ENABLE_PREVIEW_SIGN
+        if (extensions.previewSign == ptrue && extensions.ps_tbs.present == true) {
+            l++;
+        }
+#endif
         if (l > 0) {
             CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, l));
             if (credBlob == ptrue) {
@@ -732,6 +794,215 @@ int cbor_get_assertion(const uint8_t *data, size_t len, bool next) {
                     CBOR_CHECK(cbor_encode_boolean(&mapEncoder, false));
                 }
             }
+
+#ifdef ENABLE_PREVIEW_SIGN
+            /* previewSign v4: validate and sign */
+            if (extensions.previewSign == ptrue && extensions.ps_tbs.present == true) {
+                /* v4 validation: key_handle (key 2) and tbs (key 6) are required */
+                if (extensions.ps_key_handle.present != true) {
+                    CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+                }
+                /* Get the stored ps_algorithm and ps_flags from the credential */
+                int64_t cred_ps_alg = selcred ? selcred->extensions.ps_algorithm : 0;
+                uint64_t cred_ps_flags = selcred ? selcred->extensions.ps_flags : 0;
+                /* v4 validation: empty allow_list not permitted for previewSign */
+                if (allowList_len == 0) {
+                    CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+                }
+
+                /* v4 validation: enforce UP flag */
+                if ((cred_ps_flags & 0x01) && !(flags & FIDO2_AUT_FLAG_UP)) {
+                    CBOR_ERROR(CTAP2_ERR_UP_REQUIRED);
+                }
+
+                /* v4 validation: enforce UV flag */
+                if ((cred_ps_flags & 0x04) && !(flags & FIDO2_AUT_FLAG_UV)) {
+                    CBOR_ERROR(CTAP2_ERR_PUAT_REQUIRED);
+                }
+
+                /* ── previewSign: compute signature BEFORE opening CBOR map ── */
+                /* (CBOR_ERROR after encoder_create_map leaves partial response) */
+                uint8_t ps_sig_buf[MBEDTLS_ECDSA_MAX_LEN] = {0};
+                size_t ps_sig_len = 0;
+                int ps_ret = 0;
+
+                if (ps_algorithm_is_arkg(cred_ps_alg)) {
+                    /* ─── ARKG-derived key signing ────────────── */
+                    /* v4 validation: additional_args (key 7) required for ARKG */
+                    if (extensions.ps_additional_args.present != true) {
+                        CBOR_ERROR(CTAP2_ERR_MISSING_PARAMETER);
+                    }
+
+                    /* Parse additional_args CBOR: {3: alg, -1: kh, -2: ctx} */
+                    uint8_t *arkg_kh_data = NULL;
+                    size_t arkg_kh_len = 0;
+                    uint8_t *arkg_ctx_data = NULL;
+                    size_t arkg_ctx_len = 0;
+                    int64_t args_alg = 0;
+
+                    {
+                        CborParser aa_parser;
+                        CborValue aa_map;
+                        CborError aa_err = cbor_parser_init(extensions.ps_additional_args.data,
+                                                             extensions.ps_additional_args.len,
+                                                             0, &aa_parser, &aa_map);
+                        if (aa_err == CborNoError && cbor_value_is_map(&aa_map)) {
+                            CborValue aa_it;
+                            aa_err = cbor_value_enter_container(&aa_map, &aa_it);
+                            while (aa_err == CborNoError && !cbor_value_at_end(&aa_it)) {
+                                int64_t aa_key = 0;
+                                if (cbor_value_is_integer(&aa_it)) {
+                                    aa_err = cbor_value_get_int64(&aa_it, &aa_key);
+                                    if (aa_err != CborNoError) break;
+                                    aa_err = cbor_value_advance_fixed(&aa_it);
+                                    if (aa_err != CborNoError) break;
+                                    if (aa_key == 3 && cbor_value_is_integer(&aa_it)) {
+                                        aa_err = cbor_value_get_int64(&aa_it, &args_alg);
+                                        if (aa_err != CborNoError) break;
+                                        aa_err = cbor_value_advance_fixed(&aa_it);
+                                        continue;
+                                    }
+                                    else if (aa_key == -1 && cbor_value_is_byte_string(&aa_it)) {
+                                        if (arkg_kh_data) {
+                                            /* Duplicate key -1 (RFC 8949 §5.6) */
+                                            free(arkg_kh_data);
+                                            if (arkg_ctx_data) free(arkg_ctx_data);
+                                            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                                        }
+                                        aa_err = cbor_value_dup_byte_string(&aa_it, &arkg_kh_data, &arkg_kh_len, &aa_it);
+                                        continue;
+                                    }
+                                    else if (aa_key == -2 && cbor_value_is_byte_string(&aa_it)) {
+                                        if (arkg_ctx_data) {
+                                            /* Duplicate key -2 (RFC 8949 §5.6) */
+                                            if (arkg_kh_data) free(arkg_kh_data);
+                                            free(arkg_ctx_data);
+                                            CBOR_ERROR(CTAP2_ERR_INVALID_CBOR);
+                                        }
+                                        aa_err = cbor_value_dup_byte_string(&aa_it, &arkg_ctx_data, &arkg_ctx_len, &aa_it);
+                                        continue;
+                                    }
+                                }
+                                aa_err = cbor_value_advance(&aa_it);
+                            }
+                        }
+                    }
+
+                    /* v4 validation: alg field must be present in additional_args */
+                    if (args_alg == 0) {
+                        if (arkg_kh_data) free(arkg_kh_data);
+                        if (arkg_ctx_data) free(arkg_ctx_data);
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+                    }
+
+                    /* v4 validation: alg must match the credential's registered algorithm */
+                    if (args_alg != cred_ps_alg) {
+                        if (arkg_kh_data) free(arkg_kh_data);
+                        if (arkg_ctx_data) free(arkg_ctx_data);
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+                    }
+
+                    if (!(arkg_kh_data && arkg_kh_len == ARKG_KH_LEN && arkg_ctx_data)) {
+                        /* Invalid ARKG parameters */
+                        if (arkg_kh_data) free(arkg_kh_data);
+                        if (arkg_ctx_data) free(arkg_ctx_data);
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+                    }
+
+                    /* Derive ARKG seed keys from credential */
+                    mbedtls_mpi arkg_sk_bl, arkg_sk_kem;
+                    mbedtls_mpi_init(&arkg_sk_bl);
+                    mbedtls_mpi_init(&arkg_sk_kem);
+                    {
+                        mbedtls_ecp_point pk_bl_tmp, pk_kem_tmp;
+                        mbedtls_ecp_point_init(&pk_bl_tmp);
+                        mbedtls_ecp_point_init(&pk_kem_tmp);
+                        ps_ret = arkg_derive_seed_keys(key_seed, key_seed_len,
+                                                        &arkg_sk_bl, &pk_bl_tmp,
+                                                        &arkg_sk_kem, &pk_kem_tmp);
+                        mbedtls_ecp_point_free(&pk_bl_tmp);
+                        mbedtls_ecp_point_free(&pk_kem_tmp);
+                    }
+
+                    if (ps_ret != 0) {
+                        mbedtls_mpi_free(&arkg_sk_bl);
+                        mbedtls_mpi_free(&arkg_sk_kem);
+                        free(arkg_kh_data);
+                        free(arkg_ctx_data);
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+                    }
+
+                    /* Derive child private key via ARKG */
+                    mbedtls_ecp_keypair derived_key;
+                    mbedtls_ecp_keypair_init(&derived_key);
+                    ps_ret = arkg_derive_private_key(&arkg_sk_bl, &arkg_sk_kem,
+                                                      arkg_kh_data, arkg_kh_len,
+                                                      arkg_ctx_data, arkg_ctx_len,
+                                                      &derived_key);
+
+                    if (ps_ret != 0) {
+                        mbedtls_ecp_keypair_free(&derived_key);
+                        mbedtls_mpi_free(&arkg_sk_bl);
+                        mbedtls_mpi_free(&arkg_sk_kem);
+                        free(arkg_kh_data);
+                        free(arkg_ctx_data);
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+                    }
+
+                    /* Sign tbs with derived key (tbs is already pre-hashed by client) */
+                    ps_ret = mbedtls_ecdsa_write_signature(&derived_key,
+                        MBEDTLS_MD_SHA256,
+                        extensions.ps_tbs.data, extensions.ps_tbs.len,
+                        ps_sig_buf, sizeof(ps_sig_buf), &ps_sig_len,
+                        random_fill_iterator, NULL);
+
+                    mbedtls_ecp_keypair_free(&derived_key);
+                    mbedtls_mpi_free(&arkg_sk_bl);
+                    mbedtls_mpi_free(&arkg_sk_kem);
+                    free(arkg_kh_data);
+                    free(arkg_ctx_data);
+
+                    if (ps_ret != 0) {
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+                    }
+                }
+                else {
+                    /* ─── Non-ARKG (ES256/ESP256): derive signing key, hash tbs, sign ── */
+                    mbedtls_ecp_keypair ps_sign_key;
+                    mbedtls_ecp_keypair_init(&ps_sign_key);
+                    ps_ret = ps_load_signing_key(key_seed, &ps_sign_key);
+
+                    if (ps_ret == 0) {
+                        /* Hash the tbs data, then sign the hash */
+                        uint8_t ps_hash[32] = {0};
+
+                        ps_ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                                            extensions.ps_tbs.data, extensions.ps_tbs.len,
+                                            ps_hash);
+                        if (ps_ret == 0) {
+                            ps_ret = mbedtls_ecdsa_write_signature(&ps_sign_key,
+                                MBEDTLS_MD_SHA256,
+                                ps_hash, sizeof(ps_hash),
+                                ps_sig_buf, sizeof(ps_sig_buf), &ps_sig_len,
+                                random_fill_iterator, NULL);
+                        }
+                    }
+                    mbedtls_ecp_keypair_free(&ps_sign_key);
+
+                    if (ps_ret != 0) {
+                        CBOR_ERROR(CTAP2_ERR_INVALID_CREDENTIAL);
+                    }
+                }
+
+                /* All validation and signing done — now safe to encode CBOR */
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "previewSign"));
+                CborEncoder psMapEncoder;
+                CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &psMapEncoder, 1));
+                CBOR_CHECK(cbor_encode_uint(&psMapEncoder, 6));
+                CBOR_CHECK(cbor_encode_byte_string(&psMapEncoder, ps_sig_buf, ps_sig_len));
+                CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &psMapEncoder));
+            }
+#endif
 
             CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
             ext_len = cbor_encoder_get_buffer_size(&encoder, ext);
@@ -921,6 +1192,11 @@ err:
     CBOR_FREE_BYTE_STRING(kay);
     CBOR_FREE_BYTE_STRING(salt_enc);
     CBOR_FREE_BYTE_STRING(salt_auth);
+#ifdef ENABLE_PREVIEW_SIGN
+    CBOR_FREE_BYTE_STRING(extensions.ps_key_handle);
+    CBOR_FREE_BYTE_STRING(extensions.ps_tbs);
+    CBOR_FREE_BYTE_STRING(extensions.ps_additional_args);
+#endif
     if (asserted == false) {
         for (int i = 0; i < MAX_CREDENTIAL_COUNT_IN_LIST; i++) {
             credential_free(&creds[i]);
