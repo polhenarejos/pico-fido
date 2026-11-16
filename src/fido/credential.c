@@ -341,6 +341,9 @@ int credential_verify(uint8_t *cred_id, size_t cred_id_len, const uint8_t *rp_id
             *tag = cred_id + cred_id_len - CRED_TAG_LEN;
     cred_proto_t proto = CRED_PROTO_21;
     if (memcmp(cred_id, CRED_PROTO_22_S, CRED_PROTO_LEN) == 0 || memcmp(cred_id, CRED_PROTO_25_S, CRED_PROTO_LEN) == 0) { // New format
+        if (cred_id_len < CRED_SILENT_ENVELOPE_OVERHEAD) {
+            return -1;
+        }
         tag = cred_id + cred_id_len - CRED_SILENT_TAG_LEN - CRED_TAG_LEN;
         proto = CRED_PROTO_25;
     }

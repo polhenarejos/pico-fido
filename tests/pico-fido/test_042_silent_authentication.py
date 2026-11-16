@@ -33,6 +33,8 @@ CRED_IV_LEN = 12
 CRED_TAG_LEN = 16
 CRED_SILENT_TAG_LEN = 16
 CRED_CIPHERTEXT_OFFSET = CRED_PROTO_LEN + CRED_IV_LEN
+CRED_PROTO_22 = b"\xf1\xd0\x02\x02"
+CRED_PROTO_25 = b"\xf1\xd0\x02\x05"
 
 
 def create_credential(device: Device, rp: dict, user: dict, resident: bool) -> dict:
@@ -109,6 +111,11 @@ def verify_state() -> None:
 
     # These assertions must run before any PIN operation in this process.
     assert device.client()._backend.ctap2.get_info().options["alwaysUv"] is True
+    for proto in (CRED_PROTO_22, CRED_PROTO_25):
+        for credential_id_len in (32, 47, 48):
+            credential_id = proto + bytes(credential_id_len - len(proto))
+            assert_silent_rejected(device, "short-envelope.example", credential_id)
+
     silent_assertion(device, state["nonresident"])
     silent_assertion(device, state["resident"])
 
