@@ -120,18 +120,29 @@ def assert_mismatched_legacy_rp_is_rejected(device: Device, rp: dict) -> None:
                 flash.flush()
 
 
-def replace_legacy_rp_hash(rp: dict, old_hash: bytes, new_hash: bytes) -> None:
+def replace_legacy_rp_with_mismatched_plaintext(rp: dict, old_hash: bytes, new_hash: bytes) -> None:
     flash_path = Path(os.environ.get("PICO_FIDO_COMPAT_FLASH", "memory.flash"))
     if not flash_path.is_file():
         pytest.skip("run the compatibility test with an emulator flash image")
 
-    marker = old_hash + rp["id"].encode()
+    # The pinned legacy image seals RP IDs; emulate an older plaintext record for migration.
+    marker = old_hash + CRED_PROTO_RP
     with flash_path.open("r+b") as flash_file:
         with mmap.mmap(flash_file.fileno(), 0) as flash:
             hash_offset = flash.find(marker)
             assert hash_offset >= 1
             assert flash.find(marker, hash_offset + 1) == -1
-            flash[hash_offset:hash_offset + len(old_hash)] = new_hash
+            payload_offset = hash_offset - 1
+            length_offset = payload_offset - 2
+            original_length = bytes(flash[length_offset:length_offset + 2])
+            payload_len = int.from_bytes(original_length, "little")
+            original_payload = bytes(flash[payload_offset:payload_offset + payload_len])
+            assert original_payload[1:33] == old_hash
+            assert original_payload[33:37] == CRED_PROTO_RP
+
+            replacement = original_payload[:1] + new_hash + rp["id"].encode()
+            flash[payload_offset:payload_offset + len(replacement)] = replacement
+            flash[length_offset:length_offset + 2] = len(replacement).to_bytes(2, "little")
             flash.flush()
 
 
@@ -210,7 +221,7 @@ def create_legacy_state(card) -> None:
     time.sleep(3)
     expected_hash = hashlib.sha256(rp["id"].encode()).digest()
     mismatched_hash = hashlib.sha256(b"mismatched.example").digest()
-    replace_legacy_rp_hash(rp, expected_hash, mismatched_hash)
+    replace_legacy_rp_with_mismatched_plaintext(rp, expected_hash, mismatched_hash)
 
 
 def verify_upgrade(card) -> None:
