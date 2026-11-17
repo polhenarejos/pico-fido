@@ -147,6 +147,20 @@ def test_get_pin_token_but_no_pin_set(resetdevice, client_pin):
         client_pin.get_pin_token("TestPin")
     assert e.value.code == CtapError.ERR.PIN_NOT_SET
 
+def test_get_pin_token_rejects_extra_character(device, client_pin):
+    if getattr(device.dev.descriptor, "serial_number", None) != "AAAAAA":
+        pytest.skip("PIN change requires the disposable emulator")
+
+    device.reset()
+    try:
+        client_pin.set_pin("1234")
+        with pytest.raises(CtapError) as error:
+            client_pin.get_pin_token("12345")
+        assert error.value.code == CtapError.ERR.PIN_INVALID
+        assert client_pin.get_pin_token("1234")
+    finally:
+        device.reset()
+
 @pytest.mark.parametrize("protocol_type", [PinProtocolV1, PinProtocolV2])
 def test_get_pin_token_rejects_oversized_pin_hash(device, protocol_type):
     device.reset()
