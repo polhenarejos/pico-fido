@@ -24,6 +24,14 @@ before protected operations, and failures must not leave the device in a more
 privileged state. Hardware protection differs by MCU; consult the project
 documentation when assessing flash-dump and physical-extraction claims.
 
+RP metadata records store a count and RP ID hash, followed by either a legacy
+plaintext RP ID or an authenticated encrypted envelope. Credential-management
+reads must recompute SHA-256 over the recovered RP ID and compare it with the
+stored hash before returning the ID/hash pair. Encrypted records also
+authenticate the stored hash as AEAD associated data; mismatches must be
+rejected for both formats. Migration must validate this invariant before
+deriving the deterministic nonce or writing the encrypted record.
+
 ## Reporting
 
 Use a private GitHub security advisory for the

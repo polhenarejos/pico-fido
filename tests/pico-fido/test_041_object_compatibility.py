@@ -11,12 +11,14 @@ Use tests/run-test-041-compatibility.bat on Windows or the corresponding
 
 import hashlib
 import hmac
+import mmap
 import os
 import pickle
 import time
 from pathlib import Path
 
 import pytest
+from fido2.ctap import CtapError
 from fido2.cose import CoseKey
 from fido2.ctap2 import CredentialManagement
 from fido2.ctap2.pin import ClientPin, PinProtocolV2
@@ -41,6 +43,7 @@ OATH_TAG_RESPONSE = 0x75
 OATH_TOTP_SHA1 = 0x21
 OATH_DIGITS = 6
 OATH_CHALLENGE = b"\x00\x00\x00\x00\x00\x00\x00\x01"
+CRED_PROTO_RP = b"\xf1\xd0\x02\x04"
 LEGACY_OATH_NAME = b"legacy-oath"
 LEGACY_OATH_KEY = b"legacy-oath-secret"
 CONTAINER_OATH_NAME = b"container-oath"
@@ -77,6 +80,76 @@ def assert_enumerated_rps(management: CredentialManagement, state: dict) -> None
         state["rp"]["id"]: hashlib.sha256(state["rp"]["id"].encode()).digest(),
         state["new_rp"]["id"]: hashlib.sha256(state["new_rp"]["id"].encode()).digest(),
     }
+
+
+def assert_mismatched_legacy_rp_is_rejected(device: Device, rp: dict) -> None:
+    flash_path = Path(os.environ.get("PICO_FIDO_COMPAT_FLASH", "memory.flash"))
+    if not flash_path.is_file():
+        pytest.skip("run the compatibility test with an emulator flash image")
+
+    rp_id_hash = hashlib.sha256(rp["id"].encode()).digest()
+    marker = rp_id_hash + CRED_PROTO_RP
+
+    with flash_path.open("r+b") as flash_file:
+        with mmap.mmap(flash_file.fileno(), 0) as flash:
+            hash_offset = flash.find(marker)
+            assert hash_offset >= 1
+            assert flash.find(marker, hash_offset + 1) == -1
+            payload_offset = hash_offset - 1
+            length_offset = payload_offset - 2
+            original_length = bytes(flash[length_offset:length_offset + 2])
+            payload_len = int.from_bytes(original_length, "little")
+            original_payload = bytes(flash[payload_offset:payload_offset + payload_len])
+            assert original_payload[1:33] == rp_id_hash
+            assert original_payload[33:37] == CRED_PROTO_RP
+
+            replacement = original_payload[:33] + b"mismatched.example"
+            assert len(replacement) < 65
+            flash[payload_offset:payload_offset + len(replacement)] = replacement
+            flash[length_offset:length_offset + 2] = len(replacement).to_bytes(2, "little")
+            flash.flush()
+
+    try:
+        with pytest.raises(CtapError):
+            credential_management(device).enumerate_rps()
+    finally:
+        with flash_path.open("r+b") as flash_file:
+            with mmap.mmap(flash_file.fileno(), 0) as flash:
+                flash[payload_offset:payload_offset + payload_len] = original_payload
+                flash[length_offset:length_offset + 2] = original_length
+                flash.flush()
+
+
+def replace_legacy_rp_hash(rp: dict, old_hash: bytes, new_hash: bytes) -> None:
+    flash_path = Path(os.environ.get("PICO_FIDO_COMPAT_FLASH", "memory.flash"))
+    if not flash_path.is_file():
+        pytest.skip("run the compatibility test with an emulator flash image")
+
+    marker = old_hash + rp["id"].encode()
+    with flash_path.open("r+b") as flash_file:
+        with mmap.mmap(flash_file.fileno(), 0) as flash:
+            hash_offset = flash.find(marker)
+            assert hash_offset >= 1
+            assert flash.find(marker, hash_offset + 1) == -1
+            flash[hash_offset:hash_offset + len(old_hash)] = new_hash
+            flash.flush()
+
+
+def assert_mismatched_legacy_rp_stays_unsealed(rp: dict) -> None:
+    flash_path = Path(os.environ.get("PICO_FIDO_COMPAT_FLASH", "memory.flash"))
+    if not flash_path.is_file():
+        pytest.skip("run the compatibility test with an emulator flash image")
+
+    rp_id = rp["id"].encode()
+    mismatched_hash = hashlib.sha256(b"mismatched.example").digest()
+    marker = mismatched_hash + rp_id
+    with flash_path.open("r+b") as flash_file:
+        with mmap.mmap(flash_file.fileno(), 0) as flash:
+            hash_offset = flash.find(marker)
+            assert hash_offset >= 1
+            assert flash.find(marker, hash_offset + 1) == -1
+            flash[hash_offset:hash_offset + len(mismatched_hash)] = hashlib.sha256(rp_id).digest()
+            flash.flush()
 
 
 def oath_select(card) -> None:
@@ -135,11 +208,16 @@ def create_legacy_state(card) -> None:
     oath_assert_calculation(card, LEGACY_OATH_NAME, LEGACY_OATH_KEY)
 
     time.sleep(3)
+    expected_hash = hashlib.sha256(rp["id"].encode()).digest()
+    mismatched_hash = hashlib.sha256(b"mismatched.example").digest()
+    replace_legacy_rp_hash(rp, expected_hash, mismatched_hash)
 
 
 def verify_upgrade(card) -> None:
     with STATE_FILE.open("rb") as source:
         state = pickle.load(source)
+
+    assert_mismatched_legacy_rp_stays_unsealed(state["rp"])
 
     device = Device()
     management = credential_management(device)
@@ -200,6 +278,7 @@ def verify_restart(card) -> None:
         assert_enumerated_public_key(management, state[f"{prefix}rp"], state[f"{prefix}public_key"])
     management = credential_management(device)
     assert_enumerated_rps(management, state)
+    assert_mismatched_legacy_rp_is_rejected(device, state["rp"])
 
     oath_select(card)
     credentials = [

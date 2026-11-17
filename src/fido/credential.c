@@ -60,6 +60,13 @@ static bool credential_rp_id_is_secure(const file_t *ef) {
 }
 
 static int credential_rp_id_encrypt(const uint8_t *rp_id_hash, const uint8_t *rp_id, size_t rp_id_len, uint8_t **out, size_t *out_len) {
+    uint8_t calculated_hash[RP_ID_HASH_LEN];
+    if (mbedtls_sha256(rp_id, rp_id_len, calculated_hash, 0) != 0 || mbedtls_ct_memcmp(calculated_hash, rp_id_hash, sizeof(calculated_hash)) != 0) {
+        mbedtls_platform_zeroize(calculated_hash, sizeof(calculated_hash));
+        return PICOKEYS_WRONG_DATA;
+    }
+    mbedtls_platform_zeroize(calculated_hash, sizeof(calculated_hash));
+
     uint8_t key[32] = {0};
     uint8_t iv[CRED_IV_LEN] = {0};
     int ret = credential_derive_chacha_key(key, (const uint8_t *) CRED_PROTO_RP_S);
@@ -109,35 +116,43 @@ int credential_rp_id_decrypt(const file_t *ef, uint8_t **rp_id, size_t *rp_id_le
         }
         memcpy(*rp_id, tail, tail_len);
         *rp_id_len = tail_len;
-        return 0;
+    }
+    else {
+        if (tail_len < RP_SECURE_OVERHEAD) {
+            return -1;
+        }
+        size_t plaintext_len = tail_len - RP_SECURE_OVERHEAD;
+        *rp_id = (uint8_t *) calloc(1, plaintext_len + 1);
+        if (*rp_id == NULL) {
+            return -1;
+        }
+
+        uint8_t key[32] = {0};
+        int ret = credential_derive_chacha_key(key, (const uint8_t *) CRED_PROTO_RP_S);
+        if (ret == 0) {
+            mbedtls_chachapoly_context chatx;
+            mbedtls_chachapoly_init(&chatx);
+            mbedtls_chachapoly_setkey(&chatx, key);
+            ret = mbedtls_chachapoly_auth_decrypt(&chatx, plaintext_len, tail + CRED_PROTO_LEN, record + RP_RECORD_COUNT_LEN, RP_ID_HASH_LEN, tail + CRED_PROTO_LEN + CRED_IV_LEN + plaintext_len, tail + CRED_PROTO_LEN + CRED_IV_LEN, *rp_id);
+            mbedtls_chachapoly_free(&chatx);
+        }
+        mbedtls_platform_zeroize(key, sizeof(key));
+        if (ret != 0) {
+            free(*rp_id);
+            *rp_id = NULL;
+            *rp_id_len = 0;
+            return ret;
+        }
+        *rp_id_len = plaintext_len;
     }
 
-    if (tail_len < RP_SECURE_OVERHEAD) {
-        return -1;
-    }
-    size_t plaintext_len = tail_len - RP_SECURE_OVERHEAD;
-    *rp_id = (uint8_t *) calloc(1, plaintext_len + 1);
-    if (*rp_id == NULL) {
-        return -1;
-    }
-
-    uint8_t key[32] = {0};
-    int ret = credential_derive_chacha_key(key, (const uint8_t *) CRED_PROTO_RP_S);
-    if (ret == 0) {
-        mbedtls_chachapoly_context chatx;
-        mbedtls_chachapoly_init(&chatx);
-        mbedtls_chachapoly_setkey(&chatx, key);
-        ret = mbedtls_chachapoly_auth_decrypt(&chatx, plaintext_len, tail + CRED_PROTO_LEN, record + RP_RECORD_COUNT_LEN, RP_ID_HASH_LEN, tail + CRED_PROTO_LEN + CRED_IV_LEN + plaintext_len, tail + CRED_PROTO_LEN + CRED_IV_LEN, *rp_id);
-        mbedtls_chachapoly_free(&chatx);
-    }
-    mbedtls_platform_zeroize(key, sizeof(key));
-    if (ret != 0) {
+    uint8_t rp_id_hash[RP_ID_HASH_LEN];
+    if (mbedtls_sha256(*rp_id, *rp_id_len, rp_id_hash, 0) != 0 || mbedtls_ct_memcmp(rp_id_hash, record + RP_RECORD_COUNT_LEN, RP_ID_HASH_LEN) != 0) {
         free(*rp_id);
         *rp_id = NULL;
         *rp_id_len = 0;
-        return ret;
+        return PICOKEYS_WRONG_DATA;
     }
-    *rp_id_len = plaintext_len;
     return 0;
 }
 
