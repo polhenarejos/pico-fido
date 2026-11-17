@@ -287,8 +287,10 @@ int load_keydev(uint8_t key[32]) {
         }
     }
 
-    if (pin_wrapped) {
+    if (pin_wrapped && !keydev_unlocked) {
         keydev_unlocked = true;
+        // Startup migration can run before a PIN-protected key is available.
+        credential_migrate_rp_secure();
     }
     return PICOKEYS_OK;
 }
