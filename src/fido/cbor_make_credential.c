@@ -28,6 +28,9 @@
 #include "random.h"
 #include "crypto_utils.h"
 #include "event.h"
+#ifdef ENABLE_PREVIEW_SIGN
+#include "arkg.h"
+#endif
 
 char *rp_id = NULL, *user_name = NULL, *display_name = NULL;
 size_t rp_id_len = 0;
@@ -231,6 +234,68 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_FIELD_KEY_TEXT_VAL_BYTES(2, "credBlob", extensions.credBlob);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "largeBlobKey", extensions.largeBlobKey);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "thirdPartyPayment", extensions.thirdPartyPayment);
+#ifdef ENABLE_PREVIEW_SIGN
+                /* previewSign v4: accept only a map {3: [algs], 4: flags} */
+                if (strcmp(_fd2, "previewSign") == 0) {
+                    if (cbor_value_is_map(&_f2)) {
+                        extensions.previewSign = ptrue;
+                        CborValue _psm;
+                        CBOR_CHECK(cbor_value_enter_container(&_f2, &_psm));
+                        int64_t ps_requested_alg = 0; /* first supported alg from client list */
+                        bool ps_has_alg_array = false;
+                        bool ps_flags_present = false;
+                        while (!cbor_value_at_end(&_psm)) {
+                            int64_t ps_key = 0;
+                            if (cbor_value_is_integer(&_psm)) {
+                                CBOR_CHECK(cbor_value_get_int64(&_psm, &ps_key));
+                                CBOR_CHECK(cbor_value_advance_fixed(&_psm));
+                                if (ps_key == 3 && cbor_value_is_array(&_psm)) {
+                                    /* Key 3 = array of algorithm IDs; pick the first supported */
+                                    ps_has_alg_array = true;
+                                    CborValue _arr;
+                                    CBOR_CHECK(cbor_value_enter_container(&_psm, &_arr));
+                                    while (!cbor_value_at_end(&_arr)) {
+                                        if (cbor_value_is_integer(&_arr)) {
+                                            int64_t candidate = 0;
+                                            CBOR_CHECK(cbor_value_get_int64(&_arr, &candidate));
+                                            if (ps_requested_alg == 0 && ps_algorithm_supported(candidate)) {
+                                                ps_requested_alg = candidate;
+                                            }
+                                        }
+                                        CBOR_CHECK(cbor_value_advance(&_arr));
+                                    }
+                                    CBOR_CHECK(cbor_value_leave_container(&_psm, &_arr));
+                                    continue;
+                                }
+                                else if (ps_key == 4 && cbor_value_is_unsigned_integer(&_psm)) {
+                                    /* Key 4 = flags integer (UP/UV bits) */
+                                    CBOR_CHECK(cbor_value_get_uint64(&_psm, &extensions.ps_flags));
+                                    ps_flags_present = true;
+                                    CBOR_CHECK(cbor_value_advance_fixed(&_psm));
+                                    continue;
+                                }
+                            }
+                            CBOR_CHECK(cbor_value_advance(&_psm));
+                        }
+                        CBOR_CHECK(cbor_value_leave_container(&_f2, &_psm));
+                        /* v4 default: require UP when flags key is omitted */
+                        if (!ps_flags_present) {
+                            extensions.ps_flags = 1;
+                        }
+                        /* Validate flags: only 0b000, 0b001, 0b101 are valid */
+                        if (extensions.ps_flags != 0 && extensions.ps_flags != 1 && extensions.ps_flags != 5) {
+                            CBOR_ERROR(CTAP2_ERR_INVALID_OPTION);
+                        }
+                        /* Validate algorithm selection */
+                        if (!ps_has_alg_array || ps_requested_alg == 0) {
+                            CBOR_ERROR(CTAP2_ERR_UNSUPPORTED_ALGORITHM);
+                        }
+                        extensions.ps_algorithm = ps_requested_alg;
+                        continue;
+                    }
+                    /* v4: boolean input is NOT accepted — ignore it */
+                }
+#endif
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "pinComplexityPolicy", pin_complexity_policy);
                 CBOR_FIELD_KEY_TEXT_VAL_BOOL(2, "uvm", uvm);
 
@@ -593,6 +658,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         if (extensions.thirdPartyPayment == ptrue) {
             l++;
         }
+#ifdef ENABLE_PREVIEW_SIGN
+        if (extensions.previewSign == ptrue) {
+            l++;
+        }
+#endif
         if (hmac_secret_mc) {
             l++;
         }
@@ -638,6 +708,19 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "thirdPartyPayment"));
                 CBOR_CHECK(cbor_encode_boolean(&mapEncoder, true));
             }
+#ifdef ENABLE_PREVIEW_SIGN
+            if (extensions.previewSign == ptrue) {
+                CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "previewSign"));
+                /* v4: always return {3: selected_algorithm, 4: flags} */
+                CborEncoder psMap;
+                CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &psMap, 2));
+                CBOR_CHECK(cbor_encode_uint(&psMap, 3));
+                CBOR_CHECK(cbor_encode_int(&psMap, extensions.ps_algorithm));
+                CBOR_CHECK(cbor_encode_uint(&psMap, 4));
+                CBOR_CHECK(cbor_encode_uint(&psMap, extensions.ps_flags));
+                CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &psMap));
+            }
+#endif
             if (hmac_secret_mc) {
                 CBOR_CHECK(cbor_encode_text_stringz(&mapEncoder, "hmac-secret-mc"));
 
@@ -802,6 +885,85 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         }
     }
 
+#ifdef ENABLE_PREVIEW_SIGN
+    /* Build inner attestation object for unsigned extension outputs */
+    uint8_t ps_att_obj[512] = {0};
+    size_t ps_att_obj_len = 0;
+    if (extensions.previewSign == ptrue) {
+        /* Generate inner credential ID (distinct from outer) via HMAC */
+        uint8_t inner_cred_id[32];
+        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                         key_seed, (key_seed_len < 32 ? key_seed_len : 32),
+                         (const uint8_t *)"ps-inner-cred-id", 16,
+                         inner_cred_id);
+
+        if (ps_algorithm_is_arkg(extensions.ps_algorithm)) {
+            /* ARKG: derive seed keys and build ARKG inner AttestationObject */
+            mbedtls_mpi arkg_sk_bl, arkg_sk_kem;
+            mbedtls_ecp_point arkg_pk_bl, arkg_pk_kem;
+            mbedtls_mpi_init(&arkg_sk_bl);
+            mbedtls_mpi_init(&arkg_sk_kem);
+            mbedtls_ecp_point_init(&arkg_pk_bl);
+            mbedtls_ecp_point_init(&arkg_pk_kem);
+
+            ret = arkg_derive_seed_keys(key_seed, key_seed_len,
+                                         &arkg_sk_bl, &arkg_pk_bl,
+                                         &arkg_sk_kem, &arkg_pk_kem);
+            if (ret != 0) {
+                mbedtls_mpi_free(&arkg_sk_bl);
+                mbedtls_mpi_free(&arkg_sk_kem);
+                mbedtls_ecp_point_free(&arkg_pk_bl);
+                mbedtls_ecp_point_free(&arkg_pk_kem);
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+
+            mbedtls_ecp_group grp;
+            mbedtls_ecp_group_init(&grp);
+            mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
+
+            ret = arkg_build_inner_attestation_object(
+                rp_id_hash, (uint8_t)extensions.ps_flags,
+                inner_cred_id, sizeof(inner_cred_id),
+                &arkg_pk_bl, &arkg_pk_kem, &grp,
+                ps_att_obj, sizeof(ps_att_obj), &ps_att_obj_len);
+
+            mbedtls_ecp_group_free(&grp);
+            mbedtls_mpi_free(&arkg_sk_bl);
+            mbedtls_mpi_free(&arkg_sk_kem);
+            mbedtls_ecp_point_free(&arkg_pk_bl);
+            mbedtls_ecp_point_free(&arkg_pk_kem);
+
+            if (ret != 0) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+        }
+        else {
+            /* Non-ARKG (ES256/ESP256): derive signing key and build plain inner AttestationObject */
+            mbedtls_ecp_keypair ps_sign_key;
+            mbedtls_ecp_keypair_init(&ps_sign_key);
+
+            ret = ps_load_signing_key(key_seed, &ps_sign_key);
+            if (ret != 0) {
+                mbedtls_ecp_keypair_free(&ps_sign_key);
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+
+            ret = ps_build_inner_attestation_object(
+                rp_id_hash, (uint8_t)extensions.ps_flags,
+                extensions.ps_algorithm,
+                inner_cred_id, sizeof(inner_cred_id),
+                &ps_sign_key.Q, &ps_sign_key.grp,
+                ps_att_obj, sizeof(ps_att_obj), &ps_att_obj_len);
+
+            mbedtls_ecp_keypair_free(&ps_sign_key);
+
+            if (ret != 0) {
+                CBOR_ERROR(CTAP2_ERR_PROCESSING);
+            }
+        }
+    }
+#endif
+
     cbor_encoder_init(&encoder, ctap_resp->init.data + 1, CTAP_MAX_CBOR_PAYLOAD, 0);
     uint8_t lparams = 3;
     if (enterpriseAttestation == 2) {
@@ -810,6 +972,11 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
     if (extensions.largeBlobKey == ptrue && options.rk == ptrue) {
         lparams++;
     }
+#ifdef ENABLE_PREVIEW_SIGN
+    if (ps_att_obj_len > 0) {
+        lparams++; /* response key 0x06: unsigned extension outputs */
+    }
+#endif
     CBOR_CHECK(cbor_encoder_create_map(&encoder, &mapEncoder, lparams));
 
     CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x01));
@@ -849,6 +1016,22 @@ int cbor_make_credential(const uint8_t *data, size_t len) {
         CBOR_CHECK(cbor_encode_byte_string(&mapEncoder, largeBlobKey, sizeof(largeBlobKey)));
     }
     mbedtls_platform_zeroize(largeBlobKey, sizeof(largeBlobKey));
+
+#ifdef ENABLE_PREVIEW_SIGN
+    /* Response key 0x06: unsigned extension outputs */
+    if (ps_att_obj_len > 0) {
+        CBOR_CHECK(cbor_encode_uint(&mapEncoder, 0x06));
+        /* {"previewSign": {7: <att_obj_bytes>}} */
+        CborEncoder unsignedExtMap, psUnsignedMap;
+        CBOR_CHECK(cbor_encoder_create_map(&mapEncoder, &unsignedExtMap, 1));
+        CBOR_CHECK(cbor_encode_text_stringz(&unsignedExtMap, "previewSign"));
+        CBOR_CHECK(cbor_encoder_create_map(&unsignedExtMap, &psUnsignedMap, 1));
+        CBOR_CHECK(cbor_encode_uint(&psUnsignedMap, 7));
+        CBOR_CHECK(cbor_encode_byte_string(&psUnsignedMap, ps_att_obj, ps_att_obj_len));
+        CBOR_CHECK(cbor_encoder_close_container(&unsignedExtMap, &psUnsignedMap));
+        CBOR_CHECK(cbor_encoder_close_container(&mapEncoder, &unsignedExtMap));
+    }
+#endif
     CBOR_CHECK(cbor_encoder_close_container(&encoder, &mapEncoder));
     resp_size = cbor_encoder_get_buffer_size(&encoder, ctap_resp->init.data + 1);
 
